@@ -15,3 +15,6 @@ artifacts/**/*.npz
 artifacts/**/*.jsonl
 artifacts/**/*.log
 artifacts/**/overlay_spot_check/
+
+# Claude Code worktrees
+.claude/worktrees/

@@ -8,13 +8,15 @@ import hashlib
 import io
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
 from ..core.contracts import Coordinate, InitialCandidate
 
 
-DEFAULT_PINPOINT_ROOT = Path("/home/brian/workspace/pinpoint-submission/submission")
+# Checkout of the Pinpoint submission (contrastive checkpoint + retrieval index); override with PINPOINT_ROOT.
+DEFAULT_PINPOINT_ROOT = Path(os.environ.get("PINPOINT_ROOT", "/home/brian/workspace/pinpoint-submission/submission"))
 DEFAULT_PINPOINT_CHECKPOINT = (
     DEFAULT_PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/ckpt_best.pt"
 )
