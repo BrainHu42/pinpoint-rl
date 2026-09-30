@@ -56,8 +56,8 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
   of the vLLM env + trl/peft/accelerate/datasets/fla (TRL colocated vLLM rollouts; put its `bin` on PATH).
 - Rollouts/eval: vLLM 0.30 at `/home/brian/.venvs/vllm` (put its `bin` on PATH for ninja). Weights:
   `/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Serve bf16,
-  `enable_thinking: False`, `n=8` per request, `max_pixels` 786432, **no MTP**. Scripts: `artifacts/sft/logs/`
-  (`eval_run.sh`, `full_eval.sh`).
+  `enable_thinking: False`, `n=8` per request, `max_pixels` 786432, **no MTP**. Scripts: `scripts/`
+  (`eval_run.sh`, `full_eval.sh`, `evidence_test.sh`).
 - Data:
   - MP16 embeddings: `/data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`.
   - MP16 metadata: `/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv`.
@@ -79,4 +79,5 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
 - `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
   `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
-- Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool).
+- Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool); `artifacts/` is not tracked.
+- Full setup from scratch: `SETUP.md`.

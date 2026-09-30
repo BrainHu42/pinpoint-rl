@@ -1,26 +1,29 @@
 # pinpoint-rl
 
-Research code for training a vision-language model (Qwen3.5-4B, LoRA) to geolocate photos with reinforcement learning,
-on top of a retrieval baseline (Pinpoint: SigLIP2 embeddings of MP16-Pro and OSV-5M). Evaluation is on im2gps3k and
-yfcc4k with same-photographer gallery images excluded; wikimedia is the planned third test set.
+Research code for training a vision-language model (Qwen3.5-4B, LoRA, thinking off) to geolocate photos with
+supervised fine-tuning and reinforcement learning (GRPO), on top of a retrieval baseline (Pinpoint: SigLIP2 embeddings
+of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves with same-photographer gallery images
+excluded; wikimedia is the planned third test set.
 
-- **`LEARNINGS.md`**: results so far and what they rule out (start here).
-- **`CLAUDE.md`**: current research plan, project rules, environment and code map.
+- **`LEARNINGS.md`**: results so far and what they rule out (read first).
+- **`CLAUDE.md`**: current research plan, project rules, environment notes and code map.
+- **`SETUP.md`**: complete setup guide (hardware, environments, models, datasets, cache build order, commands).
 
-## Layout
-- `src/geo_search_env/experiment/`: experiment modules, each runnable as
-  `python -m geo_search_env.experiment.<module> <node>` (usage lines at the top of each file).
-  - `strategy_search.py`, `verifiers.py`: retrieval caches, candidate pools, reranker.
-  - `sft_data.py`, `sft_train.py`, `grpo_train.py`: MP16 training data, LoRA SFT, TRL GRPO.
-  - `pivot_diagnostics.py`: VLM evaluation (`vlm_sampling`) against any OpenAI-compatible server.
-  - `llm_advantage.py`, `query_headroom.py`, `evidence_test.py`: headroom and go/no-go analyses.
-- `tests/`: `pytest` suite.
-- `artifacts/`: result JSONs and run scripts (`*/logs/*.sh`). Caches, datasets and logs are git-ignored and rebuilt
-  by the modules above.
+## Repository layout
+
+- `src/geo_search_env/experiment/`: experiment modules, each run as
+  `.venv/bin/python -m geo_search_env.experiment.<module> <node>` (usage lines at the top of each file; code map in
+  `CLAUDE.md`).
+- `src/geo_search_env/data/benchmarks.py`: benchmark loader and metrics.
+- `src/geo_search_env/models/pinpoint.py`: frozen Pinpoint retrieval baseline.
+- `scripts/`: end-to-end evaluation scripts (serve a model with vLLM, evaluate, stop the server).
+- `tests/`: pytest suite; `fixtures/`: synthetic test fixtures.
 - `archive/`: superseded plans.
+- `artifacts/` (git-ignored): caches, datasets, logs and result JSONs, all rebuilt by the modules (see `SETUP.md`).
 
-## Setup
-Python ≥ 3.11 with [uv](https://github.com/astral-sh/uv): `uv sync --extra retrieval --extra feasibility`.
-Training and serving use separate environments (torch + transformers 5.17, TRL 1.14, peft, flash-linear-attention;
-vLLM 0.30); see `CLAUDE.md`. Paths to datasets, embeddings and model weights are hard-coded for our machine
-(`/data/...`) and need adapting elsewhere. API keys go in `.env` (git-ignored).
+## Conventions
+
+- The GPU may be shared with other jobs: check `nvidia-smi` before launching, and stop only your own processes (by
+  PID).
+- Never train on the benchmarks, always exclude same-photographer gallery rows, and train only on MP16 bucket 99.
+- No distillation from Gemini: it is a benchmark and a source of evaluation-only labels.

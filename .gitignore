@@ -10,8 +10,8 @@ dist/
 .venv/
 .lavish/
 
-# Large or regenerable experiment outputs (caches, datasets, server logs) and third-party photos
-artifacts/**/*.npz
-artifacts/**/*.jsonl
-artifacts/**/*.log
-artifacts/**/overlay_spot_check/
+# Experiment outputs: caches, datasets, logs, result JSONs (results are summarized in LEARNINGS.md)
+artifacts/
+
+# Claude Code worktrees
+.claude/worktrees/
