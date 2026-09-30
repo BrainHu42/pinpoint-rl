@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Serve base Qwen3.5-4B (multi-image) and run the evidence test: none, photos, places on the full eval halves.
+# Usage: [EVIDENCE="none places photos"] [MODEL=<weights dir>] bash scripts/evidence_test.sh   (needs an idle GPU)
 set -eu
-cd /home/brian/workspace/pinpoint-rl
+cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1
-model=/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a
+mkdir -p artifacts/strategy_search/logs
+model=${MODEL:-/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a}
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 5; done
-PATH=/home/brian/.venvs/vllm/bin:$PATH vllm serve $model --served-model-name vlm --port 8765 --host 127.0.0.1 \
+PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve $model --served-model-name vlm --port 8765 --host 127.0.0.1 \
   --dtype bfloat16 --gpu-memory-utilization 0.7 --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt '{"image":11}' \
   --mm-processor-kwargs '{"max_pixels": 786432}' > artifacts/strategy_search/logs/vllm_evidence_test.log 2>&1 &
 server=$!

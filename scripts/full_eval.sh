@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Serve a merged run with vLLM and evaluate it on every im2gps3k + yfcc4k eval-half query (~3.7k).
-# Usage: bash artifacts/sft/logs/full_eval.sh <run> <prompt> [temperature, default 0.7]   (needs an idle GPU)
+# Usage: bash scripts/full_eval.sh <run> <prompt> [temperature, default 0.7]   (needs an idle GPU)
 set -eu
 run=$1
 prompt=$2
 temp=${3:-0.7}
-cd /home/brian/workspace/pinpoint-rl
+cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1
+mkdir -p artifacts/sft/logs
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 5; done
-PATH=/home/brian/.venvs/vllm/bin:$PATH vllm serve /data/pinpoint/sft/$run/merged --served-model-name vlm $run --port 8765 --host 127.0.0.1 \
+PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve /data/pinpoint/sft/$run/merged --served-model-name vlm $run --port 8765 --host 127.0.0.1 \
   --dtype bfloat16 --gpu-memory-utilization ${VLLM_MEM:-0.7} --max-model-len 4096 --max-num-seqs 128 --limit-mm-per-prompt '{"image":1}' \
   --mm-processor-kwargs '{"max_pixels": 786432}' > artifacts/sft/logs/vllm_full_$run.log 2>&1 &
 server=$!
