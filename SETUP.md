@@ -124,10 +124,19 @@ dim 1536, *not* normalized), stored as flat binaries with a `manifest.json`:
   `image_ids.txt`; manifest keys `files` and `shapes.embeddings`;
 - benchmarks: `embeddings.f16.bin` and `image_ids.txt`; manifest keys `files` and `embedding_dim`.
 
-They were built with the Pinpoint submission (`scripts/dataset/cache_siglip2_embeds.py --dataset {mp16,osv5m}` for the
-galleries; `scripts/benchmark.sh` writes the benchmark caches next to `images/`). Any script producing the same files
-works: `experiment/query_headroom.py` shows the exact embedding call and checks a re-embedding against the cache
-(cosine ≥ 0.996).
+Build them with `experiment/embed_cache.py` (GPU; writes to the paths in section 2 unless `--out` is given):
+
+```bash
+.venv/bin/python -m geo_search_env.experiment.embed_cache benchmark im2gps3k   # and yfcc4k
+.venv/bin/python -m geo_search_env.experiment.embed_cache gallery mp16         # ~11 h for our cache, bound by JPEG decoding
+.venv/bin/python -m geo_search_env.experiment.embed_cache gallery osv5m        # ~13 h
+```
+
+Our caches came from the Pinpoint submission's builder. `embed_cache` reproduces them: same rows in the same order
+(gallery row order depends on the DataLoader layout, so keep the default `--workers`/`--batch-size`, or anything in
+`artifacts/` that stores gallery row numbers is invalid), and embeddings at cosine median 0.9999, min 0.997 to ours
+on the checked prefixes (it resizes with PIL where Pinpoint used torchvision). To check a copy, build a prefix and compare, e.g.
+`embed_cache gallery mp16 --limit 2048 --out /tmp/mp16-check --compare /data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`.
 
 ### Pinpoint retrieval model
 The Pinpoint submission is a separate codebase that is not public. From it we need only:

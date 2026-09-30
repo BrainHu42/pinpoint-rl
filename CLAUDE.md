@@ -76,6 +76,7 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `experiment/sft_data.py`: MP16 query pool, candidates, leak check, overlay filter, SFT datasets (`--variant`).
 - `experiment/sft_train.py`: LoRA SFT, merge, MP16-val decode eval. `experiment/grpo_train.py`: TRL GRPO + merge.
 - `experiment/llm_advantage.py`: Gemini photo labels, per-slice model vs reranker, GeoNames coverage.
+- `experiment/embed_cache.py`: builds the SigLIP2 gallery and benchmark embedding caches (`--compare` checks one).
 - `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
 - `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
   `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
