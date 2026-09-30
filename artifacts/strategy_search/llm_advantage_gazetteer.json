@@ -1,0 +1,4527 @@
+{
+ "summary": {
+  "high-confidence named places": 645,
+  "any GeoNames match": 0.5534883720930233,
+  "oracle match <1 km": 0.2744186046511628,
+  "oracle match <25 km": 0.4666666666666667,
+  "most-populous match <1 km": 0.22325581395348837,
+  "most-populous match <25 km": 0.3891472868217054
+ },
+ "rows": [
+  {
+   "image_id": "1000269685_e60e9cdfb4_1125_78841376@N00.jpg",
+   "place": "Dolphin Quest Bermuda, Royal Naval Dockyard, Bermuda",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "103404365_f852148f5b_34_73293249@N00.jpg",
+   "place": "H\u00f4tel Restaurant du Barrage, Grande Dixence, H\u00e9r\u00e9mence, Switzerland",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "103558896_55f8059bc9_35_73293249@N00.jpg",
+   "place": "Brookfield Place, Toronto, Canada",
+   "n_matches": 1,
+   "oracle_km": 549.359227660174,
+   "pick_km": 549.359227660174
+  },
+  {
+   "image_id": "103574519_62331b624f_24_73293249@N00.jpg",
+   "place": "Financial District, Toronto, Canada",
+   "n_matches": 5,
+   "oracle_km": 0.7237871795515343,
+   "pick_km": 550.1937924344846
+  },
+  {
+   "image_id": "103577701_b68e15492e_32_73293249@N00.jpg",
+   "place": "Clifton Hill, Niagara Falls, Ontario, Canada",
+   "n_matches": 16,
+   "oracle_km": 580.6360122656218,
+   "pick_km": 16282.549045533153
+  },
+  {
+   "image_id": "104132709_97b998c989_41_19355699@N00.jpg",
+   "place": "Sydney Opera House, Sydney, Australia",
+   "n_matches": 2,
+   "oracle_km": 0.746867567945957,
+   "pick_km": 0.7548694749054057
+  },
+  {
+   "image_id": "104134428_244b67a2d9_38_19355699@N00.jpg",
+   "place": "Sydney Tower, Sydney, Australia",
+   "n_matches": 1,
+   "oracle_km": 1.0198876326559068,
+   "pick_km": 1.0198876326559068
+  },
+  {
+   "image_id": "1044041591_512737f6a3_1182_9729483@N02.jpg",
+   "place": "Independence Hall (Supreme Court Chamber), Philadelphia, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "104419192_8551684362_41_64825499@N00.jpg",
+   "place": "St John's Chapel, Tower of London, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 283.5601013042907,
+   "pick_km": 283.5601013042907
+  },
+  {
+   "image_id": "1055596489_76a46df552_1047_52057668@N00.jpg",
+   "place": "Museo Nazionale del Bargello, Florence, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1058450330_29b27f18cc_1304_52057668@N00.jpg",
+   "place": "Eiffel Tower, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 2.5305234490898068,
+   "pick_km": 2.5305234490898068
+  },
+  {
+   "image_id": "1440937386_f2e8c786cb_1104_70323761@N00.jpg",
+   "place": "Eiffel Tower, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 1.7253170116411387,
+   "pick_km": 1.7253170116411387
+  },
+  {
+   "image_id": "720614538_b876797c84_1294_7132415@N03.jpg",
+   "place": "Eiffel Tower, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.6042307050856057,
+   "pick_km": 0.6042307050856057
+  },
+  {
+   "image_id": "97329780_a468851447_22_77325609@N00.jpg",
+   "place": "Eiffel Tower, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 3.9056989269921165,
+   "pick_km": 3.9056989269921165
+  },
+  {
+   "image_id": "1076964851_c20355b981_1431_93455345@N00.jpg",
+   "place": "Vladivostok entrance sign, Vladivostok, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1077086393_e1aea6d21e_1090_93455345@N00.jpg",
+   "place": "Baikalsk entrance sign, Baikalsk, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1085889653_66207e5068_1416_33463080@N00.jpg",
+   "place": "The Bridge Over the River Kwai, Kanchanaburi, Thailand",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1101090129_d124208854_1241_33463080@N00.jpg",
+   "place": "Bayon Temple, Angkor Thom, Siem Reap, Cambodia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "111013518_cc990d42cf_51_36948083@N00.jpg",
+   "place": "Bayon Temple, Angkor Thom, Siem Reap, Cambodia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1106080815_b1340dffa7_1276_33463080@N00.jpg",
+   "place": "Ta Prohm, Siem Reap, Cambodia",
+   "n_matches": 2,
+   "oracle_km": 1.0697550208409548,
+   "pick_km": 7.710122351698871
+  },
+  {
+   "image_id": "1106682564_0b76ef20a3_1279_33463080@N00.jpg",
+   "place": "Ta Prohm Temple, Angkor, Siem Reap, Cambodia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1107115193_7896b8d656_1300_33463080@N00.jpg",
+   "place": "Angkor Wat, Siem Reap, Cambodia",
+   "n_matches": 1,
+   "oracle_km": 4.548153258455926,
+   "pick_km": 4.548153258455926
+  },
+  {
+   "image_id": "1117586944_cc641006da_1329_75653366@N00.jpg",
+   "place": "Wat Arun, Bangkok, Thailand",
+   "n_matches": 4,
+   "oracle_km": 0.09598031012300302,
+   "pick_km": 0.29204935386569003
+  },
+  {
+   "image_id": "1117715992_d0a96a4caa_1337_75653366@N00.jpg",
+   "place": "Wat Arun, Bangkok, Thailand",
+   "n_matches": 4,
+   "oracle_km": 0.09598031012300302,
+   "pick_km": 0.29204935386569003
+  },
+  {
+   "image_id": "1126734821_cbf0860b66_1080_30571787@N00.jpg",
+   "place": "HMS Belfast, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.007400900394925901,
+   "pick_km": 0.007400900394925901
+  },
+  {
+   "image_id": "113822018_7975267242_49_87434398@N00.jpg",
+   "place": "The Elmore Store, Elmore, Vermont, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "113833447_7e18ad9cf1_42_87434398@N00.jpg",
+   "place": "The Willey's Store, Greensboro, Vermont, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "113900033_9051f51fbb_52_87434398@N00.jpg",
+   "place": "Sandgate Town Hall, Sandgate, Vermont, United States",
+   "n_matches": 1,
+   "oracle_km": 0.31168146488983933,
+   "pick_km": 0.31168146488983933
+  },
+  {
+   "image_id": "113910978_c1353d9035_55_87434398@N00.jpg",
+   "place": "Bolton Valley Resort, Bolton, Vermont, United States",
+   "n_matches": 1,
+   "oracle_km": 0.14253707117332745,
+   "pick_km": 0.14253707117332745
+  },
+  {
+   "image_id": "1155935557_5d22312c46_1219_41894197861@N01.jpg",
+   "place": "Cybele Palace, Madrid, Spain",
+   "n_matches": 1,
+   "oracle_km": 0.06263189028710937,
+   "pick_km": 0.06263189028710937
+  },
+  {
+   "image_id": "1156773764_43e2a07c5b_1180_41894197861@N01.jpg",
+   "place": "Casa Allende and Edificio Meneses, Madrid, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1177618026_9cf484ed83_1039_10976003@N07.jpg",
+   "place": "Kauffman Stadium, Kansas City, Missouri, United States",
+   "n_matches": 1,
+   "oracle_km": 0.02754180657037901,
+   "pick_km": 0.02754180657037901
+  },
+  {
+   "image_id": "1183171295_73c6565f16_1175_47311799@N00.jpg",
+   "place": "Zanhotel Tre Vecchi, Bologna, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.022851181512769242,
+   "pick_km": 0.022851181512769242
+  },
+  {
+   "image_id": "118498673_8e6fd335d3_42_41894197861@N01.jpg",
+   "place": "Tate Modern, London, United Kingdom",
+   "n_matches": 2,
+   "oracle_km": 1.0830940231750084,
+   "pick_km": 1.6800431491580634
+  },
+  {
+   "image_id": "118549043_489c2a4b3e_56_41894197861@N01.jpg",
+   "place": "Orb Street, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "118556934_32ccc0ff16_42_41894197861@N01.jpg",
+   "place": "Battersea Gasholders, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "118654486_9f20d0ae96_21_18684820@N00.jpg",
+   "place": "Swiss\u00f4tel Bangkok Ratchada, Bangkok, Thailand",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1187469358_26459f74ff_1070_43616936@N00.jpg",
+   "place": "Fenway Park, Boston, Massachusetts, United States",
+   "n_matches": 1,
+   "oracle_km": 0.015219143511545312,
+   "pick_km": 0.015219143511545312
+  },
+  {
+   "image_id": "3608734852.jpg",
+   "place": "Fenway Park, Boston, Massachusetts, United States",
+   "n_matches": 1,
+   "oracle_km": 0.10264787336086838,
+   "pick_km": 0.10264787336086838
+  },
+  {
+   "image_id": "1190585699_2de6e84746_1076_47311799@N00.jpg",
+   "place": "Juliet's House, Verona, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1191410915_2c99edb131_1099_47311799@N00.jpg",
+   "place": "Rio di Palazzo, Venice, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1192463216_a5f06caf2c_1050_47311799@N00.jpg",
+   "place": "Hotel Antiche Figure, Venice, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.04978825827613042,
+   "pick_km": 0.04978825827613042
+  },
+  {
+   "image_id": "1195826477_e2f02e85a0_1134_97522422@N00.jpg",
+   "place": "Government House 1, Republic Square, Yerevan, Armenia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1198701343_618ff4d0d0_1058_16418049@N00.jpg",
+   "place": "Parthenon, Athens, Greece",
+   "n_matches": 7,
+   "oracle_km": 0.5765870556924806,
+   "pick_km": 238.73839160990747
+  },
+  {
+   "image_id": "1202468581_af97878357_1431_47311799@N00.jpg",
+   "place": "Lake St. Moritz, St. Moritz, Switzerland",
+   "n_matches": 1,
+   "oracle_km": 0.6379191600629555,
+   "pick_km": 0.6379191600629555
+  },
+  {
+   "image_id": "1205192842_abe51c5638_1326_47311799@N00.jpg",
+   "place": "Piazzale Luigi Cadorna, Milan, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1208388445_947a7b9831_1097_70323761@N00.jpg",
+   "place": "Newport Bay Club and Hotel, Newport, Rhode Island, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1212815991_d0db96dfae_1100_47311799@N00.jpg",
+   "place": "Piazza della Scala, Milan, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.016771378443211995,
+   "pick_km": 0.016771378443211995
+  },
+  {
+   "image_id": "1213672418_c0a23932ef_1080_47311799@N00.jpg",
+   "place": "Galleria Vittorio Emanuele II, Milan, Italy",
+   "n_matches": 2,
+   "oracle_km": 0.09363262324258483,
+   "pick_km": 0.09363262324258483
+  },
+  {
+   "image_id": "480394015_13ba637796_214_7885919@N07.jpg",
+   "place": "Galleria Vittorio Emanuele II, Milan, Italy",
+   "n_matches": 2,
+   "oracle_km": 0.16610030840207943,
+   "pick_km": 0.16610030840207943
+  },
+  {
+   "image_id": "1222111024_5f9bd39a03_1342_47311799@N00.jpg",
+   "place": "Hotel des Alpes, Lucerne, Switzerland",
+   "n_matches": 3,
+   "oracle_km": 0.04108917689531013,
+   "pick_km": 146.21444793929012
+  },
+  {
+   "image_id": "1223225942_44420da21b_1061_65768710@N00.jpg",
+   "place": "St Jude's Anglican Church, Randwick, New South Wales, Australia",
+   "n_matches": 1,
+   "oracle_km": 14896.785105420877,
+   "pick_km": 14896.785105420877
+  },
+  {
+   "image_id": "1225986996_60db89c58a_1239_92123108@N00.jpg",
+   "place": "San Francisco Museum of Modern Art, San Francisco, United States",
+   "n_matches": 1,
+   "oracle_km": 4.973124702952789,
+   "pick_km": 4.973124702952789
+  },
+  {
+   "image_id": "1226778732_aa330b8a02_1359_65768710@N00.jpg",
+   "place": "Sydney Harbour Bridge, Sydney, Australia",
+   "n_matches": 1,
+   "oracle_km": 2.419239595317273,
+   "pick_km": 2.419239595317273
+  },
+  {
+   "image_id": "1668116260.jpg",
+   "place": "Sydney Harbour Bridge, Sydney, Australia",
+   "n_matches": 1,
+   "oracle_km": 0.6813949787429141,
+   "pick_km": 0.6813949787429141
+  },
+  {
+   "image_id": "5711925722.jpg",
+   "place": "Sydney Harbour Bridge, Sydney, Australia",
+   "n_matches": 1,
+   "oracle_km": 2.583966237159087,
+   "pick_km": 2.583966237159087
+  },
+  {
+   "image_id": "1233312144_1c4d07b7c8_1160_70323761@N00.jpg",
+   "place": "The Breakers, Newport, Rhode Island, United States",
+   "n_matches": 6,
+   "oracle_km": 0.11619623540236576,
+   "pick_km": 2637.6764066245937
+  },
+  {
+   "image_id": "123555933_757507030c_43_18684820@N00.jpg",
+   "place": "125 Dunlop Street, Little India, Singapore",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "123587853_a130483c5c_34_18684820@N00.jpg",
+   "place": "Tekka Centre, Singapore",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1245560986_808a9e823a_1027_79756109@N00.jpg",
+   "place": "Snoqualmie Falls Park, Snoqualmie, Washington, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1249185427_7c30d4f1ce_1274_79756109@N00.jpg",
+   "place": "Nisqually River (Mount Rainier National Park), Washington, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1249725202_7af1ec000c_1322_33463080@N00.jpg",
+   "place": "Choeung Ek Genocidal Center, Phnom Penh, Cambodia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1251348239_6f573bc099_1003_11786349@N08.jpg",
+   "place": "Mes\u00f3n Carmen la de Ronda, Ronda, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1269568816_b5b0448cce_1207_11786349@N08.jpg",
+   "place": "Mount Kinabalu, Sabah, Malaysia",
+   "n_matches": 1,
+   "oracle_km": 3.443892371707956,
+   "pick_km": 3.443892371707956
+  },
+  {
+   "image_id": "1279408183_4544a317f4_1149_11786349@N08.jpg",
+   "place": "15 July Martyrs Bridge, Istanbul, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1279669510_d92c94851b_1012_11786349@N08.jpg",
+   "place": "Hagia Sophia, Istanbul, Turkey",
+   "n_matches": 2,
+   "oracle_km": 1.3968953554414518,
+   "pick_km": 1.3968953554414518
+  },
+  {
+   "image_id": "1280299112_9d7c5e33e1_1149_11786349@N08.jpg",
+   "place": "Bosphorus, Istanbul, Turkey",
+   "n_matches": 2,
+   "oracle_km": 10.977517718388217,
+   "pick_km": 10.977517718388217
+  },
+  {
+   "image_id": "128191361_f5564bdb12_50_43616936@N00.jpg",
+   "place": "Heisler Park, Laguna Beach, California, United States",
+   "n_matches": 1,
+   "oracle_km": 316.17995424777416,
+   "pick_km": 316.17995424777416
+  },
+  {
+   "image_id": "1287254325_d7877fc5c8_1258_11786349@N08.jpg",
+   "place": "Pavillon de Vend\u00f4me, Aix-en-Provence, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1287545391_2d4b5ae8a3_1229_11786349@N08.jpg",
+   "place": "Abu Simbel, Aswan Governorate, Egypt",
+   "n_matches": 4,
+   "oracle_km": 21.381426426582564,
+   "pick_km": 22.100869843369573
+  },
+  {
+   "image_id": "1288127209_be2c0b579b_1229_11786349@N08.jpg",
+   "place": "Karnak, Luxor, Egypt",
+   "n_matches": 19,
+   "oracle_km": 0.42021979903528767,
+   "pick_km": 3952.8709443622006
+  },
+  {
+   "image_id": "5293584162.jpg",
+   "place": "Karnak, Luxor, Egypt",
+   "n_matches": 19,
+   "oracle_km": 0.3351527689807217,
+   "pick_km": 3952.5566453105394
+  },
+  {
+   "image_id": "1288818896_b0267a3878_1228_11786349@N08.jpg",
+   "place": "Luxor Temple, Luxor, Egypt",
+   "n_matches": 2,
+   "oracle_km": 0.324321479555187,
+   "pick_km": 0.37146289185227716
+  },
+  {
+   "image_id": "415403604_1e27c81dae_166_7132415@N03.jpg",
+   "place": "Luxor Temple, Luxor, Egypt",
+   "n_matches": 2,
+   "oracle_km": 2.5230343808084457,
+   "pick_km": 2.5230343808084457
+  },
+  {
+   "image_id": "1289098928_abb8d00a78_1388_11786349@N08.jpg",
+   "place": "Karnak Temple Complex, Luxor, Egypt",
+   "n_matches": 1,
+   "oracle_km": 0.37890627291462176,
+   "pick_km": 0.37890627291462176
+  },
+  {
+   "image_id": "129509096_0a9e9e9b0f_1_42485416@N00.jpg",
+   "place": "Centre Pompidou, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.4043425280348054,
+   "pick_km": 0.4043425280348054
+  },
+  {
+   "image_id": "1304568210_41d6110f20_1295_11786349@N08.jpg",
+   "place": "Perito Moreno Glacier, Los Glaciares National Park, Santa Cruz Province, Argentina",
+   "n_matches": 1,
+   "oracle_km": 8.61803772418016,
+   "pick_km": 8.61803772418016
+  },
+  {
+   "image_id": "1304739833_3ea33bdd0a_1429_11786349@N08.jpg",
+   "place": "Los Glaciares National Park, Santa Cruz, Argentina",
+   "n_matches": 1,
+   "oracle_km": 16.150025390063863,
+   "pick_km": 16.150025390063863
+  },
+  {
+   "image_id": "1315394026_64f26cee38_1312_89904893@N00.jpg",
+   "place": "Durdle Door, Dorset, England, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1329253238_3b1b76a747_1288_79039156@N00.jpg",
+   "place": "Arch of Titus, Rome, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.13875825932561367,
+   "pick_km": 0.13875825932561367
+  },
+  {
+   "image_id": "1333746673_49d86db2c7_1246_79039156@N00.jpg",
+   "place": "The Trulli of Alberobello, Alberobello, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1342064999_3bd9ab7c28_1075_11786349@N08.jpg",
+   "place": "Fiesta Nacional de la Vendimia, Mendoza, Argentina",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "134738204_382d178c4c_48_96155869@N00.jpg",
+   "place": "Vajdahunyad Castle, Budapest, Hungary",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "134738205_31d6fe2300_46_96155869@N00.jpg",
+   "place": "Vajdahunyad Castle, Budapest, Hungary",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "134748101_56f256634f_47_96155869@N00.jpg",
+   "place": "Sz\u00e9chenyi Chain Bridge, Budapest, Hungary",
+   "n_matches": 1,
+   "oracle_km": 1.216125702884035,
+   "pick_km": 1.216125702884035
+  },
+  {
+   "image_id": "1355206888_39136773a2_1173_44067110@N00.jpg",
+   "place": "Amsterdam, Netherlands",
+   "n_matches": 50,
+   "oracle_km": 0.22613322106318412,
+   "pick_km": 0.4519488123392434
+  },
+  {
+   "image_id": "136353845_74031b3ca1_44_70323761@N00.jpg",
+   "place": "Thomas Jefferson Memorial, Washington, D.C., United States",
+   "n_matches": 1,
+   "oracle_km": 0.4199342439543058,
+   "pick_km": 0.4199342439543058
+  },
+  {
+   "image_id": "136358852_1838d2bb1f_38_70323761@N00.jpg",
+   "place": "Santorini Caldera, Santorini, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1368606694_ab937b7b68_1026_98545448@N00.jpg",
+   "place": "Hotel Valle Mar, Puerto de la Cruz, Tenerife, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1387040884_345294c41e_1154_70323761@N00.jpg",
+   "place": "Mus\u00e9e Rodin, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.0031863336487357977,
+   "pick_km": 0.0031863336487357977
+  },
+  {
+   "image_id": "1391821404_2e29a83777_1315_61417564@N00.jpg",
+   "place": "Timothy Hill Overlook, Saint Kitts, Saint Kitts and Nevis",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1396805906_2884c6e192_1016_70323761@N00.jpg",
+   "place": "Pont de Bir-Hakeim, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.021265436376248403,
+   "pick_km": 0.021265436376248403
+  },
+  {
+   "image_id": "1403169945_82348edf46_1129_11786349@N08.jpg",
+   "place": "Laguna Colorada, Eduardo Avaroa Andean Fauna National Reserve, Bolivia",
+   "n_matches": 96,
+   "oracle_km": 41.61149576089107,
+   "pick_km": 6653.978295987736
+  },
+  {
+   "image_id": "140569222_85ec512f5d_45_85417391@N00.jpg",
+   "place": "Gardens of Versailles, Versailles, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1407798359_570d7be503_1242_11786349@N08.jpg",
+   "place": "Museum de Fundatie, Zwolle, Netherlands",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1413644279_bd885b7f3c_1349_73293249@N00.jpg",
+   "place": "The Sherlock Holmes, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1417701803_884aaf3fe2_1028_15376845@N00.jpg",
+   "place": "Saint Mary's Hospital, Waterbury, Connecticut, United States",
+   "n_matches": 20,
+   "oracle_km": 0.8692561193991534,
+   "pick_km": 1352.3646924635138
+  },
+  {
+   "image_id": "1422853173_2acc46e311_1172_70323761@N00.jpg",
+   "place": "Cath\u00e9drale Notre-Dame de Paris, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.019994848808213898,
+   "pick_km": 0.019994848808213898
+  },
+  {
+   "image_id": "228909896_02464233a2_65_55085284@N00.jpg",
+   "place": "Cath\u00e9drale Notre-Dame de Paris, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.8459335065041967,
+   "pick_km": 0.8459335065041967
+  },
+  {
+   "image_id": "4389975333.jpg",
+   "place": "Cath\u00e9drale Notre-Dame de Paris, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.16906932820229198,
+   "pick_km": 0.16906932820229198
+  },
+  {
+   "image_id": "143709426_5d2dcad5e5_52_70323761@N00.jpg",
+   "place": "John A. Roebling Suspension Bridge, Cincinnati, Ohio, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "143717975_c1f50a2d44_46_70323761@N00.jpg",
+   "place": "Citizens Bank Park, Philadelphia, Pennsylvania, United States",
+   "n_matches": 1,
+   "oracle_km": 0.2793791551519726,
+   "pick_km": 0.2793791551519726
+  },
+  {
+   "image_id": "144924835_553de1e86e_51_18684820@N00.jpg",
+   "place": "Dutch Windmill, Golden Gate Park, San Francisco, California, United States",
+   "n_matches": 3,
+   "oracle_km": 7.534960473045026,
+   "pick_km": 1707.7584068140632
+  },
+  {
+   "image_id": "147006132_8f66c6164a_46_69212252@N00.jpg",
+   "place": "Bas\u00edlica de la Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "346848851_e2ac3b09e3_139_78225438@N00.jpg",
+   "place": "Bas\u00edlica de la Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "97344146_71de07ecb7_39_77325609@N00.jpg",
+   "place": "Bas\u00edlica de la Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5336501375.jpg",
+   "place": "Bas\u00edlica de la Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5849417254.jpg",
+   "place": "Bas\u00edlica de la Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "147843919_ca25979404_51_69212252@N00.jpg",
+   "place": "Temple of Hephaestus, Athens, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "148132071_d34756b6a1_52_96155869@N00.jpg",
+   "place": "Lutheran Cathedral of Saint Mary, Sibiu, Romania",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "149540682_168698b38d_54_70323761@N00.jpg",
+   "place": "MGM Grand Las Vegas, Las Vegas, Nevada, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "149541933_8f4f14047e_44_70323761@N00.jpg",
+   "place": "New York-New York Hotel & Casino, Las Vegas, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "149770181_3cc1a80695_51_70323761@N00.jpg",
+   "place": "Di Bruno Bros., Philadelphia, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "149949702_f90e05b5f0_48_67879480@N00.jpg",
+   "place": "Sultan Mosque, Singapore",
+   "n_matches": 1,
+   "oracle_km": 8406.461902222312,
+   "pick_km": 8406.461902222312
+  },
+  {
+   "image_id": "150801299_c3eab611fc_44_70323761@N00.jpg",
+   "place": "Boston University / Kenmore Square, Boston, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "150891657_8ea3eb60ca_46_70323761@N00.jpg",
+   "place": "Freedom Trail, Boston, Massachusetts, United States",
+   "n_matches": 2,
+   "oracle_km": 0.4701003257975047,
+   "pick_km": 0.4701003257975047
+  },
+  {
+   "image_id": "152451822_06f9b5cff0_46_70323761@N00.jpg",
+   "place": "Queensboro Bridge, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 0.2552513490752211,
+   "pick_km": 0.2552513490752211
+  },
+  {
+   "image_id": "153750307_6ce5b13522_71_50994135@N00.jpg",
+   "place": "Pla de la Seu, Tarragona, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "160514066_251c53aefa_47_70323761@N00.jpg",
+   "place": "Arthur Ashe Stadium, Queens, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 0.135847386304027,
+   "pick_km": 0.135847386304027
+  },
+  {
+   "image_id": "162282175_c39d49d6a5_55_18684820@N00.jpg",
+   "place": "Oracle Park, San Francisco, California, United States",
+   "n_matches": 1,
+   "oracle_km": 1200.987130763892,
+   "pick_km": 1200.987130763892
+  },
+  {
+   "image_id": "163147186_89c392bb0a_73_63163416@N00.jpg",
+   "place": "Church of Saint Gregory of Gagik, Ani, Kars, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "165342347_dc3662a8a9_64_23601949@N00.jpg",
+   "place": "Tikal National Park, Pet\u00e9n, Guatemala",
+   "n_matches": 1,
+   "oracle_km": 1.0242526809603658,
+   "pick_km": 1.0242526809603658
+  },
+  {
+   "image_id": "166869956_84928fd11b_60_55085284@N00.jpg",
+   "place": "Palace of Versailles, Versailles, France",
+   "n_matches": 1,
+   "oracle_km": 17.319286057353146,
+   "pick_km": 17.319286057353146
+  },
+  {
+   "image_id": "526336263_51ce3b1509_1082_51035632501@N01.jpg",
+   "place": "Palace of Versailles, Versailles, France",
+   "n_matches": 1,
+   "oracle_km": 0.04469489831856928,
+   "pick_km": 0.04469489831856928
+  },
+  {
+   "image_id": "544712822_5d3f873de6_1040_78841376@N00.jpg",
+   "place": "Palace of Versailles, Versailles, France",
+   "n_matches": 1,
+   "oracle_km": 0.7808489752579811,
+   "pick_km": 0.7808489752579811
+  },
+  {
+   "image_id": "167298135_0773165b4a_66_50994135@N00.jpg",
+   "place": "Jan Hus Memorial, Prague, Czech Republic",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "167322301_5d0c781dd5_45_79954435@N00.jpg",
+   "place": "Moraine Lake, Banff National Park, Alberta, Canada",
+   "n_matches": 17,
+   "oracle_km": 0.6310346921718706,
+   "pick_km": 1952.7433527308726
+  },
+  {
+   "image_id": "167383119_8539fd4f2f_53_79954435@N00.jpg",
+   "place": "Harbour Centre, Vancouver, Canada",
+   "n_matches": 2,
+   "oracle_km": 0.550017712544824,
+   "pick_km": 4488.407248553056
+  },
+  {
+   "image_id": "167656331_f5116eed7f_59_79954435@N00.jpg",
+   "place": "Great Salt Lake, Utah, United States",
+   "n_matches": 2,
+   "oracle_km": 55.26409709043313,
+   "pick_km": 9034.958467285294
+  },
+  {
+   "image_id": "167672483_f28504a65e_74_79954435@N00.jpg",
+   "place": "Mammoth Hot Springs, Yellowstone National Park, Wyoming, United States",
+   "n_matches": 1,
+   "oracle_km": 1.3627474501322632,
+   "pick_km": 1.3627474501322632
+  },
+  {
+   "image_id": "167914950_05505ef5b6_51_11398209@N00.jpg",
+   "place": "Tamarama Coastal Walk, Sydney, Australia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "169451925_ea6efa0a53_73_18684820@N00.jpg",
+   "place": "Market Street at 4th Street, San Francisco, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "173878689_accde2e920_57_82927779@N00.jpg",
+   "place": "Cologne Cathedral, Cologne, Germany",
+   "n_matches": 1,
+   "oracle_km": 1.8976432131603804,
+   "pick_km": 1.8976432131603804
+  },
+  {
+   "image_id": "175718513_3f77a43027_62_73293249@N00.jpg",
+   "place": "Calle de Alcal\u00e1, Madrid, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "175790478_dab3630a7a_66_73293249@N00.jpg",
+   "place": "Catedral de la Almudena, Madrid, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "175835676_2354cb3d72_76_73293249@N00.jpg",
+   "place": "Rijksmuseum, Amsterdam, Netherlands",
+   "n_matches": 1,
+   "oracle_km": 0.38057729339971563,
+   "pick_km": 0.38057729339971563
+  },
+  {
+   "image_id": "178527376_73751d9d73_68_63163416@N00.jpg",
+   "place": "Cappadocia, Nev\u015fehir, Turkey",
+   "n_matches": 4,
+   "oracle_km": 6.636817619513327,
+   "pick_km": 1864.4298018129825
+  },
+  {
+   "image_id": "199530729_bafe6d02cc_73_85971448@N00.jpg",
+   "place": "Cappadocia, Nev\u015fehir Province, Turkey",
+   "n_matches": 4,
+   "oracle_km": 2.4261259040075034,
+   "pick_km": 1859.2809034422
+  },
+  {
+   "image_id": "181175040_f0ab843234_63_70323761@N00.jpg",
+   "place": "Neumann Leathers, Hoboken, New Jersey, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "181607715_d26c19625c_59_77392231@N00.jpg",
+   "place": "Magna Plaza, Amsterdam, Netherlands",
+   "n_matches": 1,
+   "oracle_km": 0.3155375205689771,
+   "pick_km": 0.3155375205689771
+  },
+  {
+   "image_id": "181848051_3f34be1b5d_68_70323761@N00.jpg",
+   "place": "Brooklyn Heights Promenade, New York City, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "181860736_4dc151fcf7_58_77392231@N00.jpg",
+   "place": "Museumplein, Amsterdam, Netherlands",
+   "n_matches": 1,
+   "oracle_km": 1.5984737366397945,
+   "pick_km": 1.5984737366397945
+  },
+  {
+   "image_id": "181876927_f171e3f91a_48_70323761@N00.jpg",
+   "place": "Brooklyn Bridge Park, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 0.6777738511001983,
+   "pick_km": 0.6777738511001983
+  },
+  {
+   "image_id": "182104467_7712c6f402_65_77392231@N00.jpg",
+   "place": "The Grasshopper, Amsterdam, Netherlands",
+   "n_matches": 3,
+   "oracle_km": 710.3843339697287,
+   "pick_km": 710.3843339697287
+  },
+  {
+   "image_id": "186684963_7fa97e938b_56_40829484@N00.jpg",
+   "place": "Bridalveil Fall, Yosemite National Park, California, United States",
+   "n_matches": 1,
+   "oracle_km": 37.57853016672844,
+   "pick_km": 37.57853016672844
+  },
+  {
+   "image_id": "186707214_28d47e2f28_74_40829484@N00.jpg",
+   "place": "Marina Green, San Francisco, United States",
+   "n_matches": 1,
+   "oracle_km": 14.91501495966438,
+   "pick_km": 14.91501495966438
+  },
+  {
+   "image_id": "190633086_d744a81490_55_19355699@N00.jpg",
+   "place": "Buckingham Fountain, Chicago, United States",
+   "n_matches": 1,
+   "oracle_km": 1.2236047980480194,
+   "pick_km": 1.2236047980480194
+  },
+  {
+   "image_id": "192049090_ae473cbf3e_61_39595541@N00.jpg",
+   "place": "London Eye, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.052441159780053447,
+   "pick_km": 0.052441159780053447
+  },
+  {
+   "image_id": "204077214_df3394ae6e_60_96155869@N00.jpg",
+   "place": "London Eye, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 2.6602933312390964,
+   "pick_km": 2.6602933312390964
+  },
+  {
+   "image_id": "227849281_c7d1e6c72c_79_88895879@N00.jpg",
+   "place": "London Eye, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 6.382621963889411,
+   "pick_km": 6.382621963889411
+  },
+  {
+   "image_id": "192661465_af7eee6df5_71_82927779@N00.jpg",
+   "place": "Victoria Peak, Hong Kong",
+   "n_matches": 14,
+   "oracle_km": 1.8011580686218538,
+   "pick_km": 15313.955127584913
+  },
+  {
+   "image_id": "192975525_11ca682ff9_48_70323761@N00.jpg",
+   "place": "Yankee Stadium (1923), New York City, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "194700057_04c99126b9_64_96155869@N00.jpg",
+   "place": "Atomium, Brussels, Belgium",
+   "n_matches": 1,
+   "oracle_km": 4.491255141488449,
+   "pick_km": 4.491255141488449
+  },
+  {
+   "image_id": "195180812_8762d1dba5_70_73935513@N00.jpg",
+   "place": "Iguaz\u00fa Falls, Misiones, Argentina",
+   "n_matches": 2,
+   "oracle_km": 26.25500006266435,
+   "pick_km": 27.701022013286273
+  },
+  {
+   "image_id": "195819600_2033633f7d_71_85417391@N00.jpg",
+   "place": "Rijksmuseum Garden, Amsterdam, Netherlands",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "197508182_721f559e6a_60_35468147630@N01.jpg",
+   "place": "Taj Mahal, Agra, India",
+   "n_matches": 6,
+   "oracle_km": 6.5761084155024,
+   "pick_km": 6.5761084155024
+  },
+  {
+   "image_id": "196044558.jpg",
+   "place": "Taj Mahal, Agra, India",
+   "n_matches": 6,
+   "oracle_km": 0.19586388658820195,
+   "pick_km": 0.19586388658820195
+  },
+  {
+   "image_id": "197846059_bee5d51f48_61_35468147630@N01.jpg",
+   "place": "Amber Palace, Jaipur, India",
+   "n_matches": 1,
+   "oracle_km": 5387.633467987157,
+   "pick_km": 5387.633467987157
+  },
+  {
+   "image_id": "199300245_2b38ee3d16_78_23601949@N00.jpg",
+   "place": "Round Pond, Maine, United States",
+   "n_matches": 245,
+   "oracle_km": 0.0760812017451745,
+   "pick_km": 1323.7154410607318
+  },
+  {
+   "image_id": "199526712_617424ef01_68_85971448@N00.jpg",
+   "place": "Selimiye Mosque, Konya, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "199526748_3259ca2aff_73_85971448@N00.jpg",
+   "place": "Pigeon Valley, U\u00e7hisar, Nev\u015fehir Province, Turkey",
+   "n_matches": 3,
+   "oracle_km": 9860.612220898427,
+   "pick_km": 9860.612220898427
+  },
+  {
+   "image_id": "199528247_66da61f266_70_85971448@N00.jpg",
+   "place": "Pigeon Valley, Cappadocia, Turkey",
+   "n_matches": 3,
+   "oracle_km": 9860.066618065377,
+   "pick_km": 9860.066618065377
+  },
+  {
+   "image_id": "199527863_7d85bd7343_71_85971448@N00.jpg",
+   "place": "G\u00f6reme Open Air Museum, Cappadocia, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "200122311_69e1bf6d4a_72_18684820@N00.jpg",
+   "place": "L'Osteria del Forno, San Francisco, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "200132082_7a49b4b77a_65_18684820@N00.jpg",
+   "place": "Pier 43 Ferry Arch, San Francisco, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "200150346_6705a9c76e_52_18684820@N00.jpg",
+   "place": "Mountain View Caltrain station, Mountain View, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.22997329465676186,
+   "pick_km": 0.22997329465676186
+  },
+  {
+   "image_id": "201447596_b22107374e_74_48947971@N00.jpg",
+   "place": "Kinkaku-ji, Kyoto, Japan",
+   "n_matches": 1,
+   "oracle_km": 3.375494227072061,
+   "pick_km": 3.375494227072061
+  },
+  {
+   "image_id": "203360313_e74db93bdd_78_85417391@N00.jpg",
+   "place": "Lille Torv, Aarhus, Denmark",
+   "n_matches": 1,
+   "oracle_km": 0.11798347749722476,
+   "pick_km": 0.11798347749722476
+  },
+  {
+   "image_id": "203420486_c21ed696cc_65_40829484@N00.jpg",
+   "place": "Circuit de Spa-Francorchamps, Francorchamps, Belgium",
+   "n_matches": 1,
+   "oracle_km": 7.097842264185015,
+   "pick_km": 7.097842264185015
+  },
+  {
+   "image_id": "203433765_e18047ec80_68_40829484@N00.jpg",
+   "place": "Circuit de Spa-Francorchamps, Stavelot, Belgium",
+   "n_matches": 1,
+   "oracle_km": 7.097842264185015,
+   "pick_km": 7.097842264185015
+  },
+  {
+   "image_id": "206811821_cdaba6cb18_80_96155869@N00.jpg",
+   "place": "Rozenhoedkaai, Bruges, Belgium",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "209252616_2c699c99d1_77_23601949@N00.jpg",
+   "place": "Yosemite Valley, Yosemite National Park, California, United States",
+   "n_matches": 2,
+   "oracle_km": 6.111807436665086,
+   "pick_km": 9.149966459668859
+  },
+  {
+   "image_id": "209425611_7a44efd58c_68_36887937@N00.jpg",
+   "place": "Lodhi Gardens, New Delhi, India",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "209596142_a75f006b1d_72_44972214@N00.jpg",
+   "place": "Sheraton Grand Chicago, Chicago, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "210493419_e5d535568a_97_25159586@N00.jpg",
+   "place": "Moscone West, San Francisco, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "221063300_5c36bfd02b_76_83794921@N00.jpg",
+   "place": "Niagara Falls, Ontario, Canada / New York, United States",
+   "n_matches": 9,
+   "oracle_km": 0.9447477702258015,
+   "pick_km": 0.9447477702258015
+  },
+  {
+   "image_id": "223050902_e41c4e4d3c_60_82927779@N00.jpg",
+   "place": "Oriental Pearl Tower, Shanghai, China",
+   "n_matches": 1,
+   "oracle_km": 0.9108894097879174,
+   "pick_km": 0.9108894097879174
+  },
+  {
+   "image_id": "242396364_6941c47678_86_91728102@N00.jpg",
+   "place": "Oriental Pearl Tower, Shanghai, China",
+   "n_matches": 1,
+   "oracle_km": 0.8823355908307519,
+   "pick_km": 0.8823355908307519
+  },
+  {
+   "image_id": "317107251_7cda0f58d3_120_26519935@N00.jpg",
+   "place": "Oriental Pearl Tower, Shanghai, China",
+   "n_matches": 1,
+   "oracle_km": 0.8849001550324941,
+   "pick_km": 0.8849001550324941
+  },
+  {
+   "image_id": "223135885_c58b8e27ed_87_56186870@N00.jpg",
+   "place": "R\u00f8ros Church, R\u00f8ros, Norway",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "224678347_9770ec6c46_90_83039477@N00.jpg",
+   "place": "Elephantine Island, Aswan, Egypt",
+   "n_matches": 1,
+   "oracle_km": 53.076161574133856,
+   "pick_km": 53.076161574133856
+  },
+  {
+   "image_id": "224684739_65efc4ea07_74_83039477@N00.jpg",
+   "place": "Temple of Kom Ombo, Kom Ombo, Egypt",
+   "n_matches": 1,
+   "oracle_km": 11.617345824503246,
+   "pick_km": 11.617345824503246
+  },
+  {
+   "image_id": "224695491_dbae968598_94_83039477@N00.jpg",
+   "place": "West Bank, Luxor, Egypt",
+   "n_matches": 20,
+   "oracle_km": 700.2897655009051,
+   "pick_km": 700.2897655009051
+  },
+  {
+   "image_id": "225828659_f616555d96_65_18684820@N00.jpg",
+   "place": "Kuala Lumpur, Malaysia",
+   "n_matches": 3,
+   "oracle_km": 3.1392456496023113,
+   "pick_km": 3.1392456496023113
+  },
+  {
+   "image_id": "225829998_0af6b8cbef_86_18684820@N00.jpg",
+   "place": "Hotel Maya, Kuala Lumpur, Malaysia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "226581688_4fa967a103_85_78225438@N00.jpg",
+   "place": "Vietnam Veterans Memorial, Washington, D.C., United States",
+   "n_matches": 3,
+   "oracle_km": 0.07473288781326565,
+   "pick_km": 0.07473288781326565
+  },
+  {
+   "image_id": "228148462_0149f1d055_61_27274415@N00.jpg",
+   "place": "California State Capitol, Sacramento, United States",
+   "n_matches": 1,
+   "oracle_km": 0.0990298882687713,
+   "pick_km": 0.0990298882687713
+  },
+  {
+   "image_id": "230314514_8576ef678e_66_40829484@N00.jpg",
+   "place": "Empire State Building, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 0.007079715156597625,
+   "pick_km": 0.007079715156597625
+  },
+  {
+   "image_id": "6775033065.jpg",
+   "place": "Empire State Building, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 10.07141478220767,
+   "pick_km": 10.07141478220767
+  },
+  {
+   "image_id": "231903216_66813fce66_88_55085284@N00.jpg",
+   "place": "St. Peter's Basilica, Vatican City",
+   "n_matches": 1,
+   "oracle_km": 3.4790358202746368,
+   "pick_km": 3.4790358202746368
+  },
+  {
+   "image_id": "257179560_9e099d44ac_88_26519935@N00.jpg",
+   "place": "St. Peter's Basilica, Vatican City",
+   "n_matches": 1,
+   "oracle_km": 2.386595669955961,
+   "pick_km": 2.386595669955961
+  },
+  {
+   "image_id": "257188809_2a77cdc664_112_26519935@N00.jpg",
+   "place": "St. Peter's Basilica, Vatican City",
+   "n_matches": 1,
+   "oracle_km": 2.386595669955961,
+   "pick_km": 2.386595669955961
+  },
+  {
+   "image_id": "232610378_b145f4e033_80_14542551@N00.jpg",
+   "place": "Great Wall of China, Beijing, China",
+   "n_matches": 1,
+   "oracle_km": 45.6465021629483,
+   "pick_km": 45.6465021629483
+  },
+  {
+   "image_id": "311085054_d562fad314_102_26519935@N00.jpg",
+   "place": "Great Wall of China, Beijing, China",
+   "n_matches": 1,
+   "oracle_km": 4.884912942647396,
+   "pick_km": 4.884912942647396
+  },
+  {
+   "image_id": "433481591_0cdfc81b16_157_81421684@N00.jpg",
+   "place": "Great Wall of China, Beijing, China",
+   "n_matches": 1,
+   "oracle_km": 0.38555578209364166,
+   "pick_km": 0.38555578209364166
+  },
+  {
+   "image_id": "438540277_bbdf361cff_169_99746029@N00.jpg",
+   "place": "Great Wall of China, Beijing, China",
+   "n_matches": 1,
+   "oracle_km": 56.800582495328925,
+   "pick_km": 56.800582495328925
+  },
+  {
+   "image_id": "232614710_f81d7e73dc_97_14542551@N00.jpg",
+   "place": "Beijing Central Business District, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "236092953_a8c26eb7a1_88_79954435@N00.jpg",
+   "place": "Half Dome, Yosemite National Park, California, United States",
+   "n_matches": 5,
+   "oracle_km": 7.591008583581071,
+   "pick_km": 1649.8151080322536
+  },
+  {
+   "image_id": "292579393_d66b3b6fc0_99_40829484@N00.jpg",
+   "place": "Half Dome, Yosemite National Park, California, United States",
+   "n_matches": 5,
+   "oracle_km": 32.65329451592562,
+   "pick_km": 1625.9492229121176
+  },
+  {
+   "image_id": "237534282_314299a83e_95_82981539@N00.jpg",
+   "place": "Korean Folk Village, Yongin, South Korea",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "239537996_5341181b89_79_70323761@N00.jpg",
+   "place": "Great American Ball Park, Cincinnati, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "241911789_4c33c700f1_91_82981539@N00.jpg",
+   "place": "Hiroshima Peace Memorial (Genbaku Dome), Hiroshima, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "242243818_ab2516b74d_85_74806935@N00.jpg",
+   "place": "Henry Ford Museum of American Innovation, Dearborn, Michigan, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "243444851_f71dc78503_83_40829484@N00.jpg",
+   "place": "Tower Bridge, London, United Kingdom",
+   "n_matches": 7,
+   "oracle_km": 4.188071332817787,
+   "pick_km": 16286.371222836367
+  },
+  {
+   "image_id": "244035501_3708124424_87_40829484@N00.jpg",
+   "place": "Central Park, New York City, United States",
+   "n_matches": 214,
+   "oracle_km": 0.8351031692374539,
+   "pick_km": 41.447731342986025
+  },
+  {
+   "image_id": "244383114_9d86be522e_91_40829484@N00.jpg",
+   "place": "Trump International Hotel and Tower, New York City, United States",
+   "n_matches": 2,
+   "oracle_km": 545.730760706497,
+   "pick_km": 545.730760706497
+  },
+  {
+   "image_id": "244563496_1439c608d0_90_40829484@N00.jpg",
+   "place": "30 Hudson Street, Jersey City, New Jersey, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "246990526_31af1d6802_94_82927779@N00.jpg",
+   "place": "Hall of Prayer for Good Harvests, Temple of Heaven, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "251769194_f3d9a0c9a9_100_36093984@N00.jpg",
+   "place": "Delicate Arch, Arches National Park, Utah, United States",
+   "n_matches": 1,
+   "oracle_km": 0.785353903995964,
+   "pick_km": 0.785353903995964
+  },
+  {
+   "image_id": "255231316_950ef27f22_95_79267922@N00.jpg",
+   "place": "Tiananmen Square, Beijing, China",
+   "n_matches": 1,
+   "oracle_km": 4.154533293517889,
+   "pick_km": 4.154533293517889
+  },
+  {
+   "image_id": "256792231_9811830c15_119_55085284@N00.jpg",
+   "place": "Strada Statale 163 Amalfitana, Furore, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "257153262_a8d9a955a6_99_26519935@N00.jpg",
+   "place": "Pompeii, Pompei, Italy",
+   "n_matches": 3,
+   "oracle_km": 0.5657268645253809,
+   "pick_km": 0.5657268645253809
+  },
+  {
+   "image_id": "257175054_d80090a6cb_104_41336221@N00.jpg",
+   "place": "Park Inn by Radisson Baku Hotel, Baku, Azerbaijan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "257602406_355013c44f_87_40829484@N00.jpg",
+   "place": "Widener Library, Harvard University, Cambridge, Massachusetts, United States",
+   "n_matches": 1,
+   "oracle_km": 5.409507195066583,
+   "pick_km": 5.409507195066583
+  },
+  {
+   "image_id": "258150310_8a64c0e8e5_101_26519935@N00.jpg",
+   "place": "Sentosa, Singapore",
+   "n_matches": 9,
+   "oracle_km": 0.29163702088671467,
+   "pick_km": 0.46837074991783084
+  },
+  {
+   "image_id": "258209727_eb39e94b09_92_26519935@N00.jpg",
+   "place": "Nara Park, Nara, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "258278531_8d61408e4b_108_26519935@N00.jpg",
+   "place": "Yokohama Landmark Tower, Yokohama, Japan",
+   "n_matches": 1,
+   "oracle_km": 1.1211498765689178,
+   "pick_km": 1.1211498765689178
+  },
+  {
+   "image_id": "258294439_190aff8a3e_117_26519935@N00.jpg",
+   "place": "Tokyo Metropolitan Government Building, Tokyo, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "258352718_90f62d1d52_112_26519935@N00.jpg",
+   "place": "Sino-Japanese Cherry Blossom Friendship Forest, Yuantouzhu, Wuxi, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "258553389_2dd3e7f6a8_117_26519935@N00.jpg",
+   "place": "Sanxingdui Museum, Guanghan, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "258570071_65e585377e_106_26519935@N00.jpg",
+   "place": "Huanglong Scenic and Historic Interest Area, Sichuan, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "258651765_c7d816addc_106_26519935@N00.jpg",
+   "place": "Jiuzhaigou National Park, Sichuan, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "259736489_d389231b31_103_36093984@N00.jpg",
+   "place": "Wisconsin State Capitol, Madison, United States",
+   "n_matches": 1,
+   "oracle_km": 0.02584894352653874,
+   "pick_km": 0.02584894352653874
+  },
+  {
+   "image_id": "265978507_7beab0310f_85_40425693@N00.jpg",
+   "place": "Piazza del Nettuno, Bologna, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.09190911363881454,
+   "pick_km": 0.09190911363881454
+  },
+  {
+   "image_id": "266287734_114d6cc260_94_40829484@N00.jpg",
+   "place": "Centre Porsche Luxembourg, Luxembourg",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "266531088_e1fe886484_103_18684820@N00.jpg",
+   "place": "South Beach Harbor, San Francisco, United States",
+   "n_matches": 1,
+   "oracle_km": 3.795632202165363,
+   "pick_km": 3.795632202165363
+  },
+  {
+   "image_id": "266753174_a117c7c9cc_113_27274415@N00.jpg",
+   "place": "Muir Woods National Monument, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.6435431973376621,
+   "pick_km": 0.6435431973376621
+  },
+  {
+   "image_id": "267986751_a9f6f98dc2_91_40829484@N00.jpg",
+   "place": "Lower Manhattan, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 1.703398361214411,
+   "pick_km": 1.703398361214411
+  },
+  {
+   "image_id": "267990728_9275978ebb_79_40829484@N00.jpg",
+   "place": "Lower Manhattan, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 1.703398361214411,
+   "pick_km": 1.703398361214411
+  },
+  {
+   "image_id": "305488237_45eb6268d1_101_23812473@N00.jpg",
+   "place": "Lower Manhattan, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 2.1997360360287432,
+   "pick_km": 2.1997360360287432
+  },
+  {
+   "image_id": "269021268_2da09e5d4c_109_64855637@N00.jpg",
+   "place": "Steven F. Udvar-Hazy Center, Chantilly, Virginia, United States",
+   "n_matches": 1,
+   "oracle_km": 0.1069902845626835,
+   "pick_km": 0.1069902845626835
+  },
+  {
+   "image_id": "335923946_80b5325ec7_157_65367662@N00.jpg",
+   "place": "Steven F. Udvar-Hazy Center, Chantilly, Virginia, United States",
+   "n_matches": 1,
+   "oracle_km": 0.29293323788234954,
+   "pick_km": 0.29293323788234954
+  },
+  {
+   "image_id": "269110735_b4df79901e_89_40829484@N00.jpg",
+   "place": "Galeries Lafayette Haussmann, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 3.247842350969752,
+   "pick_km": 3.247842350969752
+  },
+  {
+   "image_id": "269495620_f673e7a7a1_109_85417391@N00.jpg",
+   "place": "Plymouth Cordage Company Ropewalk at Mystic Seaport Museum, Mystic, Connecticut, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "270989483_e6200b1e79_107_81421684@N00.jpg",
+   "place": "Dulwich College Shanghai, Shanghai, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "271407163_e05772b8a3_111_27274415@N00.jpg",
+   "place": "Hearst Castle, San Simeon, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.05456481681426038,
+   "pick_km": 0.05456481681426038
+  },
+  {
+   "image_id": "271517794_bcd0d062eb_79_40829484@N00.jpg",
+   "place": "The White House, Washington, D.C., United States",
+   "n_matches": 44,
+   "oracle_km": 64.54730164442303,
+   "pick_km": 5796.433014740849
+  },
+  {
+   "image_id": "271519231_f1f922a1b7_93_40829484@N00.jpg",
+   "place": "The White House, Washington, D.C., United States",
+   "n_matches": 44,
+   "oracle_km": 64.54730164442303,
+   "pick_km": 5796.433014740849
+  },
+  {
+   "image_id": "541981779_70d42fb79b_1225_79756109@N00.jpg",
+   "place": "The White House, Washington, D.C., United States",
+   "n_matches": 44,
+   "oracle_km": 0.07750780240398139,
+   "pick_km": 6102.933540718811
+  },
+  {
+   "image_id": "273331753_7ee27c4c48_87_57749403@N00.jpg",
+   "place": "Lincoln Cathedral, Lincoln, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.9710252229567671,
+   "pick_km": 0.9710252229567671
+  },
+  {
+   "image_id": "276465882_0efa1053d7_90_36093984@N00.jpg",
+   "place": "Canfranc International Railway Station, Canfranc, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "278287802_63dd30994a_120_14542551@N00.jpg",
+   "place": "Mount Sleeping Lion (Omulyovka), Republic of Buryatia, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "279364704_bc2c5fa00e_109_36093984@N00.jpg",
+   "place": "Franciscan Monastery, Dubrovnik, Croatia",
+   "n_matches": 5,
+   "oracle_km": 10.753003267176268,
+   "pick_km": 10.753003267176268
+  },
+  {
+   "image_id": "279684899_63d5dc5c9d_89_25304693@N00.jpg",
+   "place": "Disneyland Park, Anaheim, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "280870957_b4e009f8da_102_36093984@N00.jpg",
+   "place": "Subotica City Hall, Subotica, Serbia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "280982601_991aab2b9e_105_36093984@N00.jpg",
+   "place": "Petrovaradin Fortress, Novi Sad, Serbia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285408786_aae2ff5443_119_55085284@N00.jpg",
+   "place": "Doge's Palace, Venice, Italy",
+   "n_matches": 2,
+   "oracle_km": 1.2902176244929373,
+   "pick_km": 1.2902176244929373
+  },
+  {
+   "image_id": "285425292_7ee9892375_99_55085284@N00.jpg",
+   "place": "Venice, Italy",
+   "n_matches": 27,
+   "oracle_km": 0.0921339479001596,
+   "pick_km": 0.0921339479001596
+  },
+  {
+   "image_id": "32681131_d608cf3ebb_22_49503208420@N01.jpg",
+   "place": "Venice, Italy",
+   "n_matches": 27,
+   "oracle_km": 1.0422385815927253,
+   "pick_km": 1.6582343368543382
+  },
+  {
+   "image_id": "285456328_64df4bb046_121_55085284@N00.jpg",
+   "place": "Piazza San Marco, Venice, Italy",
+   "n_matches": 6,
+   "oracle_km": 1.14594247112745,
+   "pick_km": 1.14594247112745
+  },
+  {
+   "image_id": "285500456_667be0c138_110_55085284@N00.jpg",
+   "place": "Trattoria Bar Pontini, Fondamenta Cannaregio, Venice, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285643252_64d357e3ea_99_40829484@N00.jpg",
+   "place": "Belvedere Castle, Central Park, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 4.783468127996573,
+   "pick_km": 4.783468127996573
+  },
+  {
+   "image_id": "285718121_7617668e61_110_26519935@N00.jpg",
+   "place": "High Junk Peak, Sai Kung District, Hong Kong",
+   "n_matches": 1,
+   "oracle_km": 0.22157593175799278,
+   "pick_km": 0.22157593175799278
+  },
+  {
+   "image_id": "285798145_15d18cdf00_113_91728102@N00.jpg",
+   "place": "Riparian Plaza, Brisbane, Australia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285803217_bcc8577b4e_111_40829484@N00.jpg",
+   "place": "Turtle Pond, Central Park, New York City, United States",
+   "n_matches": 31,
+   "oracle_km": 4.851804524496989,
+   "pick_km": 754.2293417963231
+  },
+  {
+   "image_id": "285829007_ee202a9a91_63_26519935@N00.jpg",
+   "place": "Splendid China Folk Village, Shenzhen, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285832370_0c392aad89_121_26519935@N00.jpg",
+   "place": "Splendid China Folk Village, Shenzhen, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285838262_f3b98a0e90_107_26519935@N00.jpg",
+   "place": "Splendid China Folk Village, Shenzhen, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "285927868_ba489b8ec4_101_40829484@N00.jpg",
+   "place": "Statue of Liberty, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 7.095295123849789,
+   "pick_km": 7.095295123849789
+  },
+  {
+   "image_id": "285969802_5d58e1175f_99_40829484@N00.jpg",
+   "place": "Ellis Island National Museum of Immigration, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "286044564_697a4aa121_105_40829484@N00.jpg",
+   "place": "St. Patrick's Cathedral, New York City, United States",
+   "n_matches": 2,
+   "oracle_km": 5111.79907347043,
+   "pick_km": 16672.14347990716
+  },
+  {
+   "image_id": "286751771_30af2236db_102_26519935@N00.jpg",
+   "place": "Chao Phraya River, Bangkok, Thailand",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "402565630_fae79298f7_133_33463080@N00.jpg",
+   "place": "Chao Phraya River, Bangkok, Thailand",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "286797163_54787efcf5_107_23601949@N00.jpg",
+   "place": "National World War II Memorial, Washington, D.C., United States",
+   "n_matches": 1,
+   "oracle_km": 0.39769319523002333,
+   "pick_km": 0.39769319523002333
+  },
+  {
+   "image_id": "287790046_7fafc2dfa4_102_41894169878@N01.jpg",
+   "place": "Louisburg Square, Boston, United States",
+   "n_matches": 1,
+   "oracle_km": 0.042618335831524495,
+   "pick_km": 0.042618335831524495
+  },
+  {
+   "image_id": "289256558_d2a0d32413_117_40829484@N00.jpg",
+   "place": "Pershing Square, Los Angeles, United States",
+   "n_matches": 4,
+   "oracle_km": 0.8397644863553491,
+   "pick_km": 3694.3652846645723
+  },
+  {
+   "image_id": "289341468_02bbce2d57_112_67879480@N00.jpg",
+   "place": "Hisor Fortress, Hisor, Tajikistan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "289457546_4d26ecea09_101_70323761@N00.jpg",
+   "place": "Laurel Lake Vineyards, Laurel, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 0.11865790578179827,
+   "pick_km": 0.11865790578179827
+  },
+  {
+   "image_id": "289475656_ebbafabb97_118_90168643@N00.jpg",
+   "place": "Dresden Frauenkirche, Dresden, Germany",
+   "n_matches": 1,
+   "oracle_km": 0.8356556219399294,
+   "pick_km": 0.8356556219399294
+  },
+  {
+   "image_id": "289818138_15ff22a22a_120_32377115@N00.jpg",
+   "place": "Swedish Army Museum, Stockholm, Sweden",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "291415755_7bb9a41740_112_40829484@N00.jpg",
+   "place": "Horseshoe Bend, Page, Arizona, United States",
+   "n_matches": 224,
+   "oracle_km": 98.77845082904372,
+   "pick_km": 1687.4846755987749
+  },
+  {
+   "image_id": "292915505_66d1f339c4_118_63163416@N00.jpg",
+   "place": "Great Theatre of Ephesus, Sel\u00e7uk, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "292993389_9b2f509aeb_111_63163416@N00.jpg",
+   "place": "Roman Baths of Ankara, Ankara, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "293752896_67dcaca262_106_36093984@N00.jpg",
+   "place": "Port Ol\u00edmpic, Barcelona, Spain",
+   "n_matches": 1,
+   "oracle_km": 0.6566610932613687,
+   "pick_km": 0.6566610932613687
+  },
+  {
+   "image_id": "294433607_69e288a037_120_90168643@N00.jpg",
+   "place": "C\u00e2mara Municipal de Sintra, Sintra, Portugal",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "294603562_c48f3ad171_111_90168643@N00.jpg",
+   "place": "New Cathedral of Salamanca, Salamanca, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "297480819_247ee47039_99_32377115@N00.jpg",
+   "place": "The National Gallery, London, United Kingdom",
+   "n_matches": 5,
+   "oracle_km": 0.14223710277128257,
+   "pick_km": 16904.709000022234
+  },
+  {
+   "image_id": "297481414_c38502448f_103_32377115@N00.jpg",
+   "place": "Piccadilly Circus, London, United Kingdom",
+   "n_matches": 2,
+   "oracle_km": 0.02620523090315827,
+   "pick_km": 0.02620523090315827
+  },
+  {
+   "image_id": "297496991_46905b8e0b_113_32377115@N00.jpg",
+   "place": "Shakespeare's Globe, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "297500774_0693a9f269_119_32377115@N00.jpg",
+   "place": "City Hall, London, United Kingdom",
+   "n_matches": 14,
+   "oracle_km": 0.12139929405301358,
+   "pick_km": 0.12139929405301358
+  },
+  {
+   "image_id": "298086455_f72b243079_104_26519935@N00.jpg",
+   "place": "Forbidden City, Beijing, China",
+   "n_matches": 2,
+   "oracle_km": 0.6741073372105358,
+   "pick_km": 0.6741073372105358
+  },
+  {
+   "image_id": "315129281_f86846ac95_88_55852171@N00.jpg",
+   "place": "Forbidden City, Beijing, China",
+   "n_matches": 2,
+   "oracle_km": 0.3284203882085818,
+   "pick_km": 0.3284203882085818
+  },
+  {
+   "image_id": "444628260_d2a3683540_175_99746029@N00.jpg",
+   "place": "Forbidden City, Beijing, China",
+   "n_matches": 2,
+   "oracle_km": 2.4369773584878165,
+   "pick_km": 2.4369773584878165
+  },
+  {
+   "image_id": "298098610_3a26acfe01_119_26519935@N00.jpg",
+   "place": "Hall of Central Harmony, Forbidden City, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "299868653_a3a16589d9_105_26519935@N00.jpg",
+   "place": "High Island Reservoir, Sai Kung District, Hong Kong",
+   "n_matches": 1,
+   "oracle_km": 1.711511850205478,
+   "pick_km": 1.711511850205478
+  },
+  {
+   "image_id": "303171152_7cdd32c4a1_110_29251780@N00.jpg",
+   "place": "SeaWorld Orlando, Orlando, Florida, United States",
+   "n_matches": 1,
+   "oracle_km": 89.23333943844757,
+   "pick_km": 89.23333943844757
+  },
+  {
+   "image_id": "305504782_d794609cbe_119_23812473@N00.jpg",
+   "place": "New York Stock Exchange, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 3.958449154554396,
+   "pick_km": 3.958449154554396
+  },
+  {
+   "image_id": "305507456_57d6ceadca_122_23812473@N00.jpg",
+   "place": "Canal Street, New York, United States",
+   "n_matches": 2,
+   "oracle_km": 2.0103001262781985,
+   "pick_km": 1882.300330609106
+  },
+  {
+   "image_id": "305521085_c5d30d6203_103_23812473@N00.jpg",
+   "place": "14th Street / Eighth Avenue subway station, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311141637_ff3945b707_114_26519935@N00.jpg",
+   "place": "Geunjeongjeon, Gyeongbokgung Palace, Seoul, South Korea",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311141742_9d5055d86d_117_26519935@N00.jpg",
+   "place": "Gyeongbokgung Palace, Seoul, South Korea",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311344213_4b003f4ab1_114_63163416@N00.jpg",
+   "place": "Qutb Minar, Delhi, India",
+   "n_matches": 1,
+   "oracle_km": 9.046966393144016,
+   "pick_km": 9.046966393144016
+  },
+  {
+   "image_id": "311360802_ff06007ced_116_63163416@N00.jpg",
+   "place": "Laxminarayan Temple, New Delhi, India",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311623947_c2b9d24cbb_121_81421684@N00.jpg",
+   "place": "Jianwai SOHO, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311859432_167e663853_113_26519935@N00.jpg",
+   "place": "Lion Grove Garden, Suzhou, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "311938754_ed8aac2fcb_108_63163416@N00.jpg",
+   "place": "Jantar Mantar, Jaipur, India",
+   "n_matches": 1,
+   "oracle_km": 236.85203185945682,
+   "pick_km": 236.85203185945682
+  },
+  {
+   "image_id": "311941457_d07a25e697_100_63163416@N00.jpg",
+   "place": "Jantar Mantar, Jaipur, India",
+   "n_matches": 1,
+   "oracle_km": 236.85203185945682,
+   "pick_km": 236.85203185945682
+  },
+  {
+   "image_id": "312064670_2837e06a5e_101_63163416@N00.jpg",
+   "place": "Agra Fort, Agra, India",
+   "n_matches": 1,
+   "oracle_km": 2.924187728962137,
+   "pick_km": 2.924187728962137
+  },
+  {
+   "image_id": "7571328980.jpg",
+   "place": "Agra Fort, Agra, India",
+   "n_matches": 1,
+   "oracle_km": 0.21848517678083124,
+   "pick_km": 0.21848517678083124
+  },
+  {
+   "image_id": "312885025_798ef04321_111_30554981@N00.jpg",
+   "place": "Sai Kung Pier, Hong Kong",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "315248304_34cc3e6aea_103_49777280@N00.jpg",
+   "place": "Episcopal Palace of Porto, Porto, Portugal",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "315251374_21f8ef4ba5_115_49777280@N00.jpg",
+   "place": "Ribeira, Porto, Portugal",
+   "n_matches": 46,
+   "oracle_km": 0.8494193977837989,
+   "pick_km": 158.50306425055385
+  },
+  {
+   "image_id": "315560086_e902f940fc_112_40829484@N00.jpg",
+   "place": "Tunnel Log, Sequoia National Park, California, United States",
+   "n_matches": 1,
+   "oracle_km": 13.206717720616503,
+   "pick_km": 13.206717720616503
+  },
+  {
+   "image_id": "315759267_35fd36ae65_110_40829484@N00.jpg",
+   "place": "Golden Gate Bridge, San Francisco, United States",
+   "n_matches": 2,
+   "oracle_km": 16.991290572925696,
+   "pick_km": 17.977843289877647
+  },
+  {
+   "image_id": "350752818_0726a9f845_143_51162504@N00.jpg",
+   "place": "Golden Gate Bridge, San Francisco, California, United States",
+   "n_matches": 2,
+   "oracle_km": 1.54590080447128,
+   "pick_km": 2.510065782690997
+  },
+  {
+   "image_id": "315876761_b49e569d85_105_14491548@N00.jpg",
+   "place": "Westminster Abbey, London, United Kingdom",
+   "n_matches": 3,
+   "oracle_km": 0.05319093266615804,
+   "pick_km": 0.05319093266615804
+  },
+  {
+   "image_id": "316318011_d59b353f3d_120_40829484@N00.jpg",
+   "place": "Paris Las Vegas, Las Vegas, United States",
+   "n_matches": 1,
+   "oracle_km": 14.43781455024017,
+   "pick_km": 14.43781455024017
+  },
+  {
+   "image_id": "316347031_1fa8e0536e_100_40829484@N00.jpg",
+   "place": "The Mirage, Las Vegas, United States",
+   "n_matches": 18,
+   "oracle_km": 13.847659862194051,
+   "pick_km": 10471.728038602649
+  },
+  {
+   "image_id": "316353792_55ef83667a_120_40829484@N00.jpg",
+   "place": "Wynn Las Vegas, Las Vegas, United States",
+   "n_matches": 1,
+   "oracle_km": 12.98850924833379,
+   "pick_km": 12.98850924833379
+  },
+  {
+   "image_id": "316491961_14031ef765_120_26519935@N00.jpg",
+   "place": "Summer Palace, Beijing, China",
+   "n_matches": 3,
+   "oracle_km": 0.11301442736518637,
+   "pick_km": 3013.6771973961504
+  },
+  {
+   "image_id": "31700873_d7c4159106_22_25159586@N00.jpg",
+   "place": "T\u014ddai-ji, Nara, Japan",
+   "n_matches": 1,
+   "oracle_km": 0.1215609015070275,
+   "pick_km": 0.1215609015070275
+  },
+  {
+   "image_id": "317081316_e7f55d0c37_118_26519935@N00.jpg",
+   "place": "Imperial Vault of Heaven, Temple of Heaven, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "322354508_adc72a420a_123_82981539@N00.jpg",
+   "place": "Lagoa das Sete Cidades, S\u00e3o Miguel, Azores, Portugal",
+   "n_matches": 1,
+   "oracle_km": 1.8750959170666464,
+   "pick_km": 1.8750959170666464
+  },
+  {
+   "image_id": "326593080_54cb5db230_141_50994135@N00.jpg",
+   "place": "Kelvingrove Park, Glasgow, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "328477750_178f6ceb9d_129_56249023@N00.jpg",
+   "place": "Monastery of Santa Catalina, Arequipa, Peru",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "329033253_8619c37f63_131_40425693@N00.jpg",
+   "place": "Serbian Orthodox Church of Saint Spyridon, Trieste, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "333699879_2e07508ba8_162_65367662@N00.jpg",
+   "place": "Alcatraz Island Lighthouse, San Francisco, California, United States",
+   "n_matches": 1,
+   "oracle_km": 8.772277110979736,
+   "pick_km": 8.772277110979736
+  },
+  {
+   "image_id": "336439856_7a3a838edc_166_50994135@N00.jpg",
+   "place": "Glasgow Science Centre, Glasgow, Scotland",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "336442517_63e1115399_154_50994135@N00.jpg",
+   "place": "Gallery of Modern Art, Glasgow, Scotland, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 5176.152031003573,
+   "pick_km": 5176.152031003573
+  },
+  {
+   "image_id": "337519612_a20759c2a7_139_63163416@N00.jpg",
+   "place": "Egyptian National Military Museum, Cairo, Egypt",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "338866914_c692fd3706_149_63163416@N00.jpg",
+   "place": "Alabaster Sphinx of Memphis, Mit Rahina, Egypt",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "339479847_8d444a33ea_138_63163416@N00.jpg",
+   "place": "Montaza Palace, Alexandria, Egypt",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "345997958_ba807942a4_160_78225438@N00.jpg",
+   "place": "Z\u00fcrich Hauptbahnhof, Z\u00fcrich, Switzerland",
+   "n_matches": 1,
+   "oracle_km": 0.07588782907296399,
+   "pick_km": 0.07588782907296399
+  },
+  {
+   "image_id": "347134461_ab027237bb_125_82981539@N00.jpg",
+   "place": "Niavaran Palace, Tehran, Iran",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "347136001_f9e3fe6361_135_82981539@N00.jpg",
+   "place": "Spring Palace, Bucharest, Romania",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "348145656_d75a68a9ff_154_97332629@N00.jpg",
+   "place": "Zabriskie Point, Death Valley National Park, California, United States",
+   "n_matches": 1,
+   "oracle_km": 6.912747038201595,
+   "pick_km": 6.912747038201595
+  },
+  {
+   "image_id": "348315378_8f9a48cbc9_135_97332629@N00.jpg",
+   "place": "Hooters, Fisherman's Wharf, San Francisco, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "348358141_509391a62e_151_97332629@N00.jpg",
+   "place": "Market Street, San Francisco, California, United States",
+   "n_matches": 5,
+   "oracle_km": 0.5964400169969476,
+   "pick_km": 11948.360026012724
+  },
+  {
+   "image_id": "9177350502.jpg",
+   "place": "Market Street, San Francisco, California, United States",
+   "n_matches": 5,
+   "oracle_km": 1.7836254285089574,
+   "pick_km": 11951.292850230351
+  },
+  {
+   "image_id": "349098747_0d543cdd4f_153_70323761@N00.jpg",
+   "place": "Powell Building, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 0.07055754376220626,
+   "pick_km": 0.07055754376220626
+  },
+  {
+   "image_id": "349177239_5fd6f4dfff_165_97332629@N00.jpg",
+   "place": "Art Theatre of Long Beach, Long Beach, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "349187181_4276f70c6c_153_51162504@N00.jpg",
+   "place": "Solvang, California, United States",
+   "n_matches": 202,
+   "oracle_km": 0.29062073589672344,
+   "pick_km": 0.29062073589672344
+  },
+  {
+   "image_id": "349388449_84a9d2f8b5_128_51162504@N00.jpg",
+   "place": "Morro Rock, Morro Bay, California, United States",
+   "n_matches": 2,
+   "oracle_km": 0.5796978231120835,
+   "pick_km": 2925.6972264839737
+  },
+  {
+   "image_id": "349445487_7716d67489_128_97332629@N00.jpg",
+   "place": "Taste Pilots' Grill, Disney California Adventure, Anaheim, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "349445500_6927323be0_160_97332629@N00.jpg",
+   "place": "Disney California Adventure Park, Anaheim, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "349461403_6756b23744_129_82981539@N00.jpg",
+   "place": "Nasir al-Mulk Mosque, Shiraz, Iran",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "349601127_76086026e4_161_97332629@N00.jpg",
+   "place": "Yuma Cabana Motel, Yuma, Arizona, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "350709146_68c87e6784_158_97332629@N00.jpg",
+   "place": "Coney Island Cyclone, New York City, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "350754522_ab827b3e19_166_51162504@N00.jpg",
+   "place": "Alcatraz Island, San Francisco, United States",
+   "n_matches": 5,
+   "oracle_km": 3.7855418811979114,
+   "pick_km": 14760.573502454148
+  },
+  {
+   "image_id": "350755394_993aec6f8d_156_51162504@N00.jpg",
+   "place": "Presidio Tide Gauge Station, San Francisco, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "352380518_202b75e610_152_85971448@N00.jpg",
+   "place": "Grand Canyon National Park, Arizona, United States",
+   "n_matches": 1,
+   "oracle_km": 19.236641866295667,
+   "pick_km": 19.236641866295667
+  },
+  {
+   "image_id": "6367970783.jpg",
+   "place": "Grand Canyon National Park, Arizona, United States",
+   "n_matches": 1,
+   "oracle_km": 5.95330452717816,
+   "pick_km": 5.95330452717816
+  },
+  {
+   "image_id": "353494958_4a7e189527_132_16836474@N00.jpg",
+   "place": "Cerro Morrogacho, Salento, Colombia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "356872603_fc07a113a8_133_99437479@N00.jpg",
+   "place": "Bank of China Tower, Hong Kong",
+   "n_matches": 1,
+   "oracle_km": 0.649494496051141,
+   "pick_km": 0.649494496051141
+  },
+  {
+   "image_id": "358585774_25ffe85e36_123_70323761@N00.jpg",
+   "place": "26 Broadway, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "872895920_865d506517_1057_9729483@N02.jpg",
+   "place": "26 Broadway, New York, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "359883507_902414637b_159_36887937@N00.jpg",
+   "place": "Charminar, Hyderabad, India",
+   "n_matches": 2,
+   "oracle_km": 0.637944648506812,
+   "pick_km": 2.5013267459057484
+  },
+  {
+   "image_id": "361389143_8dcae9bc00_150_40829484@N00.jpg",
+   "place": "Neum\u00fcnster Abbey, Luxembourg City, Luxembourg",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "362818760_43e710b2f8_107_78221228@N00.jpg",
+   "place": "Colca Canyon, Arequipa Region, Peru",
+   "n_matches": 1,
+   "oracle_km": 95.81809454779395,
+   "pick_km": 95.81809454779395
+  },
+  {
+   "image_id": "367823645_e7c96ade93_167_14542551@N00.jpg",
+   "place": "Natur Supermarket, Ulaanbaatar, Mongolia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "368666514_b3a8828780_100_41894169878@N01.jpg",
+   "place": "New Synagogue, Berlin, Germany",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "369693214_50d0e1670c_129_75653366@N00.jpg",
+   "place": "Cathedral of Santiago de Compostela, Santiago de Compostela, Spain",
+   "n_matches": 1,
+   "oracle_km": 0.010493821002177982,
+   "pick_km": 0.010493821002177982
+  },
+  {
+   "image_id": "369703835_1a6f6a93f8_176_75653366@N00.jpg",
+   "place": "Cathedral of Santiago de Compostela, Santiago de Compostela, Spain",
+   "n_matches": 1,
+   "oracle_km": 0.010493821002177982,
+   "pick_km": 0.010493821002177982
+  },
+  {
+   "image_id": "370282346_965b8e2517_142_75653366@N00.jpg",
+   "place": "Iglesia de San Francisco, Betanzos, Spain",
+   "n_matches": 11,
+   "oracle_km": 51.851158331042846,
+   "pick_km": 9015.243554079627
+  },
+  {
+   "image_id": "370667974_f529d7f483_171_13527886@N00.jpg",
+   "place": "Historic Centre of Trinidad, Trinidad, Cuba",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "370717727_f9564e3587_150_13527886@N00.jpg",
+   "place": "Castillo de San Pedro de la Roca, Santiago de Cuba, Cuba",
+   "n_matches": 1,
+   "oracle_km": 369.7941279618515,
+   "pick_km": 369.7941279618515
+  },
+  {
+   "image_id": "370937781_bb00b8afd3_183_13527886@N00.jpg",
+   "place": "Temple of the Masonry Altars, Altun Ha, Belize District, Belize",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "371341643_33f0c52f03_179_62126383@N00.jpg",
+   "place": "Lake Hanabanilla, Villa Clara, Cuba",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "371400594_816d12aaa1_137_70323761@N00.jpg",
+   "place": "Westbeth Artists Housing, New York City, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "371463024_3407bee0da_183_87409164@N00.jpg",
+   "place": "Nikk\u014d T\u014dsh\u014d-g\u016b, Nikko, Japan",
+   "n_matches": 1,
+   "oracle_km": 0.45925898851254965,
+   "pick_km": 0.45925898851254965
+  },
+  {
+   "image_id": "374697520_d88fd67841_123_48637819@N00.jpg",
+   "place": "Tour Total, La D\u00e9fense, Courbevoie, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "376849567_4461f2c846_136_36887937@N00.jpg",
+   "place": "Khamsum Yulley Namgyal Chorten, Punakha, Bhutan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "377800643_c214c49e7c_158_29251780@N00.jpg",
+   "place": "Grand Place, Brussels, Belgium",
+   "n_matches": 11,
+   "oracle_km": 0.4406303799771749,
+   "pick_km": 0.4406303799771749
+  },
+  {
+   "image_id": "380011871_5d37218664_130_26234358@N00.jpg",
+   "place": "Alte Nationalgalerie, Berlin, Germany",
+   "n_matches": 1,
+   "oracle_km": 0.026765203631611372,
+   "pick_km": 0.026765203631611372
+  },
+  {
+   "image_id": "383980143_bae1a5e828_129_35271748@N00.jpg",
+   "place": "St. Mark's Basilica, Venice, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.03900269309625453,
+   "pick_km": 0.03900269309625453
+  },
+  {
+   "image_id": "383980428_06a32d4dd3_175_35271748@N00.jpg",
+   "place": "St Mark's Clocktower, Venice, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.09521573297480253,
+   "pick_km": 0.09521573297480253
+  },
+  {
+   "image_id": "38406230_c35251e036_30_73293249@N00.jpg",
+   "place": "PortAventura Park, Salou, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "384934252_358bf2a08e_134_48264126@N00.jpg",
+   "place": "1010 La Trobe Street, Docklands, Melbourne, Australia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "38548487_bde86ff608_29_73293249@N00.jpg",
+   "place": "Palazzo di Brera, Milan, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.8646582446548875,
+   "pick_km": 0.8646582446548875
+  },
+  {
+   "image_id": "388611635_415ff94d0b_143_62126383@N00.jpg",
+   "place": "Plaza de Armas, Havana, Cuba",
+   "n_matches": 13,
+   "oracle_km": 1097.3863136367572,
+   "pick_km": 3701.736876050078
+  },
+  {
+   "image_id": "390520804_d1180e54f9_149_89904893@N00.jpg",
+   "place": "Leeds Castle, Maidstone, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.32043018726774997,
+   "pick_km": 0.32043018726774997
+  },
+  {
+   "image_id": "391459948_224bff84f7_173_32367657@N00.jpg",
+   "place": "Holmenkollbakken, Oslo, Norway",
+   "n_matches": 1,
+   "oracle_km": 0.3377581903780147,
+   "pick_km": 0.3377581903780147
+  },
+  {
+   "image_id": "391845821_30df41a5fe_156_94949650@N00.jpg",
+   "place": "30 Foot Pool, Lynn Canyon Park, North Vancouver, British Columbia, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "392353870_7156adbc4c_128_32377115@N00.jpg",
+   "place": "Casement Aerodrome, Baldonnel, Dublin, Ireland",
+   "n_matches": 1,
+   "oracle_km": 0.8351486984304163,
+   "pick_km": 0.8351486984304163
+  },
+  {
+   "image_id": "392426226_fde8ad65f3_166_32377115@N00.jpg",
+   "place": "Casement Aerodrome, Baldonnel, County Dublin, Ireland",
+   "n_matches": 1,
+   "oracle_km": 0.8351486984304163,
+   "pick_km": 0.8351486984304163
+  },
+  {
+   "image_id": "395275854_c55bde16ec_137_82927779@N00.jpg",
+   "place": "Gap of Dunloe, County Kerry, Ireland",
+   "n_matches": 1,
+   "oracle_km": 0.16060616777846076,
+   "pick_km": 0.16060616777846076
+  },
+  {
+   "image_id": "39672922_1479641b04_30_42126397@N00.jpg",
+   "place": "Portoni della Bra, Verona, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "400253350_54346ea97b_167_73293249@N00.jpg",
+   "place": "Mus\u00e9e Herg\u00e9, Louvain-la-Neuve, Belgium",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "403393811_117864677d_139_33463080@N00.jpg",
+   "place": "Paradise, Mount Rainier National Park, Washington, United States",
+   "n_matches": 123,
+   "oracle_km": 9.034295649406342,
+   "pick_km": 1314.2030074089323
+  },
+  {
+   "image_id": "403398451_b578c96fbb_163_33463080@N00.jpg",
+   "place": "Mount Rainier, Mount Rainier National Park, Washington, United States",
+   "n_matches": 2,
+   "oracle_km": 5.247722287053934,
+   "pick_km": 3695.0270026717058
+  },
+  {
+   "image_id": "403952673_a7e67327c2_163_33463080@N00.jpg",
+   "place": "Lake Union, Seattle, United States",
+   "n_matches": 2,
+   "oracle_km": 4.82170988379403,
+   "pick_km": 2159.0690184027553
+  },
+  {
+   "image_id": "404055943_8d021138ac_140_33463080@N00.jpg",
+   "place": "U.S. Bank Tower, Los Angeles, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.8703523685795443,
+   "pick_km": 0.8703523685795443
+  },
+  {
+   "image_id": "404143618_f1826f7768_149_33463080@N00.jpg",
+   "place": "Hotel De L'Europe, Amsterdam, Netherlands",
+   "n_matches": 3,
+   "oracle_km": 669.3450205922821,
+   "pick_km": 722.8536563400284
+  },
+  {
+   "image_id": "407153053_c0da1d29b7_162_89904893@N00.jpg",
+   "place": "King's College, Cambridge, United Kingdom",
+   "n_matches": 3,
+   "oracle_km": 569.59305918414,
+   "pick_km": 14488.12198635741
+  },
+  {
+   "image_id": "407208447_31f07104c1_153_7132415@N03.jpg",
+   "place": "Bay of Kotor, Kotor, Montenegro",
+   "n_matches": 1,
+   "oracle_km": 15.542190578188007,
+   "pick_km": 15.542190578188007
+  },
+  {
+   "image_id": "410166767_fdd7e0b2b3_166_26234358@N00.jpg",
+   "place": "St. Matth\u00e4us-Kirche, Berlin, Germany",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "411469173_4072f72305_175_75452460@N00.jpg",
+   "place": "Hoher Dachstein, Ramsau am Dachstein, Austria",
+   "n_matches": 1,
+   "oracle_km": 1.978604396169365,
+   "pick_km": 1.978604396169365
+  },
+  {
+   "image_id": "415005347_2f1a541aef_183_7132415@N03.jpg",
+   "place": "Phare Am\u00e9d\u00e9e, \u00celot Am\u00e9d\u00e9e, Noum\u00e9a, New Caledonia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "415057163_dcc31908f6_177_7132415@N03.jpg",
+   "place": "Parque a la Maternidad, M\u00e9rida, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "415469569_fd70820aff_149_7132415@N03.jpg",
+   "place": "Gate of Saint Stephen, Mount Sinai, Egypt",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "415508401_d0d580d010_174_7132415@N03.jpg",
+   "place": "Petra, Jordan",
+   "n_matches": 47,
+   "oracle_km": 2.1375115710129533,
+   "pick_km": 4.669197189081492
+  },
+  {
+   "image_id": "415509863_2bc4e21172_131_7132415@N03.jpg",
+   "place": "Petra, Ma'an Governorate, Jordan",
+   "n_matches": 47,
+   "oracle_km": 2.1375115710129533,
+   "pick_km": 4.669197189081492
+  },
+  {
+   "image_id": "415712874_2b934c03c0_179_7132415@N03.jpg",
+   "place": "Olympos Ancient City, Antalya, Turkey",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "415783781_bd1b95d9be_174_26234358@N00.jpg",
+   "place": "Embassy of the Czech Republic, Berlin, Germany",
+   "n_matches": 1,
+   "oracle_km": 2726.338489986707,
+   "pick_km": 2726.338489986707
+  },
+  {
+   "image_id": "415786456_739883cafb_147_7132415@N03.jpg",
+   "place": "Church of the Savior on Spilled Blood, Saint Petersburg, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "415821856_2544cd01d4_170_7132415@N03.jpg",
+   "place": "Ho\u00e0n Ki\u1ebfm Lake, Hanoi, Vietnam",
+   "n_matches": 1,
+   "oracle_km": 111.44280991364852,
+   "pick_km": 111.44280991364852
+  },
+  {
+   "image_id": "424323990_099c13d876_165_24311489@N00.jpg",
+   "place": "Belmont CTA Station, Chicago, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "425872117_1273254c77_178_26234358@N00.jpg",
+   "place": "Museum f\u00fcr Kommunikation Berlin, Berlin, Germany",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "427847150_daadd6d6c4_145_77392231@N00.jpg",
+   "place": "Frost Bank Tower, Austin, Texas, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "436287038_44ea89f15e_150_99746029@N00.jpg",
+   "place": "Liulichang East Street, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "436350996_bde074b731_167_99746029@N00.jpg",
+   "place": "Tower of Buddhist Incense, Summer Palace, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "441139350_7494903cb7_207_50994135@N00.jpg",
+   "place": "Stanley Park Seawall, Vancouver, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "442285746_8884bc2646_182_7571568@N05.jpg",
+   "place": "Japanese Tea Garden, Golden Gate Park, San Francisco, California, United States",
+   "n_matches": 1,
+   "oracle_km": 4.565110896794391,
+   "pick_km": 4.565110896794391
+  },
+  {
+   "image_id": "446721345_98e39554dc_201_55126705@N00.jpg",
+   "place": "Tulum Archaeological Zone, Tulum, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "447020173_20f51eeeda_172_55126705@N00.jpg",
+   "place": "Machu Picchu, Cusco Region, Peru",
+   "n_matches": 6,
+   "oracle_km": 0.38206608971111855,
+   "pick_km": 2.6383981420608094
+  },
+  {
+   "image_id": "447573376_a0770cd003_181_7571568@N05.jpg",
+   "place": "Apple Michigan Avenue (former location), Chicago, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "447638817_0a8b4e7138_172_7571568@N05.jpg",
+   "place": "Jay Pritzker Pavilion, Chicago, Illinois, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "447673148_a7f8fa9408_192_7571568@N05.jpg",
+   "place": "Chicago skyline, Chicago, Illinois, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "447991928_895301f964_251_55126705@N00.jpg",
+   "place": "El Palacio, Palenque, Chiapas, Mexico",
+   "n_matches": 29,
+   "oracle_km": 237.2392328692988,
+   "pick_km": 803.9623924087754
+  },
+  {
+   "image_id": "45242953_221e7fcc35_33_98908999@N00.jpg",
+   "place": "Arc de Triomphe, Paris, France",
+   "n_matches": 3,
+   "oracle_km": 0.09825557567777876,
+   "pick_km": 0.09825557567777876
+  },
+  {
+   "image_id": "517839578_b7ad071121_227_78841376@N00.jpg",
+   "place": "Arc de Triomphe, Paris, France",
+   "n_matches": 3,
+   "oracle_km": 0.02701107026250762,
+   "pick_km": 0.02701107026250762
+  },
+  {
+   "image_id": "453385775_52d74acad4_252_16836474@N00.jpg",
+   "place": "Plaza Mayor (Plaza de la Independencia), Casco Viejo, Panama City, Panama",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "454670932_3bcfb55583_226_55126705@N00.jpg",
+   "place": "Mayap\u00e1n Archaeological Site, Yucatan, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "461544763_d962fb527f_203_41894197861@N01.jpg",
+   "place": "New York City Subway, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "758529698_4bcbe635f1_1228_41894197861@N01.jpg",
+   "place": "New York City Subway, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "463213126_e1d5c6dc01_187_89904893@N00.jpg",
+   "place": "St. Paul's Cathedral, London, United Kingdom",
+   "n_matches": 4,
+   "oracle_km": 0.16315519765748418,
+   "pick_km": 16902.192718953454
+  },
+  {
+   "image_id": "464285664_cb10417aea_173_55126705@N00.jpg",
+   "place": "Museo de Antropolog\u00eda de Xalapa, Xalapa, Mexico",
+   "n_matches": 1,
+   "oracle_km": 2.3815582740765686,
+   "pick_km": 2.3815582740765686
+  },
+  {
+   "image_id": "464517182_510f8de005_176_55126705@N00.jpg",
+   "place": "El Taj\u00edn, Papantla, Veracruz, Mexico",
+   "n_matches": 3,
+   "oracle_km": 0.08164531367724481,
+   "pick_km": 0.08164531367724481
+  },
+  {
+   "image_id": "468281319_98388072fd_185_64825499@N00.jpg",
+   "place": "Hotel Casa del Mar Cozumel, Cozumel, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "476835866_b888027c27_203_70323761@N00.jpg",
+   "place": "Brooklyn Botanic Garden, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 0.2451450978856681,
+   "pick_km": 0.2451450978856681
+  },
+  {
+   "image_id": "479684130_05e73de8c3_177_65367662@N00.jpg",
+   "place": "The Venetian Las Vegas, Las Vegas, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "479751650_bc7eef5e74_172_15632944@N00.jpg",
+   "place": "Parowozownia Wolsztyn, Wolsztyn, Poland",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "482331439_eabd04b1b5_196_50435419@N00.jpg",
+   "place": "Palacio de la Legislatura de la Ciudad de Buenos Aires, Buenos Aires, Argentina",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "485581993_e813d3229d_187_57253263@N00.jpg",
+   "place": "Powder Point Bridge, Duxbury, Massachusetts, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "487044961_f675eb5964_206_8159033@N04.jpg",
+   "place": "Silk Street Market, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "487157149_401f70f672_204_8159033@N04.jpg",
+   "place": "Tonghanchun Hall, Yuyuan Tourist Mart, Shanghai, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "487349192_1c67d95fa1_224_8159033@N04.jpg",
+   "place": "Heian Shrine, Kyoto, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "493818157_0f4712ffbd_186_26519935@N00.jpg",
+   "place": "Jile Temple, Harbin, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "494541628_d95bd89475_190_62126383@N00.jpg",
+   "place": "Caesarea National Park, Caesarea, Israel",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "496737328_83e03f544a_208_78225438@N00.jpg",
+   "place": "L.G. Smith Boulevard, Oranjestad, Aruba",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "497027282_029b0c6a6e_198_36764971@N00.jpg",
+   "place": "Souk El Berka, Medina of Tunis, Tunisia",
+   "n_matches": 1,
+   "oracle_km": 7.172070971599613,
+   "pick_km": 7.172070971599613
+  },
+  {
+   "image_id": "497089887_014dfec0d7_228_36764971@N00.jpg",
+   "place": "Tunis, Tunisia",
+   "n_matches": 39,
+   "oracle_km": 5.51405099700161,
+   "pick_km": 334.9940511478624
+  },
+  {
+   "image_id": "497783235_1abb3ea03a_194_8255645@N03.jpg",
+   "place": "Seljalandsfoss, Rang\u00e1r\u00feing eystra, Iceland",
+   "n_matches": 1,
+   "oracle_km": 110.37730534796573,
+   "pick_km": 110.37730534796573
+  },
+  {
+   "image_id": "498047349_f70a4c8971_195_8255645@N03.jpg",
+   "place": "Aiguille du Midi, Chamonix, France",
+   "n_matches": 3,
+   "oracle_km": 63.05156521199248,
+   "pick_km": 67.8084213404457
+  },
+  {
+   "image_id": "498284113_e7f6c19219_194_78225438@N00.jpg",
+   "place": "Panama Canal, Panama",
+   "n_matches": 4,
+   "oracle_km": 55.0198084902972,
+   "pick_km": 55.0198084902972
+  },
+  {
+   "image_id": "498485332_5dcd314ad4_218_89904893@N00.jpg",
+   "place": "Stanford University Main Quad, Stanford, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "498841097_8cee3322a2_217_70323761@N00.jpg",
+   "place": "200 Avenue B Association Garden, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "499751900_1e49202d31_216_62126383@N00.jpg",
+   "place": "Western Wall, Jerusalem, Israel",
+   "n_matches": 1,
+   "oracle_km": 0.010498048679148898,
+   "pick_km": 0.010498048679148898
+  },
+  {
+   "image_id": "499799081_d6e215e5b9_190_62126383@N00.jpg",
+   "place": "Western Wall, Jerusalem, Israel",
+   "n_matches": 1,
+   "oracle_km": 0.010498048679148898,
+   "pick_km": 0.010498048679148898
+  },
+  {
+   "image_id": "503743049_3dc92c026e_189_36887937@N00.jpg",
+   "place": "Wazir Khan Mosque, Lahore, Pakistan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "509757181_585351b261_192_7885919@N07.jpg",
+   "place": "Borough Market, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.14877682171786974,
+   "pick_km": 0.14877682171786974
+  },
+  {
+   "image_id": "509993263_5ea97ad1ff_213_90168643@N00.jpg",
+   "place": "Pamukkale, Denizli, Turkey",
+   "n_matches": 2,
+   "oracle_km": 15.370196786715304,
+   "pick_km": 15.370196786715304
+  },
+  {
+   "image_id": "510020600_10c02010e8_218_90168643@N00.jpg",
+   "place": "G\u00f6reme National Park, Cappadocia, Turkey",
+   "n_matches": 1,
+   "oracle_km": 9.59204844111301,
+   "pick_km": 9.59204844111301
+  },
+  {
+   "image_id": "510101189_8f1f9c8498_189_90168643@N00.jpg",
+   "place": "Tomb of the Unknown Soldier, Athens, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "511218374_ffd511c10b_213_62126383@N00.jpg",
+   "place": "Dome of the Rock, Jerusalem",
+   "n_matches": 2,
+   "oracle_km": 0.018221801229870233,
+   "pick_km": 0.20945165720773673
+  },
+  {
+   "image_id": "514234452_8824524fbe_243_59555137@N00.jpg",
+   "place": "Man Mo Temple, Sheung Wan, Hong Kong",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "514403184_90ada8c017_213_14491548@N00.jpg",
+   "place": "Napoleon's Tomb at Les Invalides, Paris, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "515444837_6ce30b9c77_229_90168643@N00.jpg",
+   "place": "National Archaeological Museum, Athens, Greece",
+   "n_matches": 3,
+   "oracle_km": 1228.857486335252,
+   "pick_km": 2369.0869333718647
+  },
+  {
+   "image_id": "3210449646.jpg",
+   "place": "National Archaeological Museum, Athens, Greece",
+   "n_matches": 3,
+   "oracle_km": 1228.0381642143673,
+   "pick_km": 2368.5044213721194
+  },
+  {
+   "image_id": "515907272_ca7e322b7a_211_36764971@N00.jpg",
+   "place": "Plaka, Athens, Greece",
+   "n_matches": 39,
+   "oracle_km": 0.28387468672269595,
+   "pick_km": 149.7099175358045
+  },
+  {
+   "image_id": "516399701_1ce0c241d0_226_36764971@N00.jpg",
+   "place": "Acropoli metro station, Athens, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "516535503_9eba8e366c_217_24311489@N00.jpg",
+   "place": "DuSable Lake Shore Drive, Chicago, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "520721897_11b0c68892_243_70323761@N00.jpg",
+   "place": "Home of Franklin D. Roosevelt National Historic Site, Hyde Park, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 0.8059052240075569,
+   "pick_km": 0.8059052240075569
+  },
+  {
+   "image_id": "521324374_96290dd123_234_7132415@N03.jpg",
+   "place": "Mill Ends Park, Portland, Oregon, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "522359457_1ee595e7ff_237_61819159@N00.jpg",
+   "place": "Temple of Antoninus and Faustina, Rome, Italy",
+   "n_matches": 1,
+   "oracle_km": 1.8180538433630506,
+   "pick_km": 1.8180538433630506
+  },
+  {
+   "image_id": "522365741_fdde31405e_196_61819159@N00.jpg",
+   "place": "Pantheon, Rome, Italy",
+   "n_matches": 5,
+   "oracle_km": 1.6774196257053706,
+   "pick_km": 1104.0937182826915
+  },
+  {
+   "image_id": "522493350_d9a845e836_240_61819159@N00.jpg",
+   "place": "Uluru, Ulu\u1e5fu-Kata Tju\u1e6fa National Park, Northern Territory, Australia",
+   "n_matches": 4,
+   "oracle_km": 2.0766489915249133,
+   "pick_km": 2.0766489915249133
+  },
+  {
+   "image_id": "780072709_664cc2587d_1367_88971695@N00.jpg",
+   "place": "Uluru, Ulu\u1e5fu-Kata Tju\u1e6fa National Park, Northern Territory, Australia",
+   "n_matches": 4,
+   "oracle_km": 1.7522760457719098,
+   "pick_km": 1.7993765308269696
+  },
+  {
+   "image_id": "522520876_5704206dda_206_61819159@N00.jpg",
+   "place": "Longitude 131\u00b0, Yulara, Australia",
+   "n_matches": 1,
+   "oracle_km": 11.802865131400667,
+   "pick_km": 11.802865131400667
+  },
+  {
+   "image_id": "523184139_a67f3e9222_204_51035632501@N01.jpg",
+   "place": "Montmartre Funicular, Paris, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "525908730_76edc9cf91_1131_51035632501@N01.jpg",
+   "place": "Grand Palais, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 1.574982419238473,
+   "pick_km": 1.574982419238473
+  },
+  {
+   "image_id": "526505259_16f94e0e28_1189_8504005@N07.jpg",
+   "place": "Trafalgar Square, London, United Kingdom",
+   "n_matches": 4,
+   "oracle_km": 1.3727921826253877,
+   "pick_km": 16980.84129373756
+  },
+  {
+   "image_id": "526692216_e114c8af6a_1190_51035632501@N01.jpg",
+   "place": "P\u00e8re Lachaise Cemetery, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.08217957709269391,
+   "pick_km": 0.08217957709269391
+  },
+  {
+   "image_id": "526834487_cdce290644_195_51035632501@N01.jpg",
+   "place": "P\u00e8re Lachaise Cemetery, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.08217957709269391,
+   "pick_km": 0.08217957709269391
+  },
+  {
+   "image_id": "528375711_98c10b937d_1141_37476307@N00.jpg",
+   "place": "Altos de Chav\u00f3n, La Romana, Dominican Republic",
+   "n_matches": 3,
+   "oracle_km": 0.5993188921381656,
+   "pick_km": 0.5993188921381656
+  },
+  {
+   "image_id": "528683885_1d11fed95e_1249_42126397@N00.jpg",
+   "place": "Menara Public Bank, Kuala Lumpur, Malaysia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "529887618_45d3d159e5_1035_7132415@N03.jpg",
+   "place": "Big Four Mountain, Washington, United States",
+   "n_matches": 3,
+   "oracle_km": 29.37938121319848,
+   "pick_km": 2378.533645080296
+  },
+  {
+   "image_id": "534068538_d2e02706f4_1203_79756109@N00.jpg",
+   "place": "Whalers Village, Kaanapali, Hawaii, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "534304469_ba1296b5af_1039_79756109@N00.jpg",
+   "place": "Haleakal\u0101 National Park, Hawaii, United States",
+   "n_matches": 1,
+   "oracle_km": 8.069636792061807,
+   "pick_km": 8.069636792061807
+  },
+  {
+   "image_id": "535440332_ccf9987b2f_250_79756109@N00.jpg",
+   "place": "Camp Randall Stadium, Madison, United States",
+   "n_matches": 1,
+   "oracle_km": 0.0593169987113275,
+   "pick_km": 0.0593169987113275
+  },
+  {
+   "image_id": "536709290_d8065a325f_1377_79756109@N00.jpg",
+   "place": "Powell and Market Cable Car Turnaround, San Francisco, United States",
+   "n_matches": 1,
+   "oracle_km": 2.3746019839098635,
+   "pick_km": 2.3746019839098635
+  },
+  {
+   "image_id": "536809607_071f1e0046_1210_79756109@N00.jpg",
+   "place": "Pier 23, San Francisco, United States",
+   "n_matches": 6,
+   "oracle_km": 0.1777995485499606,
+   "pick_km": 4030.2415474382337
+  },
+  {
+   "image_id": "538718229_8309e9a75a_1329_42126397@N00.jpg",
+   "place": "Garden of Virtue and Harmony, Summer Palace, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "541019211_5a72935cd2_1427_47311799@N00.jpg",
+   "place": "Alfa Theatre, Patision Street, Athens, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "541509625_c14cb5fed3_1254_70323761@N00.jpg",
+   "place": "One Court Square, Long Island City, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "541908990_87426edd62_1057_79756109@N00.jpg",
+   "place": "United States Capitol, Washington, D.C., United States",
+   "n_matches": 1,
+   "oracle_km": 2.0425125800777613,
+   "pick_km": 2.0425125800777613
+  },
+  {
+   "image_id": "5602061140.jpg",
+   "place": "United States Capitol, Washington, D.C., United States",
+   "n_matches": 1,
+   "oracle_km": 0.025800811964326834,
+   "pick_km": 0.025800811964326834
+  },
+  {
+   "image_id": "558188034_264aad3587_1354_61819159@N00.jpg",
+   "place": "Callej\u00f3n de las Monjas, Arcos de la Frontera, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "561996222_774334f886_1323_7132415@N03.jpg",
+   "place": "Fremont, Seattle, Washington, United States",
+   "n_matches": 40,
+   "oracle_km": 1.1993108527241698,
+   "pick_km": 1123.635055575856
+  },
+  {
+   "image_id": "568911998_069c2ea207_1315_48264126@N00.jpg",
+   "place": "Banff Hoodoos, Banff National Park, Alberta, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "571148593_3b40a8d891_1281_44067110@N00.jpg",
+   "place": "Tate Britain, London, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.08283150793933668,
+   "pick_km": 0.08283150793933668
+  },
+  {
+   "image_id": "572930210_7ec9507b92_1130_70323761@N00.jpg",
+   "place": "New York Public Library Main Branch, New York City, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "611517765_6aec1b67e9_1027_85417391@N00.jpg",
+   "place": "Tillicum Village, Blake Island, Washington, United States",
+   "n_matches": 1,
+   "oracle_km": 0.07363188967386199,
+   "pick_km": 0.07363188967386199
+  },
+  {
+   "image_id": "616388941_1dbd82435f_1135_70323761@N00.jpg",
+   "place": "Coney Island Boardwalk, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "617018192_9feb1e2f55_1168_70323761@N00.jpg",
+   "place": "Coney Island Boardwalk, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "619352795_954928f297_1328_7412395@N07.jpg",
+   "place": "Landmannalaugar, Iceland",
+   "n_matches": 2,
+   "oracle_km": 2.0818637148640917,
+   "pick_km": 2.420489464332743
+  },
+  {
+   "image_id": "62013645_c50732262f_29_63163416@N00.jpg",
+   "place": "Busselton Jetty, Busselton, Western Australia, Australia",
+   "n_matches": 1,
+   "oracle_km": 180.14539053997186,
+   "pick_km": 180.14539053997186
+  },
+  {
+   "image_id": "64659673_9b669388ce_26_57253263@N00.jpg",
+   "place": "Harry's Restaurant, Westborough, Massachusetts, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "675928519_1f97d85c9f_1211_8159033@N04.jpg",
+   "place": "Himiko Water Bus, Tokyo, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "676663392_bd51046720_1268_8159033@N04.jpg",
+   "place": "Sens\u014d-ji, Tokyo, Japan",
+   "n_matches": 1,
+   "oracle_km": 2.4093968071392533,
+   "pick_km": 2.4093968071392533
+  },
+  {
+   "image_id": "683194672_ec9ad2a2f9_1418_8159033@N04.jpg",
+   "place": "Jingumae Intersection, Shibuya, Tokyo, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "70283421_c04449c9c4_18_18684820@N00.jpg",
+   "place": "Palais Bourbon, Paris, France",
+   "n_matches": 2,
+   "oracle_km": 5.759947184686046,
+   "pick_km": 6.3136651575443725
+  },
+  {
+   "image_id": "719875225_2da923b1d0_1146_7132415@N03.jpg",
+   "place": "Grand Trianon, Versailles, France",
+   "n_matches": 1,
+   "oracle_km": 0.19231539169166825,
+   "pick_km": 0.19231539169166825
+  },
+  {
+   "image_id": "720552408_1c65903796_1097_7132415@N03.jpg",
+   "place": "Pont Neuf, Paris, France",
+   "n_matches": 16,
+   "oracle_km": 0.32392756273462686,
+   "pick_km": 5401.5579269029395
+  },
+  {
+   "image_id": "722200843_92f212d3cd_1045_7665941@N08.jpg",
+   "place": "Craigdarroch Castle, Victoria, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "74067437_47448df473_20_18684820@N00.jpg",
+   "place": "Royal Peacock Hotel, Singapore",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "754881567_128bec18c6_1427_78247883@N00.jpg",
+   "place": "Lake Bled, Bled, Slovenia",
+   "n_matches": 1,
+   "oracle_km": 3.850527269591506,
+   "pick_km": 3.850527269591506
+  },
+  {
+   "image_id": "755668577_76782d26b6_1070_7980350@N08.jpg",
+   "place": "Half Dome Cables, Yosemite National Park, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "756531584_b1beb791ec_1074_7980350@N08.jpg",
+   "place": "Half Dome Cables, Yosemite National Park, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "75846717_020275e00c_42_18684820@N00.jpg",
+   "place": "Punggol Temporary Bus Interchange, Singapore",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "78438814_717a8295f2_43_57253263@N00.jpg",
+   "place": "Boston Fish Pier, Boston, Massachusetts, United States",
+   "n_matches": 1,
+   "oracle_km": 0.2220756624929599,
+   "pick_km": 0.2220756624929599
+  },
+  {
+   "image_id": "815968929_ee36554bd7_1159_7885919@N07.jpg",
+   "place": "Palais des Papes, Avignon, France",
+   "n_matches": 1,
+   "oracle_km": 0.026109676453175776,
+   "pick_km": 0.026109676453175776
+  },
+  {
+   "image_id": "847733166_0573338bfb_1321_89904893@N00.jpg",
+   "place": "Church of the Gesuati (Santa Maria del Rosario), Venice, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "865659775_82c05d3878_1361_23707253@N00.jpg",
+   "place": "Winter Palace, Saint Petersburg, Russia",
+   "n_matches": 1,
+   "oracle_km": 0.5642409170077008,
+   "pick_km": 0.5642409170077008
+  },
+  {
+   "image_id": "873010122_2c74adfa62_1015_9729483@N02.jpg",
+   "place": "Yankee Stadium, New York City, United States",
+   "n_matches": 1,
+   "oracle_km": 0.24706040487028588,
+   "pick_km": 0.24706040487028588
+  },
+  {
+   "image_id": "88595270_07cf7550a6_23_40279823@N00.jpg",
+   "place": "Massawa, Eritrea",
+   "n_matches": 5,
+   "oracle_km": 597.9668679572255,
+   "pick_km": 597.9668679572255
+  },
+  {
+   "image_id": "893439291_7f8963c066_1412_65367662@N00.jpg",
+   "place": "Horseshoe Falls, Niagara Falls, Ontario, Canada",
+   "n_matches": 21,
+   "oracle_km": 0.3527677999494106,
+   "pick_km": 15092.115843225492
+  },
+  {
+   "image_id": "907086920_b54a7fc89f_1329_26519935@N00.jpg",
+   "place": "Manila Cathedral, Intramuros, Manila, Philippines",
+   "n_matches": 1,
+   "oracle_km": 0.30249769003524857,
+   "pick_km": 0.30249769003524857
+  },
+  {
+   "image_id": "911801310_5e1f8f5338_1117_9729483@N02.jpg",
+   "place": "Wrigley Field, Chicago, United States",
+   "n_matches": 1,
+   "oracle_km": 0.0646303068908507,
+   "pick_km": 0.0646303068908507
+  },
+  {
+   "image_id": "913874131_e9cd391699_1181_36887937@N00.jpg",
+   "place": "Little Princess Statue, Budapest, Hungary",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "91418816_1ba3c94a63_22_83794921@N00.jpg",
+   "place": "Palacio de Bellas Artes, Mexico City, Mexico",
+   "n_matches": 1,
+   "oracle_km": 2.6850808562480486,
+   "pick_km": 2.6850808562480486
+  },
+  {
+   "image_id": "929660326_553b12bf09_1169_78247883@N00.jpg",
+   "place": "Church of Saint Blaise, Dubrovnik, Croatia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "933895942_542d5501c9_1094_54699140@N00.jpg",
+   "place": "National Air and Space Museum, Washington, D.C., United States",
+   "n_matches": 1,
+   "oracle_km": 1.3323208596397926,
+   "pick_km": 1.3323208596397926
+  },
+  {
+   "image_id": "952947179_04019a057e_1270_78841376@N00.jpg",
+   "place": "Poseidon's Fury, Universal's Islands of Adventure, Orlando, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "953550707_009c8bef9a_1201_78841376@N00.jpg",
+   "place": "Universal Studios Florida, Orlando, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "956386417_6f68bd5c46_1201_9729483@N02.jpg",
+   "place": "Maimonides Park, Brooklyn, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "957341654_3cb1b6ed56_1139_9729483@N02.jpg",
+   "place": "Maimonides Park, Brooklyn, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "960188046_9e7673ee8d_1417_97522422@N00.jpg",
+   "place": "Pripyat, Kyiv Oblast, Ukraine",
+   "n_matches": 3,
+   "oracle_km": 18.93229393326231,
+   "pick_km": 425.0705124755026
+  },
+  {
+   "image_id": "977680330_76d890164e_1283_32377115@N00.jpg",
+   "place": "Tian Tan Buddha, Lantau Island, Hong Kong",
+   "n_matches": 1,
+   "oracle_km": 0.051121043648686144,
+   "pick_km": 0.051121043648686144
+  },
+  {
+   "image_id": "985776966_be5cb76e0b_1239_23707253@N00.jpg",
+   "place": "Wawelberg Bank building, Saint Petersburg, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2764520341.jpg",
+   "place": "Basilica di Santa Maria della Salute, Venice, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.9772559644004827,
+   "pick_km": 0.9772559644004827
+  },
+  {
+   "image_id": "8676997957.jpg",
+   "place": "Fisherman's Bastion, Budapest, Hungary",
+   "n_matches": 1,
+   "oracle_km": 0.041892149285170245,
+   "pick_km": 0.041892149285170245
+  },
+  {
+   "image_id": "13018413104.jpg",
+   "place": "Praza da Quintana, Santiago de Compostela, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7822253820.jpg",
+   "place": "Grand Cascade of Peterhof Palace, Saint Petersburg, Russia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4649365193.jpg",
+   "place": "Burg Kaprun, Kaprun, Austria",
+   "n_matches": 1,
+   "oracle_km": 0.02165257830850707,
+   "pick_km": 0.02165257830850707
+  },
+  {
+   "image_id": "5219647169.jpg",
+   "place": "Harvey Hotel, Harvey, Western Australia, Australia",
+   "n_matches": 1,
+   "oracle_km": 14364.480347751762,
+   "pick_km": 14364.480347751762
+  },
+  {
+   "image_id": "8494535977.jpg",
+   "place": "Bagan, Myanmar",
+   "n_matches": 56,
+   "oracle_km": 4.372271929590547,
+   "pick_km": 2317.833039972898
+  },
+  {
+   "image_id": "11439370863.jpg",
+   "place": "Ar\u00e8nes de Cimiez, Nice, France",
+   "n_matches": 1,
+   "oracle_km": 0.0044951623992762705,
+   "pick_km": 0.0044951623992762705
+  },
+  {
+   "image_id": "5486278354.jpg",
+   "place": "Route d\u00e9partementale 55, Givenchy-en-Gohelle, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8060735888.jpg",
+   "place": "Paleokastritsa Monastery, Corfu, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8084276410.jpg",
+   "place": "Madridejos, Toledo, Spain",
+   "n_matches": 7,
+   "oracle_km": 0.3351809414539679,
+   "pick_km": 12178.967738447322
+  },
+  {
+   "image_id": "5032324949.jpg",
+   "place": "Kurilpa Bridge, Brisbane, Australia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "11660259034.jpg",
+   "place": "Ushuaia, Tierra del Fuego, Argentina",
+   "n_matches": 3,
+   "oracle_km": 1.294535221492862,
+   "pick_km": 1.294535221492862
+  },
+  {
+   "image_id": "3922398702.jpg",
+   "place": "Kraton Ngayogyakarta Hadiningrat, Yogyakarta, Indonesia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "191684963.jpg",
+   "place": "Forest Hills Cemetery, Boston, United States",
+   "n_matches": 13,
+   "oracle_km": 212.7232553996641,
+   "pick_km": 931.2983827964568
+  },
+  {
+   "image_id": "2147844654.jpg",
+   "place": "Z\u00f3calo, Oaxaca de Ju\u00e1rez, Mexico",
+   "n_matches": 3,
+   "oracle_km": 244.79041488152143,
+   "pick_km": 244.79041488152143
+  },
+  {
+   "image_id": "11443242853.jpg",
+   "place": "Princess Street, Kingston, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3212222845.jpg",
+   "place": "Camden High Street, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5099847760.jpg",
+   "place": "Promenade dans l'univers de Vincent van Gogh, Saint-R\u00e9my-de-Provence, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7752218862.jpg",
+   "place": "Queen Elizabeth Olympic Park, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2580719887.jpg",
+   "place": "York Minster, York, England, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.5882410889957652,
+   "pick_km": 0.5882410889957652
+  },
+  {
+   "image_id": "2056254108.jpg",
+   "place": "Sugarloaf Mountain, Rio de Janeiro, Brazil",
+   "n_matches": 202,
+   "oracle_km": 0.27310180455677585,
+   "pick_km": 13365.391107169615
+  },
+  {
+   "image_id": "6240428053.jpg",
+   "place": "Arc de Triomphe du Carrousel, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.3297566052996374,
+   "pick_km": 0.3297566052996374
+  },
+  {
+   "image_id": "5674892443.jpg",
+   "place": "St Cuthbert's Church, Holme Lacy, England, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5182672405.jpg",
+   "place": "Temple of Isis, Delos, Greece",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "316748988.jpg",
+   "place": "Tomb of Saint John of Nepomuk, St. Vitus Cathedral, Prague, Czech Republic",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8645530859.jpg",
+   "place": "Aventure Land, Magny-en-Vexin, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8251381751.jpg",
+   "place": "Basilica Cistern, Istanbul, Turkey",
+   "n_matches": 1,
+   "oracle_km": 0.017605717490180105,
+   "pick_km": 0.017605717490180105
+  },
+  {
+   "image_id": "5105083694.jpg",
+   "place": "206 Decatur Street, New Orleans, Louisiana, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3925018607.jpg",
+   "place": "Sagrada Fam\u00edlia, Barcelona, Spain",
+   "n_matches": 75,
+   "oracle_km": 0.2774104656514972,
+   "pick_km": 0.32443376645967076
+  },
+  {
+   "image_id": "8368731398.jpg",
+   "place": "West Pier, Brighton, United Kingdom",
+   "n_matches": 2,
+   "oracle_km": 122.57876046192061,
+   "pick_km": 122.57876046192061
+  },
+  {
+   "image_id": "1301281947.jpg",
+   "place": "Chouara Tannery, Fez, Morocco",
+   "n_matches": 1,
+   "oracle_km": 3.122723182099085,
+   "pick_km": 3.122723182099085
+  },
+  {
+   "image_id": "3269823678.jpg",
+   "place": "Skogskyrkog\u00e5rden, Stockholm, Sweden",
+   "n_matches": 1,
+   "oracle_km": 0.5715861423854951,
+   "pick_km": 0.5715861423854951
+  },
+  {
+   "image_id": "6008491455.jpg",
+   "place": "Verona Arena, Verona, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.12140354999519658,
+   "pick_km": 0.12140354999519658
+  },
+  {
+   "image_id": "12285394434.jpg",
+   "place": "Cathedral Rocks, Kiama, New South Wales, Australia",
+   "n_matches": 15,
+   "oracle_km": 837.6954938990488,
+   "pick_km": 4839.949736821743
+  },
+  {
+   "image_id": "5105212557.jpg",
+   "place": "Palazzo Pitti, Florence, Italy",
+   "n_matches": 1,
+   "oracle_km": 0.4119442755598325,
+   "pick_km": 0.4119442755598325
+  },
+  {
+   "image_id": "3332279406.jpg",
+   "place": "James R. Thompson Center, Chicago, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2088734126.jpg",
+   "place": "National Exhibition Centre, Birmingham, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.5284183277668555,
+   "pick_km": 0.5284183277668555
+  },
+  {
+   "image_id": "4451242329.jpg",
+   "place": "Swedish Railway Museum, G\u00e4vle, Sweden",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "10666582604.jpg",
+   "place": "Tuileries Garden, Paris, France",
+   "n_matches": 1,
+   "oracle_km": 0.930043104946777,
+   "pick_km": 0.930043104946777
+  },
+  {
+   "image_id": "2906182342.jpg",
+   "place": "Kensington Palace, London, United Kingdom",
+   "n_matches": 2,
+   "oracle_km": 0.17097815326816454,
+   "pick_km": 0.18779800766875188
+  },
+  {
+   "image_id": "8645255256.jpg",
+   "place": "Church of Notre-Dame la Grande, Poitiers, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "11091784836.jpg",
+   "place": "Confeitaria Colombo, Rio de Janeiro, Brazil",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8922920105.jpg",
+   "place": "Palayangan River, Pangalengan, West Java, Indonesia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5355846891.jpg",
+   "place": "Lambeau Field Atrium, Green Bay, Wisconsin, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3328847424.jpg",
+   "place": "Southbank Riverwalk, Jacksonville, Florida, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8668896405.jpg",
+   "place": "The Mound, Edinburgh, Scotland, United Kingdom",
+   "n_matches": 38,
+   "oracle_km": 229.1184707589608,
+   "pick_km": 6050.137224146802
+  },
+  {
+   "image_id": "9284634892.jpg",
+   "place": "Major General Nathanael Greene Statue, Stanton Park, Washington, D.C., United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7118496483.jpg",
+   "place": "Pavilh\u00e3o Rosa Mota (Super Bock Arena), Jardins do Pal\u00e1cio de Cristal, Porto, Portugal",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5428225532.jpg",
+   "place": "Petronas Twin Towers, Kuala Lumpur, Malaysia",
+   "n_matches": 1,
+   "oracle_km": 0.9743814238411314,
+   "pick_km": 0.9743814238411314
+  },
+  {
+   "image_id": "12912116753.jpg",
+   "place": "Ganesh Pol, Amber Palace, Jaipur, India",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5983655759.jpg",
+   "place": "San Diego Convention Center, San Diego, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.6331945973557448,
+   "pick_km": 0.6331945973557448
+  },
+  {
+   "image_id": "3927787593.jpg",
+   "place": "International Convention Center Jeju, Seogwipo, South Korea",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4279136766.jpg",
+   "place": "Bryant Park, New York, United States",
+   "n_matches": 12,
+   "oracle_km": 0.07567727438981646,
+   "pick_km": 18714.014316089826
+  },
+  {
+   "image_id": "644242466.jpg",
+   "place": "Mont des Arts, Brussels, Belgium",
+   "n_matches": 1,
+   "oracle_km": 0.28993469658881965,
+   "pick_km": 0.28993469658881965
+  },
+  {
+   "image_id": "8008529155.jpg",
+   "place": "Eu Tong Sen Street, Chinatown, Singapore",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8052380396.jpg",
+   "place": "Ravello, Italy",
+   "n_matches": 4,
+   "oracle_km": 9563.431595487196,
+   "pick_km": 10259.057107348233
+  },
+  {
+   "image_id": "4530919810.jpg",
+   "place": "Prague Astronomical Clock, Prague, Czech Republic",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "6816055512.jpg",
+   "place": "Keeter Gymnasium, Point Lookout, Missouri, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7529936728.jpg",
+   "place": "Dom Lu\u00eds I Bridge, Porto, Portugal",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "10735218284.jpg",
+   "place": "Schuylkill River, Philadelphia, Pennsylvania, United States",
+   "n_matches": 1,
+   "oracle_km": 9.378735772201415,
+   "pick_km": 9.378735772201415
+  },
+  {
+   "image_id": "6220931845.jpg",
+   "place": "Gemini Residence, Copenhagen, Denmark",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8086749050.jpg",
+   "place": "FARCAMA, Toledo, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5179046602.jpg",
+   "place": "Banco Santander Headquarters, Santander, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5166938085.jpg",
+   "place": "Dee and Charles Wyly Theatre, Dallas, Texas, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3896395366.jpg",
+   "place": "Thieves' Tower, Wawel Royal Castle, Krak\u00f3w, Poland",
+   "n_matches": 1,
+   "oracle_km": 1749.8975720804324,
+   "pick_km": 1749.8975720804324
+  },
+  {
+   "image_id": "2978076676.jpg",
+   "place": "Campbells Wines, Rutherglen, Australia",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8109494808.jpg",
+   "place": "Pra\u00e7a do Munic\u00edpio, Lisbon, Portugal",
+   "n_matches": 11,
+   "oracle_km": 0.47950975208529883,
+   "pick_km": 180.11211679700352
+  },
+  {
+   "image_id": "7173129566.jpg",
+   "place": "Mays Business School, Texas A&M University, College Station, Texas, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8433863123.jpg",
+   "place": "Ha Long Bay, Qu\u1ea3ng Ninh, Vietnam",
+   "n_matches": 1,
+   "oracle_km": 3.957644809539479,
+   "pick_km": 3.957644809539479
+  },
+  {
+   "image_id": "4811750972.jpg",
+   "place": "Shanghai International Circuit, Shanghai, China",
+   "n_matches": 1,
+   "oracle_km": 18.502049899070936,
+   "pick_km": 18.502049899070936
+  },
+  {
+   "image_id": "4977813981.jpg",
+   "place": "Universal Studios Hollywood, Universal City, California, United States",
+   "n_matches": 1,
+   "oracle_km": 0.4901784443646293,
+   "pick_km": 0.4901784443646293
+  },
+  {
+   "image_id": "5997705197.jpg",
+   "place": "Lower Antelope Canyon, Page, Arizona, United States",
+   "n_matches": 1,
+   "oracle_km": 1.1855357642456845,
+   "pick_km": 1.1855357642456845
+  },
+  {
+   "image_id": "9572384402.jpg",
+   "place": "Monumento a Borba Gato, S\u00e3o Paulo, Brazil",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4634183435.jpg",
+   "place": "Disney's Hollywood Studios, Florida, United States",
+   "n_matches": 2,
+   "oracle_km": 0.07910119217227451,
+   "pick_km": 0.07910119217227451
+  },
+  {
+   "image_id": "3748008326.jpg",
+   "place": "Pratt Institute Higgins Hall, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3385947273.jpg",
+   "place": "Lincoln Memorial, Washington, D.C., United States",
+   "n_matches": 2,
+   "oracle_km": 0.09309957010416563,
+   "pick_km": 0.09309957010416563
+  },
+  {
+   "image_id": "9409439064.jpg",
+   "place": "Xueshan Glacial Cirque No. 1, Shei-Pa National Park, Taiwan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "11261485353.jpg",
+   "place": "Ed Sandoval Gallery, Taos, New Mexico, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4529830482.jpg",
+   "place": "Japantown, San Francisco, California, United States",
+   "n_matches": 2,
+   "oracle_km": 0.10098699598724234,
+   "pick_km": 0.10098699598724234
+  },
+  {
+   "image_id": "2973010025.jpg",
+   "place": "Toronto Cenotaph, Old City Hall, Toronto, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2529026512.jpg",
+   "place": "Dendera Temple complex, Qena, Egypt",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4849242149.jpg",
+   "place": "Symonds Yat, River Wye, England, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 1.9724600032635442,
+   "pick_km": 1.9724600032635442
+  },
+  {
+   "image_id": "1403061248.jpg",
+   "place": "Meridian Gate, Forbidden City, Beijing, China",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5511591826.jpg",
+   "place": "Abbaye Notre-Dame de Paimpont, Paimpont, France",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4630828927.jpg",
+   "place": "Group of a Thousand Columns, Chichen Itza, Yucatan, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5215973450.jpg",
+   "place": "Group of a Thousand Columns, Chichen Itza, Yucatan, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2413884286.jpg",
+   "place": "Valley of the Rocks, Lynton, Devon, England, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 6967.690190153598,
+   "pick_km": 6967.690190153598
+  },
+  {
+   "image_id": "7286171822.jpg",
+   "place": "Falls of Dochart, Killin, Scotland, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3489002799.jpg",
+   "place": "Hauptkirche St. Katharinen, Hamburg, Germany",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5214020596.jpg",
+   "place": "Funan DigitaLife Mall, Singapore",
+   "n_matches": 1,
+   "oracle_km": 0.07205061194811016,
+   "pick_km": 0.07205061194811016
+  },
+  {
+   "image_id": "2887011215.jpg",
+   "place": "Arlington National Cemetery, Arlington, Virginia, United States",
+   "n_matches": 1,
+   "oracle_km": 0.17657917391370342,
+   "pick_km": 0.17657917391370342
+  },
+  {
+   "image_id": "3691313284.jpg",
+   "place": "Porto di Ognina, Catania, Italy",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7618751562.jpg",
+   "place": "Leopoldplatz U-Bahn station, Berlin, Germany",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7578934684.jpg",
+   "place": "Cloud Gate, Millennium Park, Chicago, Illinois, United States",
+   "n_matches": 1,
+   "oracle_km": 0.36602112059317804,
+   "pick_km": 0.36602112059317804
+  },
+  {
+   "image_id": "9254610963.jpg",
+   "place": "National September 11 Memorial & Museum, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3665676367.jpg",
+   "place": "Waimea Canyon State Park, Kauai, Hawaii, United States",
+   "n_matches": 1,
+   "oracle_km": 1.783197763524407,
+   "pick_km": 1.783197763524407
+  },
+  {
+   "image_id": "3157694243.jpg",
+   "place": "Rockefeller Center, New York, United States",
+   "n_matches": 1,
+   "oracle_km": 0.016629759316598613,
+   "pick_km": 0.016629759316598613
+  },
+  {
+   "image_id": "5343212885.jpg",
+   "place": "Rogers Arena, Vancouver, Canada",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8749681924.jpg",
+   "place": "Harajuku Station, Shibuya, Tokyo, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4504277127.jpg",
+   "place": "Palace of Fontainebleau, Fontainebleau, France",
+   "n_matches": 1,
+   "oracle_km": 0.020388301997168398,
+   "pick_km": 0.020388301997168398
+  },
+  {
+   "image_id": "6831825319.jpg",
+   "place": "Richmond Riverside, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "3499030590.jpg",
+   "place": "Seathwaite, Borrowdale, Cumbria, England, United Kingdom",
+   "n_matches": 2,
+   "oracle_km": 9.63240554812938,
+   "pick_km": 9.63240554812938
+  },
+  {
+   "image_id": "5779010725.jpg",
+   "place": "Recinto de Festivales de Benic\u00e0ssim, Benic\u00e0ssim, Spain",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "8839261936.jpg",
+   "place": "New Street, Birmingham, England, United Kingdom",
+   "n_matches": 4,
+   "oracle_km": 0.11844812420768566,
+   "pick_km": 17046.05604143424
+  },
+  {
+   "image_id": "8441360112.jpg",
+   "place": "V. C. Morris Gift Shop, San Francisco, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "1732740294.jpg",
+   "place": "Bath Abbey, Bath, United Kingdom",
+   "n_matches": 1,
+   "oracle_km": 0.0077710437536781946,
+   "pick_km": 0.0077710437536781946
+  },
+  {
+   "image_id": "8461659719.jpg",
+   "place": "Hay Lane, Coventry, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4688632758.jpg",
+   "place": "Kyoto International Manga Museum, Kyoto, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "9607789163.jpg",
+   "place": "Shrine of the B\u00e1b, Haifa, Israel",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "7885938974.jpg",
+   "place": "Sk\u00f3gafoss, Sk\u00f3gar, Iceland",
+   "n_matches": 1,
+   "oracle_km": 2.2143218241399243,
+   "pick_km": 2.2143218241399243
+  },
+  {
+   "image_id": "2657768833.jpg",
+   "place": "Disneyland Hotel, Chessy, France",
+   "n_matches": 2,
+   "oracle_km": 32.25010797277964,
+   "pick_km": 32.25010797277964
+  },
+  {
+   "image_id": "4698062015.jpg",
+   "place": "B\u00fa\u00f0akirkja, B\u00fa\u00f0ir, Iceland",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "6949555253.jpg",
+   "place": "Corfe Castle, Dorset, United Kingdom",
+   "n_matches": 4,
+   "oracle_km": 7.05758541013782,
+   "pick_km": 8.526251438117797
+  },
+  {
+   "image_id": "5752022422.jpg",
+   "place": "Hackney Road, London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "2567547061.jpg",
+   "place": "30 St Mary Axe (The Gherkin), London, United Kingdom",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "4687018018.jpg",
+   "place": "Edinburgh Castle, Edinburgh, United Kingdom",
+   "n_matches": 6,
+   "oracle_km": 0.12409026894558,
+   "pick_km": 16407.84497975925
+  },
+  {
+   "image_id": "4744139130.jpg",
+   "place": "Edinburgh Castle, Edinburgh, Scotland, United Kingdom",
+   "n_matches": 6,
+   "oracle_km": 0.10886484905417597,
+   "pick_km": 16408.025797548074
+  },
+  {
+   "image_id": "7181730343.jpg",
+   "place": "Elche de la Sierra, Albacete, Spain",
+   "n_matches": 2,
+   "oracle_km": 0.31350016729926605,
+   "pick_km": 4.368819469008826
+  },
+  {
+   "image_id": "5590469313.jpg",
+   "place": "Shizuoka Hobby Fair, Shizuoka, Japan",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5180781341.jpg",
+   "place": "Ginkaku-ji, Kyoto, Japan",
+   "n_matches": 1,
+   "oracle_km": 1.8967777424501886,
+   "pick_km": 1.8967777424501886
+  },
+  {
+   "image_id": "6285000930.jpg",
+   "place": "Second Bank of the United States, Philadelphia, United States",
+   "n_matches": 1,
+   "oracle_km": 0.20043818516573514,
+   "pick_km": 0.20043818516573514
+  },
+  {
+   "image_id": "8142948806.jpg",
+   "place": "1 Powell Street, San Francisco, California, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "13152713384.jpg",
+   "place": "Atlantic Yards (Barclays Center), Brooklyn, New York, United States",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  },
+  {
+   "image_id": "5548510439.jpg",
+   "place": "Temple of the God of Winds, Tulum, Quintana Roo, Mexico",
+   "n_matches": 0,
+   "oracle_km": Infinity,
+   "pick_km": Infinity
+  }
+ ]
+}

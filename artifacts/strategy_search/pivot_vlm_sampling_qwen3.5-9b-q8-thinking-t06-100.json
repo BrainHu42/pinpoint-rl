@@ -1,0 +1,91 @@
+{
+  "model_server": "http://127.0.0.1:8765",
+  "model": "qwen3.5-9b-q8-thinking-t06-100",
+  "thinking": true,
+  "samples": 0,
+  "temperature": 1.0,
+  "im2gps3k": {
+    "n": 50,
+    "unparsed_rate": 0.36,
+    "reranker top-1": {
+      "Geoguessr_score": 3950.1,
+      "Median_km_error": 54.34500867834865,
+      "Under_1_km": 0.1,
+      "Under_25_km": 0.5,
+      "Under_200_km": 0.66,
+      "Under_750_km": 0.8,
+      "Under_2500_km": 0.88
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3961.76,
+      "Median_km_error": 94.99683118120271,
+      "Under_1_km": 0.1,
+      "Under_25_km": 0.48,
+      "Under_200_km": 0.66,
+      "Under_750_km": 0.82,
+      "Under_2500_km": 0.86
+    },
+    "candidate top-10 (oracle)": {
+      "Under_1_km": 0.32,
+      "Under_25_km": 0.64,
+      "Under_200_km": 0.76,
+      "Under_750_km": 0.86
+    }
+  },
+  "yfcc4k": {
+    "n": 50,
+    "unparsed_rate": 0.38,
+    "reranker top-1": {
+      "Geoguessr_score": 3915.64,
+      "Median_km_error": 89.90674202083314,
+      "Under_1_km": 0.24,
+      "Under_25_km": 0.46,
+      "Under_200_km": 0.58,
+      "Under_750_km": 0.76,
+      "Under_2500_km": 0.92
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3792.76,
+      "Median_km_error": 89.90674202083314,
+      "Under_1_km": 0.2,
+      "Under_25_km": 0.44,
+      "Under_200_km": 0.58,
+      "Under_750_km": 0.74,
+      "Under_2500_km": 0.86
+    },
+    "candidate top-10 (oracle)": {
+      "Under_1_km": 0.34,
+      "Under_25_km": 0.62,
+      "Under_200_km": 0.74,
+      "Under_750_km": 0.86
+    }
+  },
+  "both": {
+    "n": 100,
+    "unparsed_rate": 0.37,
+    "reranker top-1": {
+      "Geoguessr_score": 3932.87,
+      "Median_km_error": 85.32531019279429,
+      "Under_1_km": 0.17,
+      "Under_25_km": 0.48,
+      "Under_200_km": 0.62,
+      "Under_750_km": 0.78,
+      "Under_2500_km": 0.9
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3877.26,
+      "Median_km_error": 90.03811767647636,
+      "Under_1_km": 0.15,
+      "Under_25_km": 0.46,
+      "Under_200_km": 0.62,
+      "Under_750_km": 0.78,
+      "Under_2500_km": 0.86
+    },
+    "candidate top-10 (oracle)": {
+      "Under_1_km": 0.33,
+      "Under_25_km": 0.63,
+      "Under_200_km": 0.75,
+      "Under_750_km": 0.86
+    }
+  }
+}

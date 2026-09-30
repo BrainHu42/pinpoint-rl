@@ -1,0 +1,14 @@
+{
+  "checkpoint": {
+    "path": "/home/brian/workspace/pinpoint-submission/submission/exp/contrastive_retrieval/checkpoints/ckpt_best.pt",
+    "sha256": "d5f93646ed6cec219512dc0e25231220fe1fb4da2bdabef0d8ae36e96ebe062b"
+  },
+  "osv_embedding_manifest": {
+    "path": "/data/pinpoint/osv5m-test/image_embeddings/google_siglip2-giant-opt-patch16-384/manifest.json",
+    "sha256": "a872bfedc3c8a2af1e6475614e691b5f6b4375366ee4a669bcc3fe3f26c906cd"
+  },
+  "reference_summary": {
+    "path": "/home/brian/workspace/pinpoint-rl/artifacts/feasibility/v6-top50-test-reference/summary.json",
+    "sha256": "9200d46d8ec5c8facaf3f19acd34e8a1e26a99e600158842df3187c0c23c4047"
+  }
+}

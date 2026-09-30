@@ -1,0 +1,8 @@
+{
+  "corpus_version": "synthetic-osv-snapshot-v1",
+  "references": [
+    {"asset_id":"mapillary:r_3001","image_handles":["fixture://r_3001.jpg"],"published_coordinate":{"latitude":43.7257,"longitude":10.3966},"provenance":"synthetic-osv-record:r_3001","coordinate_provenance":"fixture-camera-coordinate","coordinate_uncertainty_m":5.0,"captured_at":"1700000000000","creator":"fixture-user","sequence_id":"sequence-3"},
+    {"asset_id":"mapillary:r_4001","image_handles":["fixture://r_4001.jpg"],"published_coordinate":{"latitude":34.6990,"longitude":135.5023},"provenance":"synthetic-osv-record:r_4001","coordinate_provenance":"fixture-camera-coordinate","coordinate_uncertainty_m":5.0,"captured_at":"1700000001000","creator":"fixture-user","sequence_id":"sequence-4a"},
+    {"asset_id":"mapillary:r_4002","image_handles":["fixture://r_4002.jpg"],"published_coordinate":{"latitude":34.6964,"longitude":135.5023},"provenance":"synthetic-osv-record:r_4002","coordinate_provenance":"fixture-camera-coordinate","coordinate_uncertainty_m":5.0,"captured_at":"1700000002000","creator":"other-user","sequence_id":"sequence-4b"}
+  ]
+}

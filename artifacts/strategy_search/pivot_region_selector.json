@@ -1,0 +1,70 @@
+{
+  "features": [
+    "head_prob",
+    "head_rank",
+    "gps_vote_mass",
+    "log_hits",
+    "max_sim",
+    "top10_mean_sim",
+    "max_sim_minus_best_region",
+    "pool_size"
+  ],
+  "im2gps3k": {
+    "head top-1 region": {
+      "Geoguessr_score": 3896.268918918919,
+      "Median_km_error": 71.02954839818463,
+      "Under_1_km": 0.1635135135135135,
+      "Under_25_km": 0.43445945945945946,
+      "Under_200_km": 0.6054054054054054,
+      "Under_750_km": 0.779054054054054,
+      "Under_2500_km": 0.8932432432432432
+    },
+    "learned region choice": {
+      "Geoguessr_score": 3955.2594594594593,
+      "Median_km_error": 56.28062217794251,
+      "Under_1_km": 0.17027027027027028,
+      "Under_25_km": 0.45135135135135135,
+      "Under_200_km": 0.6263513513513513,
+      "Under_750_km": 0.7918918918918919,
+      "Under_2500_km": 0.8972972972972973
+    },
+    "oracle region choice (top-5)": {
+      "Geoguessr_score": 4437.768243243243,
+      "Median_km_error": 16.26859216961121,
+      "Under_1_km": 0.18986486486486487,
+      "Under_25_km": 0.5398648648648648,
+      "Under_200_km": 0.779054054054054,
+      "Under_750_km": 0.9047297297297298,
+      "Under_2500_km": 0.9581081081081081
+    }
+  },
+  "yfcc4k": {
+    "head top-1 region": {
+      "Geoguessr_score": 3220.1438444924406,
+      "Median_km_error": 364.5505212034541,
+      "Under_1_km": 0.10064794816414686,
+      "Under_25_km": 0.23412526997840172,
+      "Under_200_km": 0.411231101511879,
+      "Under_750_km": 0.6419006479481641,
+      "Under_2500_km": 0.7948164146868251
+    },
+    "learned region choice": {
+      "Geoguessr_score": 3257.1809935205183,
+      "Median_km_error": 323.7231335172392,
+      "Under_1_km": 0.11360691144708424,
+      "Under_25_km": 0.2470842332613391,
+      "Under_200_km": 0.4289416846652268,
+      "Under_750_km": 0.6488120950323975,
+      "Under_2500_km": 0.7956803455723542
+    },
+    "oracle region choice (top-5)": {
+      "Geoguessr_score": 4112.885097192225,
+      "Median_km_error": 103.37242089364612,
+      "Under_1_km": 0.14600431965442764,
+      "Under_25_km": 0.3438444924406048,
+      "Under_200_km": 0.6302375809935206,
+      "Under_750_km": 0.8483801295896328,
+      "Under_2500_km": 0.9460043196544277
+    }
+  }
+}

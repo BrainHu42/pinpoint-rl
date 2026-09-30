@@ -1,0 +1,19 @@
+{
+  "overlay_threshold": 0.64,
+  "dropped": {
+    "burned-in GPS": 8,
+    "unreadable": 0
+  },
+  "cases": {
+    "train": {
+      "candidate 1-25km": 8125,
+      "no candidate <25km": 15838,
+      "copy <1km": 10560
+    },
+    "val": {
+      "candidate 1-25km": 922,
+      "copy <1km": 1159,
+      "no candidate <25km": 1755
+    }
+  }
+}

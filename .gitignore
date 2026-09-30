@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Local environment and secrets
+.env
+.venv/
+.lavish/
+
+# Large or regenerable experiment outputs (caches, datasets, server logs) and third-party photos
+artifacts/**/*.npz
+artifacts/**/*.jsonl
+artifacts/**/*.log
+artifacts/**/overlay_spot_check/

@@ -1,0 +1,9 @@
+{
+  "matcher_version": "synthetic-fixture-v1",
+  "default_score": 0.0,
+  "pairs": [
+    {"query_asset_id":"q_1003","reference_asset_id":"mapillary:r_3001","score":0.96},
+    {"query_asset_id":"q_1004","reference_asset_id":"mapillary:r_4001","score":0.25},
+    {"query_asset_id":"q_1004","reference_asset_id":"mapillary:r_4002","score":0.93}
+  ]
+}

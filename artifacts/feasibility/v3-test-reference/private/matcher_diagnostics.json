@@ -1,0 +1,10 @@
+{
+  "calibration": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "threshold": 1.0
+  },
+  "report_average_precision": 0.037368299473113153,
+  "report_pair_count": 7149,
+  "report_positive_pair_count": 43
+}

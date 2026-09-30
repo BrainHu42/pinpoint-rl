@@ -1,0 +1,38 @@
+{
+  "checkpoint": {
+    "path": "/home/brian/workspace/pinpoint-submission/submission/exp/contrastive_retrieval/checkpoints/ckpt_best.pt",
+    "sha256": "d5f93646ed6cec219512dc0e25231220fe1fb4da2bdabef0d8ae36e96ebe062b",
+    "size": 1263480845
+  },
+  "dataset_readme": {
+    "path": "/data/hf/datasets/osv5m/README.md",
+    "sha256": "6244a67cff806c0885ce3537cc6ee15d910a37700ab5bf92a6f9445248debef7",
+    "size": 3130
+  },
+  "embedding_manifest": {
+    "path": "/data/pinpoint/osv5m-test/image_embeddings/google_siglip2-giant-opt-patch16-384/manifest.json",
+    "sha256": "a872bfedc3c8a2af1e6475614e691b5f6b4375366ee4a669bcc3fe3f26c906cd",
+    "size": 266
+  },
+  "reference_csv": {
+    "path": "/data/hf/datasets/osv5m/test.csv",
+    "sha256": "50c1226ece0cf2dd22f1047b495c18fdae61fba5626345967e6afce3390fadfc",
+    "size": 116469997
+  },
+  "retrieval_manifest": {
+    "path": "/home/brian/workspace/pinpoint-submission/submission/exp/contrastive_retrieval/checkpoints/retrieval_index/445a15869d6b21c5/manifest.json",
+    "sha256": "4a9c451bdf04773d379152fd6c84e59f1a80563cc784e8f983d48ddc425f3d92",
+    "size": 621
+  },
+  "runtime": {
+    "numpy": "2.4.4",
+    "pinpoint_version": "pinpoint-contrastive-retrieval-v1:8b14ffa5c891eecc",
+    "platform": "Linux-7.0.0-30-generic-x86_64-with-glibc2.39",
+    "python": "3.11.14"
+  },
+  "test_csv": {
+    "path": "/data/hf/datasets/osv5m/test.csv",
+    "sha256": "50c1226ece0cf2dd22f1047b495c18fdae61fba5626345967e6afce3390fadfc",
+    "size": 116469997
+  }
+}

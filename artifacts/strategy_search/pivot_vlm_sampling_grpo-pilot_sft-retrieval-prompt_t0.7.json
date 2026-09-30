@@ -1,0 +1,176 @@
+{
+  "model_server": "http://127.0.0.1:8765",
+  "model": "grpo-pilot",
+  "thinking": false,
+  "samples": 8,
+  "temperature": 0.7,
+  "prompt": "sft-retrieval",
+  "im2gps3k": {
+    "n": 150,
+    "unparsed_rate": 0.0,
+    "reranker top-1": {
+      "Geoguessr_score": 3928.0333333333333,
+      "Median_km_error": 27.033732985879745,
+      "Under_1_km": 0.17333333333333334,
+      "Under_25_km": 0.5,
+      "Under_200_km": 0.6533333333333333,
+      "Under_750_km": 0.7733333333333333,
+      "Under_2500_km": 0.8933333333333333
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3942.5533333333333,
+      "Median_km_error": 56.98774198511064,
+      "Under_1_km": 0.16,
+      "Under_25_km": 0.44666666666666666,
+      "Under_200_km": 0.66,
+      "Under_750_km": 0.8066666666666666,
+      "Under_2500_km": 0.8866666666666667
+    },
+    "shown candidates (oracle)": {
+      "Under_1_km": 0.36666666666666664,
+      "Under_25_km": 0.68,
+      "Under_200_km": 0.84,
+      "Under_750_km": 0.92
+    },
+    "VLM self-consistency (8)": {
+      "Geoguessr_score": 3956.786666666667,
+      "Median_km_error": 54.84853639387774,
+      "Under_1_km": 0.15333333333333332,
+      "Under_25_km": 0.4533333333333333,
+      "Under_200_km": 0.6666666666666666,
+      "Under_750_km": 0.8066666666666666,
+      "Under_2500_km": 0.8866666666666667
+    },
+    "VLM mean single sample": {
+      "Under_1_km": 0.15416666666666667,
+      "Under_25_km": 0.4525,
+      "Under_200_km": 0.6625,
+      "Under_750_km": 0.7983333333333333
+    },
+    "VLM best of 8 (oracle)": {
+      "Under_1_km": 0.17333333333333334,
+      "Under_25_km": 0.47333333333333333,
+      "Under_200_km": 0.6933333333333334,
+      "Under_750_km": 0.8133333333333334
+    },
+    "best of 8 or shown candidates (oracle)": {
+      "Under_1_km": 0.36666666666666664,
+      "Under_25_km": 0.68,
+      "Under_200_km": 0.84,
+      "Under_750_km": 0.92
+    },
+    "share of <25km samples that are >25km from every candidate": 0.0
+  },
+  "yfcc4k": {
+    "n": 150,
+    "unparsed_rate": 0.0,
+    "reranker top-1": {
+      "Geoguessr_score": 3650.48,
+      "Median_km_error": 150.2200843144326,
+      "Under_1_km": 0.2,
+      "Under_25_km": 0.4,
+      "Under_200_km": 0.5466666666666666,
+      "Under_750_km": 0.7133333333333334,
+      "Under_2500_km": 0.8666666666666667
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3655.4066666666668,
+      "Median_km_error": 149.46226373977555,
+      "Under_1_km": 0.14666666666666667,
+      "Under_25_km": 0.36,
+      "Under_200_km": 0.5666666666666667,
+      "Under_750_km": 0.7133333333333334,
+      "Under_2500_km": 0.8733333333333333
+    },
+    "shown candidates (oracle)": {
+      "Under_1_km": 0.31333333333333335,
+      "Under_25_km": 0.6066666666666667,
+      "Under_200_km": 0.8,
+      "Under_750_km": 0.9133333333333333
+    },
+    "VLM self-consistency (8)": {
+      "Geoguessr_score": 3665.7933333333335,
+      "Median_km_error": 149.46226373977555,
+      "Under_1_km": 0.15333333333333332,
+      "Under_25_km": 0.36666666666666664,
+      "Under_200_km": 0.5733333333333334,
+      "Under_750_km": 0.72,
+      "Under_2500_km": 0.8666666666666667
+    },
+    "VLM mean single sample": {
+      "Under_1_km": 0.15083333333333335,
+      "Under_25_km": 0.35333333333333333,
+      "Under_200_km": 0.5608333333333333,
+      "Under_750_km": 0.7175
+    },
+    "VLM best of 8 (oracle)": {
+      "Under_1_km": 0.18,
+      "Under_25_km": 0.38,
+      "Under_200_km": 0.58,
+      "Under_750_km": 0.7333333333333333
+    },
+    "best of 8 or shown candidates (oracle)": {
+      "Under_1_km": 0.31333333333333335,
+      "Under_25_km": 0.6066666666666667,
+      "Under_200_km": 0.8,
+      "Under_750_km": 0.9133333333333333
+    },
+    "share of <25km samples that are >25km from every candidate": 0.0
+  },
+  "both": {
+    "n": 300,
+    "unparsed_rate": 0.0,
+    "reranker top-1": {
+      "Geoguessr_score": 3789.2566666666667,
+      "Median_km_error": 81.49869622014191,
+      "Under_1_km": 0.18666666666666668,
+      "Under_25_km": 0.45,
+      "Under_200_km": 0.6,
+      "Under_750_km": 0.7433333333333333,
+      "Under_2500_km": 0.88
+    },
+    "VLM greedy": {
+      "Geoguessr_score": 3798.98,
+      "Median_km_error": 81.65014258907937,
+      "Under_1_km": 0.15333333333333332,
+      "Under_25_km": 0.4033333333333333,
+      "Under_200_km": 0.6133333333333333,
+      "Under_750_km": 0.76,
+      "Under_2500_km": 0.88
+    },
+    "shown candidates (oracle)": {
+      "Under_1_km": 0.34,
+      "Under_25_km": 0.6433333333333333,
+      "Under_200_km": 0.82,
+      "Under_750_km": 0.9166666666666666
+    },
+    "VLM self-consistency (8)": {
+      "Geoguessr_score": 3811.29,
+      "Median_km_error": 84.20667347576062,
+      "Under_1_km": 0.15333333333333332,
+      "Under_25_km": 0.41,
+      "Under_200_km": 0.62,
+      "Under_750_km": 0.7633333333333333,
+      "Under_2500_km": 0.8766666666666667
+    },
+    "VLM mean single sample": {
+      "Under_1_km": 0.1525,
+      "Under_25_km": 0.40291666666666665,
+      "Under_200_km": 0.6116666666666667,
+      "Under_750_km": 0.7579166666666667
+    },
+    "VLM best of 8 (oracle)": {
+      "Under_1_km": 0.17666666666666667,
+      "Under_25_km": 0.4266666666666667,
+      "Under_200_km": 0.6366666666666667,
+      "Under_750_km": 0.7733333333333333
+    },
+    "best of 8 or shown candidates (oracle)": {
+      "Under_1_km": 0.34,
+      "Under_25_km": 0.6433333333333333,
+      "Under_200_km": 0.82,
+      "Under_750_km": 0.9166666666666666
+    },
+    "share of <25km samples that are >25km from every candidate": 0.0
+  }
+}
