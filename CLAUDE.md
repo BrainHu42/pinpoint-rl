@@ -9,20 +9,25 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research plan (pivoted 2026-10-01; user's decision)
-**Question: can Qwen3.5-4B turn visual clues and geographic hypotheses into natural-language search queries that
-acquire useful evidence beyond whole-image retrieval and improve its final geolocation prediction?**
+## Research plan (pivoted 2026-10-01, staged 2026-10-02; user's decisions)
+**Stage 1 (now): acquire new evidence.** Can Qwen3.5-4B write search queries that retrieve evidence beyond what we
+already have (whole-image retrieval, the reranker's candidates) that contains the answer? Judged on acquisition alone,
+by ground truth, with no chooser in the loop: how often the retrieved results (article or photo coordinates) land
+within 1 / 25 km of the truth when the reranker top-1 / shown candidates don't ("new coverage"). Backends: SigLIP2
+photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
+**Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
+attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
+images for a 4B model (see the small-VLM-prompts memory).
 - Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
-  final answer may be an initial candidate, a retrieved image's location, or any lat/lon.
-- First experiment: a fixed search loop with an existing model, no new SFT or RL. Full design, arms, gate and
-  prerequisites: `QUERY_EVIDENCE_PLAN.md`.
+  final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = ground-truth
+  coordinates of what the queries retrieve.
+- Where stage 1 stands (LEARNINGS 11-12, always against the reranker top-1): SigLIP2 text search finds almost nothing
+  new; Wikipedia search works with good names (Gemini's: +12 pts oracle over reranker on 645 landmark photos), but the
+  4B's names add only +2.5 greedy / +4.2 best of 8, the 27B +4.7 / +6.2. New coverage beyond the shown candidates is
+  ~1-2 pts for the 4B. The query design is in `QUERY_EVIDENCE_PLAN.md` (its stage-2 revision loop is superseded).
 - Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
-  That plan and the "learning what to search for" no-go are recorded in LEARNINGS.md (lessons 7-9). Known risks to
-  watch: SigLIP2's text tower knows concepts, not place names (lesson 7); off-list guesses are almost always wrong
-  (lesson 4); the SFT checkpoint was trained on one image + a candidate list, so multi-image evidence prompts are out
-  of distribution; the 200-photo dev set is too noisy for a 2-pt gate (use a larger one).
-- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (e.g. new evidence vs
-  the shown-candidate oracle and the extra-whole-image-retrieval arm), not against current greedy.
+- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
+  and the shown-candidate oracle), not against current greedy.
 
 ## Rules
 - Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`). Wikimedia isn't in

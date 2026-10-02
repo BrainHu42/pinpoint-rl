@@ -1,6 +1,8 @@
 # Experiment plan: LLM-generated search queries for geolocation
 
-Status: proposed for review; not implemented or run.
+Status (2026-10-02): the project is now staged. This plan's query and retrieval half is **stage 1**, judged on evidence
+acquisition alone (new coverage over the reranker and shown candidates; see CLAUDE.md). The answer-revision loop below
+is **stage 2**, deferred. Stage-2 first attempt and stage-1 results so far: LEARNINGS 11-12.
 
 ## Research question
 
