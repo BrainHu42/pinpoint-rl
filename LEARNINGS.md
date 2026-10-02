@@ -89,6 +89,10 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Same 645 photos, the base 4B's three geographic queries: +0.8-1.1 pts beyond the oracle. 71% of its queries name
       a shown candidate's city; its landmark guesses are often wrong (Bargello → Siena Palazzo Pubblico).
     - Dev MP16 queries at equal budget (6 results per photo): new coverage 0.8-1.5% vs SigLIP2 1.3-3.6%.
+    - Prompt vs model: the 4B with Gemini's exact labelling prompt (no candidates, one most-specific name) gives no name
+      for 37%, finds the truth within 25 km for 42%, and adds +1.7 pts beyond the oracle (best of 8 samples at T=1:
+      +2.0). It names famous landmarks right (Sydney Opera House, Wat Arun), which retrieval already finds, and misses
+      or mislabels the long tail (Bargello → Palau de la Generalitat). The prompt explains little; the model is the cap.
     - So search can add ~7 pts of candidates the list misses, but only with names the 4B doesn't produce (lesson 9's
       knowledge cap again). Article coordinates are the entity centre, so <1 km is lower than for photo retrieval.
 
