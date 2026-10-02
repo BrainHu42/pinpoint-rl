@@ -141,30 +141,51 @@ def _informativeness(dev, results, truth, groups, tag, variant, report) -> None:
         print(f"  reranker top-1 (w=0)  {'':41s}" + " ".join(f"{base[t][mask].mean():6.1%}" for t in THRESHOLDS))
 
 
-def _retrieve(tag: str, variant: str, dev: list[dict[str, Any]], generated: dict[str, Any], texts: list[tuple[int, str]]) -> dict[str, list[list[tuple[float, float]]]]:
-    """Coordinates of each arm's results per photo (GPU: SigLIP2 text embeddings, gallery search, bge dense search)."""
+def _search_batched(world, embeddings: np.ndarray, author: np.ndarray, batch: int = 8_000) -> dict[str, np.ndarray]:
+    """`_search` in query batches: the score matrix of one pass is queries x 16k gallery rows x 4 bytes."""
+
+    parts = [_search(world, embeddings[s : s + batch], author[s : s + batch]) for s in range(0, len(embeddings), batch)]
+    return {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
+
+
+def _retrieve(
+    tag: str, variant: str, dev: list[dict[str, Any]], generated: dict[str, Any], texts: list[tuple[int, str]],
+    backends: Sequence[str] = ("whole", "siglip", "bm25", "dense"),
+) -> dict[str, list[list[tuple[float, float]]]]:
+    """Coordinates of each arm's results per photo (GPU: SigLIP2 text embeddings, gallery search, bge dense search).
+
+    `backends` limits the arms computed (the others stay empty): "whole" (also fills "whole (matched)"), "siglip", "bm25", "dense".
+    """
 
     import torch
 
     bench = "path" in dev[0]
     world = load_world() if bench else load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in dev])
     position = [e["index"] if bench else m for m, e in enumerate(dev)]
-    with np.load((BENCH_ROOT if bench else SFT_ROOT) / "neighbors.npz") as saved:
-        initial = {k: saved[k][[e["index"] for e in dev]] for k in ("mp16_raw_idx", "mp16_raw_sim", "osv_raw_idx", "osv_raw_sim")}
+    initial = {}
+    if "whole" in backends:
+        with np.load((BENCH_ROOT if bench else SFT_ROOT) / "neighbors.npz") as saved:
+            initial = {k: saved[k][[e["index"] for e in dev]] for k in ("mp16_raw_idx", "mp16_raw_sim", "osv_raw_idx", "osv_raw_sim")}
 
-    model, processor = _model()
-    embeddings = []
-    for start in range(0, len(texts), 128):
-        tokens = processor(text=[t[1].lower() for t in texts[start : start + 128]], return_tensors="pt", padding="max_length",
-                           max_length=TEXT_TOKENS, truncation=True).to("cuda")
-        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16):
-            embeddings.append(_features(model.get_text_features(**tokens)).float().cpu().numpy())
-    del model
-    torch.cuda.empty_cache()
-    found = _search(world, np.concatenate(embeddings), world.query_author[[position[m] for m, _ in texts]])
-    wiki = Wiki()
-    dense = wiki.dense([q for _, q in texts], k=2 * RESULTS_PER_QUERY)
-    bm25 = wiki.bm25_many([q for _, q in texts], k=2 * RESULTS_PER_QUERY)
+    found: dict[str, np.ndarray] = {}
+    if "siglip" in backends:
+        model, processor = _model()
+        embeddings = []
+        for start in range(0, len(texts), 128):
+            tokens = processor(text=[t[1].lower() for t in texts[start : start + 128]], return_tensors="pt", padding="max_length",
+                               max_length=TEXT_TOKENS, truncation=True).to("cuda")
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16):
+                embeddings.append(_features(model.get_text_features(**tokens)).float().cpu().numpy())
+        del model
+        torch.cuda.empty_cache()
+        found = _search_batched(world, np.concatenate(embeddings), world.query_author[[position[m] for m, _ in texts]])
+    dense = bm25 = [[] for _ in texts]
+    if "dense" in backends or "bm25" in backends:
+        wiki = Wiki(dense="dense" in backends)
+        if "dense" in backends:
+            dense = wiki.dense([q for _, q in texts], k=2 * RESULTS_PER_QUERY)
+        if "bm25" in backends:
+            bm25 = wiki.bm25_many([q for _, q in texts], k=2 * RESULTS_PER_QUERY)
 
     def photo_results(m: int, corpus: str, rows: np.ndarray, sims: np.ndarray, count: int, taken: set) -> list[tuple[float, float]]:
         gallery = world.mp16 if corpus == "mp16" else world.osv
@@ -184,12 +205,11 @@ def _retrieve(tag: str, variant: str, dev: list[dict[str, Any]], generated: dict
 
     results: dict[str, list[list[tuple[float, float]]]] = {k: [[] for _ in dev] for k in ("whole", "siglip", "bm25", "dense")}
     taken_whole = [set() for _ in dev]
-    for m in range(len(dev)):
-        for corpus in ("mp16", "osv"):
-            results["whole"][m] += photo_results(m, corpus, initial[f"{corpus}_raw_idx"][m], initial[f"{corpus}_raw_sim"][m], WHOLE_PER_CORPUS, taken_whole[m])
     matched: list[list[tuple[float, float]]] = [[] for _ in dev]  # whole-image results, one per corpus per query this photo got
     queries_per_photo = np.bincount([m for m, _ in texts], minlength=len(dev))
-    for m in range(len(dev)):
+    for m in range(len(dev) if "whole" in backends else 0):
+        for corpus in ("mp16", "osv"):
+            results["whole"][m] += photo_results(m, corpus, initial[f"{corpus}_raw_idx"][m], initial[f"{corpus}_raw_sim"][m], WHOLE_PER_CORPUS, taken_whole[m])
         taken = set()
         for corpus in ("mp16", "osv"):
             matched[m] += photo_results(m, corpus, initial[f"{corpus}_raw_idx"][m], initial[f"{corpus}_raw_sim"][m], int(queries_per_photo[m]), taken)
@@ -197,7 +217,7 @@ def _retrieve(tag: str, variant: str, dev: list[dict[str, Any]], generated: dict
     taken_siglip = [set() for _ in dev]
     seen = {"bm25": [set() for _ in dev], "dense": [set() for _ in dev]}
     for j, (m, _) in enumerate(texts):
-        for corpus in ("mp16", "osv"):
+        for corpus in ("mp16", "osv") if found else ():
             results["siglip"][m] += photo_results(m, corpus, found[f"{corpus}_idx"][j], found[f"{corpus}_sim"][j], 1, taken_siglip[m])
         for name, hits in (("bm25", bm25[j]), ("dense", dense[j])):
             fresh = [h for h in hits if h["id"] not in seen[name][m]][:RESULTS_PER_QUERY]

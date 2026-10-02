@@ -136,6 +136,18 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Caveat: a linear combiner on rank is crude; a learned chooser (stage 2) could use the discrimination better. The
       untrained 4B with exemplar photos or nearby place names gained ~+1.3 pts (lesson 8).
 
+15. **A learned chooser can't use the 4B's search evidence either (`experiment/evidence_ranker.py`, 2026-10-02).** The
+    pipeline's per-candidate MLP reranker (same recipe), refit on 34,523 MP16 train photos (bucket 99, train
+    photographers; 72,914 queries, 2.1 per photo) with and without evidence features (log1p count of SigLIP2-text or
+    Wikipedia-dense results within 1 / 25 / 200 km of each candidate + result count); 3 seeds; top-1 at <25 km:
+    dev (MP16 val) A 34.7, + SigLIP2 34.8, + Wikipedia 35.2, + both 34.8, both shuffled across photos 35.0;
+    val (benchmarks) A 43.3, 43.1, 43.0, 43.3, 43.2. All changes within +-0.5, intervals include 0, the shuffled control
+    does as well as the real evidence, and <200 km is flat or lower. The refit baseline matches the original reranker
+    (34.2 / 42.8). Evidence touches 10-13% of candidate cells. Together with lessons 11-14: with this 4B and these
+    backends, neither new candidates (+~1 pt oracle) nor candidate discrimination (no learned gain) is there to find.
+    Untested: richer evidence features (similarity scores, article text), a larger or better searcher, an LLM reading
+    the articles.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
