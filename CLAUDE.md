@@ -69,5 +69,9 @@ acquire useful evidence beyond whole-image retrieval and improve its final geolo
 - `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
 - `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
   `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
+- `experiment/query_evidence.py`: fixed query → SigLIP2 evidence → revise loop on MP16 dev photos
+  (`scripts/query_evidence.sh`; outputs `artifacts/query_evidence/<tag>/`).
+- `experiment/wiki_backend.py`: offline geotagged-Wikipedia search (`/data/pinpoint/wikipedia/enwiki_geo.sqlite` BM25 +
+  `enwiki_geo_bge-base.f16.npy` dense; run with `~/.venvs/sft/bin/python`, `.venv` lacks pyarrow), `probe` go/no-go.
 - Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool); `artifacts/` is not tracked.
 - Full setup from scratch: `SETUP.md`.

@@ -70,6 +70,28 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     21 pts. The right comparison was what new queries add beyond the shown-candidate oracle (< 2 pts). Also use the
     full eval halves for decisions; 300-subset differences flipped sign several times.
 
+11. **Base-4B search queries + six SigLIP2 evidence photos don't help (`experiment/query_evidence.py`, 2026-10-01).**
+    1,000 MP16 val photos, reranker top-10 as text, base 4B, no training. <25 km: no search 30.8, ask again 31.5,
+    whole-image evidence 32.2, caption 31.3, visual-clue queries 31.1, geographic queries 31.2 (reranker top-1 34.2).
+    Queries vs whole-image: −1.0 / −1.1 pts, CIs include 0 (gate was ≥ +2). Why:
+    - Visual queries are concepts ("ancient stone pyramid ruins"): 3.5% of their photos are within 25 km of the truth.
+    - Geographic queries name a shown candidate's city 83% of the time, so they re-fetch the candidates.
+    - New coverage (evidence near truth, no shown candidate near it) is 1.3-3.6% of photos; the model converts ~none.
+    - The model ignores correct evidence: in ~25% of photos with an evidence photo near the truth it answers wrong
+      (e.g. the exact Pittsburgh rhino sculpture retrieved, answer "Jeff Koons Rhino, Washington DC").
+    - Prompt facts: a `{"lat": 0.0, "lon": 0.0}` template gets echoed as an answer (35-60%); use `<latitude>`. Without
+      "Think briefly (under 120 words)" the base model rambles past 600 tokens.
+
+12. **Geotagged Wikipedia is a discriminating offline backend; the 4B's queries are the bottleneck
+    (`experiment/wiki_backend.py`, 2026-10-02).** 1.15M English articles with coordinates, BM25 + bge-base dense.
+    - Gemini's 645 high-confidence place names (benchmark photos): Wikipedia top-1 within 25 km 82%, top-3 89-90%
+      (GeoNames 39%, SigLIP2 text 3.1%), and +7.3 pts beyond the shown-candidate oracle (86.7 → 94.0).
+    - Same 645 photos, the base 4B's three geographic queries: +0.8-1.1 pts beyond the oracle. 71% of its queries name
+      a shown candidate's city; its landmark guesses are often wrong (Bargello → Siena Palazzo Pubblico).
+    - Dev MP16 queries at equal budget (6 results per photo): new coverage 0.8-1.5% vs SigLIP2 1.3-3.6%.
+    - So search can add ~7 pts of candidates the list misses, but only with names the 4B doesn't produce (lesson 9's
+      knowledge cap again). Article coordinates are the entity centre, so <1 km is lower than for photo retrieval.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
@@ -104,8 +126,10 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
 - A "LLM picks region → retrieve inside it" pipeline (lesson 5).
 
 ## Kept artifacts
-- `/data/pinpoint/sft/sft-34k-retrieval` (adapter + merged): best SFT model, starting point for the agent.
-- `/data/pinpoint/sft/grpo-kl` (checkpoint-200 + merged): best greedy so far.
+- `/data/pinpoint/sft/sft-34k-retrieval` (adapter): best SFT model, starting point for the agent.
+- `/data/pinpoint/sft/grpo-kl` (checkpoint-200): best greedy so far.
+- Merged weights were deleted to save space (2026-10-02). Rebuild in order: `sft_train merge --run sft-34k-retrieval`,
+  then `grpo_train merge --init sft-34k-retrieval --run grpo-kl --adapter checkpoint-200` (GRPO's base is the SFT merge).
 - `artifacts/sft/`: MP16 query pool, neighbour/candidate caches, `sft_retrieval.jsonl` (+ `sft.jsonl`), logs.
 - `artifacts/strategy_search/`: benchmark caches, all result JSONs, Gemini labels for 1,683 eval photos
   (`llm_advantage_labels.json`; OpenRouter credits ran out before the other ~2,100), crop-query search cache
