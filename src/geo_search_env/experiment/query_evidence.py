@@ -60,7 +60,7 @@ Answer: ```json
 {{"queries": ["", "", ""]}}
 ```"""
 CAPTION_PROMPT = "Describe this photo in one short search query (max 12 words)."
-ANSWER_FORMAT = """Answer: ```json
+ANSWER_FORMAT = """Think briefly (under 120 words), then end with exactly one JSON block: ```json
 {{"lat": <latitude>, "lon": <longitude>}}
 ```"""
 REVISE_PROMPT = "Where was this photo taken? Candidates:\n{options}\nYour earlier answer was ({lat:.3f}, {lon:.3f}). Give your final answer.\n" + ANSWER_FORMAT
