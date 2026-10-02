@@ -93,6 +93,10 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       for 37%, finds the truth within 25 km for 42%, and adds +1.7 pts beyond the oracle (best of 8 samples at T=1:
       +2.0). It names famous landmarks right (Sydney Opera House, Wat Arun), which retrieval already finds, and misses
       or mislabels the long tail (Bargello → Palau de la Generalitat). The prompt explains little; the model is the cap.
+    - Against the reranker top-1 (the baseline; oracle = perfect choice between reranker and search, <25 km):
+      MP16 dev 34.2 → 40.6-42.1 with geographic-query search (SigLIP2, Wikipedia BM25 or dense), 35-37 with visual or
+      caption queries, vs 47.2 for the shown top-10. 645 benchmark photos: 77.4 → 79.8-82.0 with the 4B's searches,
+      vs 86.7 for the shown top-10. Actual answers with evidence stay below the reranker (lesson 11).
     - So search can add ~7 pts of candidates the list misses, but only with names the 4B doesn't produce (lesson 9's
       knowledge cap again). Article coordinates are the entity centre, so <1 km is lower than for photo retrieval.
 

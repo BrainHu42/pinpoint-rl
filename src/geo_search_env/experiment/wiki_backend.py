@@ -13,12 +13,14 @@ probe: run the dev run's generated queries (artifacts/query_evidence/<tag>) thro
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import gzip
 import json
 import math
 from pathlib import Path
 import re
 import sqlite3
+import threading
 from typing import Any, Sequence
 
 import numpy as np
@@ -117,9 +119,17 @@ class Wiki:
     def __init__(self, dense: bool = True) -> None:
         import torch
 
-        self.db = sqlite3.connect(DB, check_same_thread=False)
+        self.local = threading.local()
         self.encode = _encoder() if dense else None
         self.matrix = torch.as_tensor(np.load(EMBEDDINGS, mmap_mode="r")[:], device="cuda") if dense else None
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        """One read-only connection per thread, so BM25 lookups can run in parallel."""
+
+        if not hasattr(self.local, "db"):
+            self.local.db = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+        return self.local.db
 
     def _rows(self, ids: Sequence[int]) -> list[dict[str, Any]]:
         if not ids:
@@ -134,6 +144,10 @@ class Wiki:
         match = " OR ".join(f'"{w}"' for w in dict.fromkeys(words))
         ids = [r[0] for r in self.db.execute("SELECT rowid FROM search WHERE search MATCH ? ORDER BY bm25(search, 10.0, 1.0) LIMIT ?", (match, k))]
         return self._rows(ids)
+
+    def bm25_many(self, queries: Sequence[str], k: int = 10, workers: int = 16) -> list[list[dict[str, Any]]]:
+        with ThreadPoolExecutor(workers) as pool:
+            return list(pool.map(lambda q: self.bm25(q, k), queries))
 
     def dense(self, queries: list[str], k: int = 10) -> list[list[dict[str, Any]]]:
         import torch
@@ -163,17 +177,21 @@ def probe(tag: str, *, per_query: int = 1) -> None:
     wiki = Wiki()
     texts = [(m, arm, q) for m, e in enumerate(dev) for arm in ("visual", "geo", "caption") for q in generated[e["image_id"]][arm]["queries"]]
     dense = wiki.dense([q for _, _, q in texts], k=max(3, per_query))
+    bm25 = wiki.bm25_many([q for _, _, q in texts], k=max(3, per_query))
     hits: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
-    for (m, arm, q), d in zip(texts, dense):
+    for (m, arm, q), d, b in zip(texts, dense, bm25):
         k = 3 if arm == "caption" else per_query  # caption: one query, so three results, as in the SigLIP arm
         hits.setdefault(("dense", arm, m), []).extend(d[:k])
-        hits.setdefault(("bm25", arm, m), []).extend(wiki.bm25(q, k))
+        hits.setdefault(("bm25", arm, m), []).extend(b[:k])
     report: dict[str, Any] = {"n": len(dev), "per_query": per_query}
     shown_km = np.asarray([_km([c[1:] for c in e["candidates"]], *e["truth"]).min() for e in dev])
-    print(f"n={len(dev)}, top-{per_query} per query        hit <1 km  <25 km   shown+hits <1 km  <25 km   NEW (hit near, no shown near) <25 km")
-    for t in THRESHOLDS:
-        report[f"shown <{int(t)} km"] = float((shown_km < t).mean())
-    print(f"  {'shown candidates':26s} {'':18s}   {report['shown <1 km']:8.1%} {report['shown <25 km']:7.1%}")
+    reranker_km = np.asarray([_km([e["candidates"][0][1:]], *e["truth"])[0] for e in dev])  # candidates are in reranker order
+    for name, d in (("reranker top-1", reranker_km), ("shown", shown_km)):
+        for t in THRESHOLDS:
+            report[f"{name} <{int(t)} km"] = float((d < t).mean())
+    print(f"n={len(dev)}, top-{per_query} per query   reranker wrong, a hit right   reranker+hits   shown+hits   (all <25 km; NEW = no shown near)")
+    print(f"  {'reranker top-1':26s} {'':28s} {report['reranker top-1 <25 km']:9.1%}")
+    print(f"  {'shown candidates (oracle)':26s} {'':28s} {'':9s} {report['shown <25 km']:12.1%}")
     for backend in ("siglip", "bm25", "dense"):
         for arm in ("visual", "geo", "caption"):
             near = []
@@ -185,8 +203,11 @@ def probe(tag: str, *, per_query: int = 1) -> None:
             row = {f"hit <{int(t)} km": float((near < t).mean()) for t in THRESHOLDS}
             row |= {f"shown+hits <{int(t)} km": float((np.minimum(near, shown_km) < t).mean()) for t in THRESHOLDS}
             row["new <25 km"] = float(((near < 25) & (shown_km >= 25)).mean())
+            row["beats reranker <25 km"] = float(((near < 25) & (reranker_km >= 25)).mean())
+            row["reranker+hits <25 km"] = float((np.minimum(near, reranker_km) < 25).mean())
             report[f"{backend}/{arm}"] = row
-            print(f"  {backend + ' / ' + arm:26s} {row['hit <1 km']:8.1%} {row['hit <25 km']:7.1%}   {row['shown+hits <1 km']:8.1%} {row['shown+hits <25 km']:7.1%}   {row['new <25 km']:8.1%}")
+            print(f"  {backend + ' / ' + arm:26s} {row['beats reranker <25 km']:16.1%} {'':11s} {row['reranker+hits <25 km']:9.1%} "
+                  f"{row['shown+hits <25 km']:12.1%}   NEW {row['new <25 km']:.1%}")
     (root / f"wiki_probe_top{per_query}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     samples = []
     for m, e in enumerate(dev[:40]):
