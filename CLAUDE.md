@@ -16,7 +16,10 @@ already have (whole-image retrieval, the reranker's candidates) that contains th
 within 1 / 25 / 200 km (street / city / region) of the truth. It is the ceiling for any stage-2 chooser, with no
 chooser in the loop. The baseline is the whole candidate pool the pipeline finds (~17 per photo), not the reranker's
 top-10; the gain over it is the stage-1 result. Report it next to the reranker top-1 / top-10 and an extra-whole-image-
-retrieval control at matched budget (`stage1_eval.py`), since the oracle only grows with more results. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
+retrieval control at matched budget (`stage1_eval.py`), since the oracle only grows with more results. **Second metric
+(user's point): evidence informativeness**, because evidence can help choose among candidates without adding one:
+support of a candidate = results within 25 km, its rate on correct vs wrong candidates, within-photo AUC, and top-1
+of -rank + w * support (w fitted on dev), against the reranker top-1. Report both axes. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
 **Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
 attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
 images for a 4B model (see the small-VLM-prompts memory).

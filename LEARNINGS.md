@@ -120,6 +120,22 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       placeholders in the JSON template 1.52 (44% answer in prose and run out of tokens). Keep the empty-string template.
     - 4B queries name a shown candidate's city only 12-18% of the time without candidates in the prompt (71-83% with).
 
+14. **Evidence informativeness (`stage1_eval.py`, 2026-10-02): the 4B's search evidence discriminates between candidates
+    but adds almost nothing to a simple combiner.** Oracle accuracy only counts new candidates; evidence can also say which
+    candidate to trust. Support of a candidate = results within 25 km of it; measured on photos whose pool holds a correct
+    candidate (dev 530, val 645), prompt v2.
+    - Specificity: text evidence lands on correct candidates 26-34% of the time vs 6-9% on wrong ones (SigLIP2 30 / 9,
+      Wikipedia dense 26-31 / 6-7), a 3-5x ratio; matched whole-image results 56-57 / 25 (2.3x, same retrieval the
+      reranker already uses).
+    - Coverage: text evidence touches the pool for only 41-50% of photos (whole-image 90-100%).
+    - Within-photo AUC of support at separating correct from wrong candidates: whole-image 0.66, text 0.58-0.61;
+      reranker rank 0.74-0.75.
+    - One-parameter combiner, score = -rank + w * support, w fitted on dev: top-1 <25 km changes by 0.0 to +0.6 pts
+      (Wikipedia dense, w = 2: dev +0.6, val +0.6, CIs include 0; 11-13 fixed vs 5-7 broken). Other arms keep w = 0.
+      Variants v2b / v2c touch less (29-40%) and gain nothing.
+    - Caveat: a linear combiner on rank is crude; a learned chooser (stage 2) could use the discrimination better. The
+      untrained 4B with exemplar photos or nearby place names gained ~+1.3 pts (lesson 8).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

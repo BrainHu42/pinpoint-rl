@@ -22,7 +22,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from .query_evidence import (
-    BENCH_ROOT, NEAR_DUPLICATE_SIM, SFT_ROOT, TEXT_TOKENS, MP16Images, _chat, _load, _parallel, _photo, _save, parse_queries,
+    BENCH_ROOT, ROOT, NEAR_DUPLICATE_SIM, SFT_ROOT, TEXT_TOKENS, MP16Images, _chat, _load, _parallel, _photo, _save, parse_queries,
 )
 from .query_headroom import _features, _model, _search
 from .strategy_search import load_world
@@ -75,18 +75,83 @@ def _bootstrap(delta: np.ndarray, resamples: int = 2000) -> tuple[float, float, 
     return float(delta.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
-def evaluate(tag: str, variant: str = "v2") -> None:
+SUPPORT_KM = 25.0  # a result supports a candidate if it lies this close to it
+WEIGHTS = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0)
+
+
+def _informativeness(dev, results, truth, groups, tag, variant, report) -> None:
+    """Does the evidence tell a chooser which candidate to trust, even when it adds no new candidate?
+
+    support(c) = results within 25 km of candidate c. Reported on photos whose pool holds a correct candidate (within 25 km):
+    how often the evidence touches the pool, its support on correct vs wrong candidates, the within-photo AUC of support
+    for separating them (reference: the reranker's rank), and top-1 accuracy of score = -rank + w * support, with w fitted
+    on `dev` and reused on other tags (one parameter, no learned model).
+    """
+
+    pools = [np.asarray(e.get("pool") or [c[1:] for c in e["candidates"]], dtype=float) for e in dev]
+    dist = [_km(p, *truth[m]) for m, p in enumerate(pools)]  # km from each pooled candidate (reranker order) to the truth
+    correct = [d < SUPPORT_KM for d in dist]
+    answerable = np.asarray([c.any() for c in correct])
+    arms = ("whole", "whole (matched)", "siglip", "bm25", "dense", "siglip+dense (12)")
+    support = {a: [np.asarray([(_km(pts, *c) < SUPPORT_KM).sum() if len(pts) else 0 for c in p]) for p, pts in zip(pools, results[a])] for a in arms}
+
+    def auc(score: np.ndarray, ok: np.ndarray) -> float:
+        if not ok.any() or ok.all():
+            return np.nan
+        a, b = score[ok][:, None], score[~ok][None, :]
+        return float((a > b).mean() + 0.5 * (a == b).mean())
+
+    def hit(w: float, a: str, t: float) -> np.ndarray:
+        return np.asarray([d[int(np.argmax(-np.arange(len(d)) + w * s))] < t for d, s in zip(dist, support[a])])
+
+    weights: dict[str, float] = {}
+    if tag != "dev":
+        try:
+            weights = json.loads((ROOT / "dev" / f"stage1{_suffix(variant)}.json").read_text(encoding="utf-8")).get("combiner w", {})
+        except FileNotFoundError:
+            pass
+    fitted_on = "dev" if weights or tag == "dev" else "this set"
+    for a in arms:
+        if a not in weights:
+            weights[a] = max(WEIGHTS, key=lambda w: (hit(w, a, 25.0).mean(), -w))
+    report["combiner w"], report["combiner w fitted on"] = weights, fitted_on
+    report["informativeness"] = {}
+    base = {t: hit(0.0, "siglip", t) for t in THRESHOLDS}  # w = 0 is the reranker top-1
+    for g, mask in groups.items():
+        ans = mask & answerable
+        rank_auc = float(np.nanmean([auc(-np.arange(len(d)).astype(float), c) for d, c, k in zip(dist, correct, ans) if k]))
+        print(f"\n{g}: EVIDENCE INFORMATIVENESS on {ans.sum()} photos whose pool holds a correct candidate (<25 km); w fitted on {fitted_on}; "
+              f"reranker-rank AUC {rank_auc:.3f}")
+        print(f"  {'arm':20s} touches pool | support>0: correct / wrong cand. | AUC   | top-1 with evidence (w)  <1 km <25 km <200 km |  d<25 km [95% CI]  | fixed/broke (25 km)")
+        report["informativeness"][g] = {"rank AUC": rank_auc}
+        for a in arms:
+            touches = float(np.mean([s.sum() > 0 for s, k in zip(support[a], ans) if k]))
+            on_right = float(np.mean([(s[c] > 0).mean() for s, c, k in zip(support[a], correct, ans) if k]))
+            on_wrong = float(np.mean([(s[~c] > 0).mean() for s, c, k in zip(support[a], correct, ans) if k and (~c).any()]))
+            a_auc = float(np.nanmean([auc(s.astype(float), c) for s, c, k in zip(support[a], correct, ans) if k]))
+            w = weights[a]
+            tops = {t: hit(w, a, t)[mask] for t in THRESHOLDS}
+            delta = _bootstrap(tops[25.0].astype(float) - base[25.0][mask])
+            fixed, broke = int((tops[25.0] & ~base[25.0][mask]).sum()), int((~tops[25.0] & base[25.0][mask]).sum())
+            report["informativeness"][g][a] = {"touches pool": touches, "support>0 correct": on_right, "support>0 wrong": on_wrong, "AUC": a_auc, "w": w,
+                                               "top-1": {f"<{int(t)} km": float(v.mean()) for t, v in tops.items()}, "delta <25 km": delta,
+                                               "fixed": fixed, "broke": broke}
+            print(f"  {a:20s} {touches:11.0%} | {on_right:9.0%} / {on_wrong:5.0%}        | {a_auc:.3f} | w={w:5.2f}   "
+                  + " ".join(f"{tops[t].mean():6.1%}" for t in THRESHOLDS) + f"   {delta[0]:+6.1%} [{delta[1]:+.1%}, {delta[2]:+.1%}]   {fixed}/{broke}")
+        print(f"  reranker top-1 (w=0)  {'':41s}" + " ".join(f"{base[t][mask].mean():6.1%}" for t in THRESHOLDS))
+
+
+def _retrieve(tag: str, variant: str, dev: list[dict[str, Any]], generated: dict[str, Any], texts: list[tuple[int, str]]) -> dict[str, list[list[tuple[float, float]]]]:
+    """Coordinates of each arm's results per photo (GPU: SigLIP2 text embeddings, gallery search, bge dense search)."""
+
     import torch
 
-    dev = _load(tag, "dev.json")
-    generated = _load(tag, f"places{_suffix(variant)}.json")
     bench = "path" in dev[0]
     world = load_world() if bench else load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in dev])
     position = [e["index"] if bench else m for m, e in enumerate(dev)]
     with np.load((BENCH_ROOT if bench else SFT_ROOT) / "neighbors.npz") as saved:
         initial = {k: saved[k][[e["index"] for e in dev]] for k in ("mp16_raw_idx", "mp16_raw_sim", "osv_raw_idx", "osv_raw_sim")}
 
-    texts = [(m, q) for m, e in enumerate(dev) for q in generated[e["image_id"]]["queries"]]
     model, processor = _model()
     embeddings = []
     for start in range(0, len(texts), 128):
@@ -139,6 +204,21 @@ def evaluate(tag: str, variant: str = "v2") -> None:
             seen[name][m].update(h["id"] for h in fresh)
             results[name][m] += [(h["lat"], h["lon"]) for h in fresh]
     results["siglip+dense (12)"] = [a + b for a, b in zip(results["siglip"], results["dense"])]
+    return results
+
+
+def evaluate(tag: str, variant: str = "v2") -> None:
+    dev = _load(tag, "dev.json")
+    generated = _load(tag, f"places{_suffix(variant)}.json")
+    texts = [(m, q) for m, e in enumerate(dev) for q in generated[e["image_id"]]["queries"]]
+    bench = "path" in dev[0]
+    cache = ROOT / tag / f"results{_suffix(variant)}.json"  # retrieved coordinates; used only if newer than the photo list and the queries
+    inputs = (ROOT / tag / "dev.json", ROOT / tag / f"places{_suffix(variant)}.json")
+    if cache.exists() and all(cache.stat().st_mtime > p.stat().st_mtime for p in inputs):
+        results = {k: [[tuple(p) for p in pts] for pts in v] for k, v in json.loads(cache.read_text(encoding="utf-8")).items()}
+    else:
+        results = _retrieve(tag, variant, dev, generated, texts)
+        cache.write_text(json.dumps(results) + "\n", encoding="utf-8")
 
     truth = np.asarray([e["truth"] for e in dev])
     km = lambda pts, m: float(_km(pts, *truth[m]).min()) if len(pts) else np.inf
@@ -174,6 +254,7 @@ def evaluate(tag: str, variant: str = "v2") -> None:
                 line += f"   {gain[0]:+6.1%} [{gain[1]:+.1%}, {gain[2]:+.1%}]   {control[0]:+6.1%} [{control[1]:+.1%}, {control[2]:+.1%}]"
             report[g][name] = entry
             print(line)
+    _informativeness(dev, results, truth, groups, tag, variant, report)
     _save(tag, f"stage1{_suffix(variant)}.json", report)
 
 
