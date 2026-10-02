@@ -189,9 +189,10 @@ def probe(tag: str, *, per_query: int = 1) -> None:
     for name, d in (("reranker top-1", reranker_km), ("shown", shown_km)):
         for t in THRESHOLDS:
             report[f"{name} <{int(t)} km"] = float((d < t).mean())
-    print(f"n={len(dev)}, top-{per_query} per query   reranker wrong, a hit right   reranker+hits   shown+hits   (all <25 km; NEW = no shown near)")
-    print(f"  {'reranker top-1':26s} {'':28s} {report['reranker top-1 <25 km']:9.1%}")
-    print(f"  {'shown candidates (oracle)':26s} {'':28s} {'':9s} {report['shown <25 km']:12.1%}")
+    print(f"n={len(dev)}, top-{per_query} per query   ORACLE accuracy (shown candidates + retrieved evidence)   gain over shown-only oracle")
+    print(f"                                    <1 km   <25 km      <1 km   <25 km")
+    print(f"  {'reranker top-1':26s} {report['reranker top-1 <1 km']:9.1%} {report['reranker top-1 <25 km']:7.1%}")
+    print(f"  {'shown candidates (oracle)':26s} {report['shown <1 km']:9.1%} {report['shown <25 km']:7.1%}")
     for backend in ("siglip", "bm25", "dense"):
         for arm in ("visual", "geo", "caption"):
             near = []
@@ -206,8 +207,8 @@ def probe(tag: str, *, per_query: int = 1) -> None:
             row["beats reranker <25 km"] = float(((near < 25) & (reranker_km >= 25)).mean())
             row["reranker+hits <25 km"] = float((np.minimum(near, reranker_km) < 25).mean())
             report[f"{backend}/{arm}"] = row
-            print(f"  {backend + ' / ' + arm:26s} {row['beats reranker <25 km']:16.1%} {'':11s} {row['reranker+hits <25 km']:9.1%} "
-                  f"{row['shown+hits <25 km']:12.1%}   NEW {row['new <25 km']:.1%}")
+            gains = {t: row[f"shown+hits <{t} km"] - report[f"shown <{t} km"] for t in (1, 25)}
+            print(f"  {backend + ' / ' + arm:26s} {row['shown+hits <1 km']:9.1%} {row['shown+hits <25 km']:7.1%}   {gains[1]:+9.1%} {gains[25]:+7.1%}")
     (root / f"wiki_probe_top{per_query}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     samples = []
     for m, e in enumerate(dev[:40]):

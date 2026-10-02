@@ -11,16 +11,18 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 
 ## Research plan (pivoted 2026-10-01, staged 2026-10-02; user's decisions)
 **Stage 1 (now): acquire new evidence.** Can Qwen3.5-4B write search queries that retrieve evidence beyond what we
-already have (whole-image retrieval, the reranker's candidates) that contains the answer? Judged on acquisition alone,
-by ground truth, with no chooser in the loop: how often the retrieved results (article or photo coordinates) land
-within 1 / 25 km of the truth when the reranker top-1 / shown candidates don't ("new coverage"). Backends: SigLIP2
-photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
+already have (whole-image retrieval, the reranker's candidates) that contains the answer? **Metric: oracle accuracy**
+= % of photos where at least one location stage 2 would see (shown candidates + retrieved evidence coordinates) is
+within 1 / 25 km of the truth. It is the ceiling for any stage-2 chooser, with no chooser in the loop. Report it next
+to the shown-candidates-only oracle (the gain is the stage-1 result), the reranker top-1 and the extra-whole-image-
+retrieval control, all at a fixed retrieval budget (queries per photo, results per query), since the oracle only grows
+with more results. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
 **Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
 attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
 images for a 4B model (see the small-VLM-prompts memory).
 - Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
-  final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = ground-truth
-  coordinates of what the queries retrieve.
+  final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = the oracle
+  accuracy gain from the retrieved coordinates, computed from ground truth.
 - Where stage 1 stands (LEARNINGS 11-12, always against the reranker top-1): SigLIP2 text search finds almost nothing
   new; Wikipedia search works with good names (Gemini's: +12 pts oracle over reranker on 645 landmark photos), but the
   4B's names add only +2.5 greedy / +4.2 best of 8, the 27B +4.7 / +6.2. New coverage beyond the shown candidates is
