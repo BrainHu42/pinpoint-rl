@@ -38,6 +38,7 @@ from .verifiers import _place_names
 
 
 SFT_ROOT = Path("artifacts/sft")
+BENCH_ROOT = Path("artifacts/strategy_search")
 ROOT = Path("artifacts/query_evidence")
 OSV_IMAGES = Path("/data/hf/datasets/osv5m/images/train")
 CANDIDATES = 10
@@ -87,6 +88,47 @@ def _save(tag: str, name: str, value: Any) -> None:
     _path(tag, name).write_text(json.dumps(value, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def select_bench(tag: str, n: int) -> None:
+    """Validation photos: `n` // 2 random eval-half photos from each of im2gps3k and yfcc4k (fixed seed), with reranker top-10 candidates.
+
+    Entries carry the benchmark image `path`; "index" is the position in the benchmark caches. Burned-in GPS photos are not filtered
+    (no overlay scores exist for the benchmarks).
+    """
+
+    from scipy.spatial import cKDTree
+
+    from .strategy_search import BENCHMARK_NAMES, _xyz
+    from .verifiers import reranker_ranking
+
+    world = load_world()
+    coords, valid, _, ranking = reranker_ranking(world, BENCH_ROOT)
+    rng = np.random.default_rng(0)
+    picked: list[int] = []
+    for name in BENCHMARK_NAMES:
+        members = [q for q, x in enumerate(world.queries) if x["benchmark"] == name and x["split"] == "eval"]
+        picked += sorted(int(q) for q in rng.permutation(members)[: n // 2])
+    shown = {q: [int(c) for c in ranking[q, :CANDIDATES] if valid[q, c]] for q in picked}
+    tree = cKDTree(_xyz(world.mp16["latlon"]))
+    name_row = {}
+    for q in picked:  # place name of the nearest MP16 photo to each candidate, skipping the query's photographer
+        for c in shown[q]:
+            _, found = tree.query(_xyz(coords[q, c]), k=16)
+            other = [int(r) for r in found if world.mp16["author"][r] != world.query_author[q]]
+            name_row[(q, c)] = int(world.mp16["row_index"][other[0] if other else found[0]])
+    names = _place_names(set(name_row.values()))
+    val = [
+        {
+            "index": q, "image_id": world.queries[q]["image_id"], "path": world.queries[q]["path"], "benchmark": world.queries[q]["benchmark"],
+            "truth": world.query_latlon[q].tolist(),
+            "candidates": [[names[name_row[(q, c)]], float(coords[q, c, 0]), float(coords[q, c, 1])] for c in shown[q]],
+        }
+        for q in picked
+    ]
+    (ROOT / tag).mkdir(parents=True, exist_ok=True)
+    _save(tag, "dev.json", val)
+    print(f"{len(val)} validation photos: " + ", ".join(f"{b} {sum(v['benchmark'] == b for v in val)}" for b in BENCHMARK_NAMES))
+
+
 def select(tag: str, n: int) -> None:
     """`n` random dev photos (the first `n` of one fixed shuffle, so a pilot is a prefix of the full set) with their candidates."""
 
@@ -130,8 +172,9 @@ def _chat(server: str, content: list[dict[str, Any]], max_tokens: int) -> str:
     return ""
 
 
-def _photo(images: MP16Images, image_id: str) -> dict[str, Any]:
-    return _image_part(base64.b64encode(images.read(image_id)).decode())
+def _photo(images: MP16Images, entry: dict[str, Any]) -> dict[str, Any]:
+    data = Path(entry["path"]).read_bytes() if "path" in entry else images.read(entry["image_id"])
+    return _image_part(base64.b64encode(data).decode())
 
 
 def _options(entry: dict[str, Any]) -> str:
@@ -156,7 +199,7 @@ def generate(tag: str, server: str) -> None:
             "initial": PROMPT.format(options=_options(entry)), "visual": VISUAL_PROMPT.format(options=_options(entry)),
             "geo": GEO_PROMPT.format(options=_options(entry)), "caption": CAPTION_PROMPT,
         }[kind]
-        raw = _chat(server, [_photo(images, entry["image_id"]), {"type": "text", "text": prompt}], 600 if kind == "initial" else 150)
+        raw = _chat(server, [_photo(images, entry), {"type": "text", "text": prompt}], 600 if kind == "initial" else 150)
         return {"raw": raw}
 
     out: dict[str, dict[str, Any]] = {e["image_id"]: {} for e in dev}
@@ -207,8 +250,10 @@ def retrieve(tag: str) -> None:
 
     dev = _load(tag, "dev.json")
     generated = _load(tag, "generated.json")
-    world = load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in dev])
-    with np.load(SFT_ROOT / "neighbors.npz") as saved:
+    bench = "path" in dev[0]  # validation photos come from the benchmarks, dev photos from MP16
+    world = load_world() if bench else load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in dev])
+    position = [e["index"] if bench else m for m, e in enumerate(dev)]  # row of each photo in world.query_*
+    with np.load((BENCH_ROOT if bench else SFT_ROOT) / "neighbors.npz") as saved:
         initial = {k: saved[k][[e["index"] for e in dev]] for k in ("mp16_raw_idx", "mp16_raw_sim", "osv_raw_idx", "osv_raw_sim")}
     evidence = Evidence()
 
@@ -227,7 +272,7 @@ def retrieve(tag: str) -> None:
             embeddings.append(_features(model.get_text_features(**tokens)).float().cpu().numpy())
     del model
     torch.cuda.empty_cache()
-    found = _search(world, np.concatenate(embeddings), world.query_author[[t[0] for t in texts]])
+    found = _search(world, np.concatenate(embeddings), world.query_author[[position[t[0]] for t in texts]])
     print(f"query token counts: max {max(lengths)}, truncated {sum(n > TEXT_TOKENS for n in lengths)}/{len(lengths)}", flush=True)
 
     def ranked(source: dict[str, np.ndarray], j: int, prefix: str) -> dict[str, list[tuple[int, float]]]:
@@ -236,7 +281,7 @@ def retrieve(tag: str) -> None:
 
     def take(m: int, corpus: str, hits: list[tuple[int, float]], count: int, taken: set, query: str | None) -> list[dict[str, Any]]:
         e, gallery, cards = dev[m], world.mp16 if corpus == "mp16" else world.osv, []
-        q_emb = world.query_embeddings[m] / np.linalg.norm(world.query_embeddings[m])
+        q_emb = world.query_embeddings[position[m]] / np.linalg.norm(world.query_embeddings[position[m]])
         shown = np.asarray([c[1:] for c in e["candidates"]])
         for row, sim in hits:
             if len(cards) == count:
@@ -292,7 +337,7 @@ def answer(tag: str, server: str) -> None:
     thumbs: dict[tuple[str, int], str | None] = {}
 
     def content(entry: dict[str, Any], arm: str) -> list[dict[str, Any]]:
-        parts = [_photo(images, entry["image_id"])]
+        parts = [_photo(images, entry)]
         cards = [] if arm == "revise" else packages[entry["image_id"]][arm]
         if not cards:
             earlier = generated[entry["image_id"]]["initial"]["answer"] or entry["candidates"][0][1:]
@@ -380,11 +425,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("node", choices=("select", "generate", "retrieve", "answer", "report"))
     parser.add_argument("--tag", default="dev", help="output folder under artifacts/query_evidence")
-    parser.add_argument("--n", type=int, default=1000, help="select: number of dev photos")
+    parser.add_argument("--n", type=int, default=1000, help="select: number of photos")
+    parser.add_argument("--source", choices=("mp16", "bench"), default="mp16", help="select: MP16 dev photos or benchmark eval-half validation photos")
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     args = parser.parse_args(argv)
     if args.node == "select":
-        select(args.tag, args.n)
+        (select_bench if args.source == "bench" else select)(args.tag, args.n)
     elif args.node == "generate":
         generate(args.tag, args.server)
     elif args.node == "retrieve":

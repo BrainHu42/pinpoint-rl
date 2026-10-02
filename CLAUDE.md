@@ -20,6 +20,12 @@ with more results. Backends: SigLIP2 photo search, offline geotagged Wikipedia (
 **Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
 attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
 images for a 4B model (see the small-VLM-prompts memory).
+- Protocol (user's decision, 2026-10-02): **develop on the MP16 dev set** (1,000 held-out MP16 val photos; tag `dev`,
+  `query_evidence select`) and **validate on 1,000 photos from the im2gps3k / yfcc4k eval halves** (500 each, fixed
+  seed; tag `val`, `query_evidence select --source bench --tag val`), not the full 3,795, to keep runs manageable.
+  Validation reference (reranker top-1 / shown top-10 oracle, % <1 km / <25 km): 18.4 / 42.8 and 34.1 / 59.0
+  (im2gps3k 20.4 / 50.8 and 38.8 / 64.2; yfcc4k 16.4 / 34.8 and 29.4 / 53.8). The 50/50 mix is not comparable to the
+  pooled 3,795 numbers (yfcc4k is 61% of those). Final test: wikimedia once its loader exists (still to add).
 - Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
   final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = the oracle
   accuracy gain from the retrieved coordinates, computed from ground truth.
