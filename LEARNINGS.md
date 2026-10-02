@@ -97,6 +97,11 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       MP16 dev 34.2 → 40.6-42.1 with geographic-query search (SigLIP2, Wikipedia BM25 or dense), 35-37 with visual or
       caption queries, vs 47.2 for the shown top-10. 645 benchmark photos: 77.4 → 79.8-82.0 with the 4B's searches,
       vs 86.7 for the shown top-10. Actual answers with evidence stay below the reranker (lesson 11).
+    - Model size (645 benchmark photos, <25 km, oracle choice between reranker top-1 and Wikipedia search, reranker
+      alone 77.4): 4B 79.8 greedy / 81.6 best of 8; Qwen3.6-27B (Q4_K_M, llama.cpp, thinking off) 82.0 greedy / 83.6
+      best of 8, 80.9 with our candidate-conditioned geo-query prompt; Gemini 89.8. So the gain from search roughly
+      doubles from 4B to 27B (+2.5 → +4.7 greedy) and is still about half of Gemini's (+12.4). SE ~1.5 pts, so
+      differences of ~2 pts are borderline.
     - So search can add ~7 pts of candidates the list misses, but only with names the 4B doesn't produce (lesson 9's
       knowledge cap again). Article coordinates are the entity centre, so <1 km is lower than for photo retrieval.
 
