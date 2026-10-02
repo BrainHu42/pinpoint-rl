@@ -121,6 +121,7 @@ def select_bench(tag: str, n: int) -> None:
             "index": q, "image_id": world.queries[q]["image_id"], "path": world.queries[q]["path"], "benchmark": world.queries[q]["benchmark"],
             "truth": world.query_latlon[q].tolist(),
             "candidates": [[names[name_row[(q, c)]], float(coords[q, c, 0]), float(coords[q, c, 1])] for c in shown[q]],
+            "pool": [[float(coords[q, c, 0]), float(coords[q, c, 1])] for c in np.flatnonzero(valid[q])],  # every pooled candidate
         }
         for q in picked
     ]
@@ -148,6 +149,7 @@ def select(tag: str, n: int) -> None:
         {
             "index": int(i), "image_id": queries[i]["image_id"], "row": queries[i]["row"], "truth": latlon[queries[i]["row"]].tolist(),
             "candidates": [[names[int(name_row[i, c])], float(coords[i, c, 0]), float(coords[i, c, 1])] for c in shown[int(i)]],
+            "pool": [[float(coords[i, c, 0]), float(coords[i, c, 1])] for c in np.flatnonzero(valid[i])],  # every pooled candidate
         }
         for i in sorted(picked)
     ]

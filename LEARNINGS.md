@@ -105,6 +105,21 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - So search can add ~7 pts of candidates the list misses, but only with names the 4B doesn't produce (lesson 9's
       knowledge cap again). Article coordinates are the entity centre, so <1 km is lower than for photo retrieval.
 
+13. **Stage-1 baseline (`experiment/stage1_eval.py`, 2026-10-02): over the whole candidate pool, extra retrieval adds ~1
+    pt and the 4B's queries add no more than extra whole-image results.** Metric: oracle accuracy of (pooled candidates
+    + retrieved coordinates) at <1 / <25 / <200 km; six results per photo; photo set = 1,000 MP16 dev (`dev`) and 1,000
+    benchmark eval-half photos (`val`, 500 im2gps3k + 500 yfcc4k). Prompt: the 4B names 3 places, no candidates shown.
+    - The pool (~17 candidates/photo) is the baseline, not the reranker's top-10: 53.0 / 64.5% <25 km (dev / val) vs
+      47.2 / 59.0 for the top-10 and 34.2 / 42.8 for the reranker top-1; <200 km 72.2 / 82.8. The gap that remains is
+      choosing (stage 2), not finding.
+    - Gain over the pool at <25 km: whole-image control (6 results) +1.1 / +1.0; 4B queries via SigLIP2 +1.0-1.5,
+      Wikipedia BM25 / dense +0.6-1.2 (at 4.2 results per photo, since the 4B often returns fewer than three distinct
+      places); matched-budget whole-image +0.9; SigLIP + Wikipedia (12 results) +1.2-2.0. Queries minus matched
+      whole-image: +0.1 to +0.6, intervals touching 0. At <200 km the gains are the same size.
+    - Prompt yield (queries per photo, dev): as written 2.10; "3 different places" 1.73 (37% of photos get no query);
+      placeholders in the JSON template 1.52 (44% answer in prose and run out of tokens). Keep the empty-string template.
+    - 4B queries name a shown candidate's city only 12-18% of the time without candidates in the prompt (71-83% with).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

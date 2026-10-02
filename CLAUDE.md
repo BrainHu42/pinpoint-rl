@@ -12,11 +12,11 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 ## Research plan (pivoted 2026-10-01, staged 2026-10-02; user's decisions)
 **Stage 1 (now): acquire new evidence.** Can Qwen3.5-4B write search queries that retrieve evidence beyond what we
 already have (whole-image retrieval, the reranker's candidates) that contains the answer? **Metric: oracle accuracy**
-= % of photos where at least one location stage 2 would see (shown candidates + retrieved evidence coordinates) is
-within 1 / 25 km of the truth. It is the ceiling for any stage-2 chooser, with no chooser in the loop. Report it next
-to the shown-candidates-only oracle (the gain is the stage-1 result), the reranker top-1 and the extra-whole-image-
-retrieval control, all at a fixed retrieval budget (queries per photo, results per query), since the oracle only grows
-with more results. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
+= % of photos where at least one location stage 2 would see (pooled candidates + retrieved evidence coordinates) is
+within 1 / 25 / 200 km (street / city / region) of the truth. It is the ceiling for any stage-2 chooser, with no
+chooser in the loop. The baseline is the whole candidate pool the pipeline finds (~17 per photo), not the reranker's
+top-10; the gain over it is the stage-1 result. Report it next to the reranker top-1 / top-10 and an extra-whole-image-
+retrieval control at matched budget (`stage1_eval.py`), since the oracle only grows with more results. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
 **Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
 attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
 images for a 4B model (see the small-VLM-prompts memory).
