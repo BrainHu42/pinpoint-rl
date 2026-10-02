@@ -9,31 +9,20 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research plan (paused 2026-09-30)
-**Current hypothesis: choosing among retrieved candidates is capped by the evidence the model has about each one.**
-- Where we are (details in LEARNINGS.md):
-  - Retrieval already returns the answer: the ~17 shown candidates contain it for 33.4 / 59.0% (within 1 / 25 km),
-    but every chooser we trained (reranker, SFT, GRPO) tops out at ~16.9 / 38 (LEARNINGS 1-3).
-  - Finding *new* candidates doesn't help: text and crop queries add < 2 pts to the candidate oracle (LEARNINGS 7).
-    The query-rewriting plan ("learning what to search for", locked 2026-09-29) failed its go/no-go and is dropped.
-  - Gemini, given the same kind of candidate list, closes about two thirds of the gap (27.7 / 55.7 on the 300 subset),
-    so the cap is not fundamental; for a 4B model the missing piece is knowledge, and per-candidate evidence is the
-    substitute (LEARNINGS 9).
-  - Untrained, per-candidate evidence helps a little: + nearby GeoNames landmarks or + one exemplar photo per
-    candidate each add ~+1.3 pts within 25 km to the base 4B (LEARNINGS 8).
-- Proposed next step (not started): one SFT run with both kinds of evidence (exemplar photo + nearby place names per
-  candidate), same data/recipe as sft-34k-retrieval, full eval halves.
-  - Go (evidence gathering becomes the core of the agent) if it clearly beats the reranker (> ~2 pts within 25 km
-    over 38.2). Same as sft-34k-retrieval (16.3 / 37.2) → the 4B chooser is knowledge-capped; rethink (larger model,
-    or a different research question).
-  - Cost: dataset build ~30 min (`experiment/evidence_test.py` has the evidence builders), SFT ~5-6 h.
-- If go, the agent: tools that fetch evidence *about candidates* (exemplar photos, nearby places via a fuzzy
-  geocoder / OpenStreetMap, basic geography), then `answer`; SFT warm start on trajectories built from ground truth
-  (no Gemini distillation); multi-turn GRPO with hard-photo filtering, entropy control, step-0 and best-of-8 evals
-  (LEARNINGS 3). Novelty to argue: candidate-conditioned evidence gathering over a geotagged image memory, vs
-  one-shot retrieve-then-pick (Img2Loc, G3, GeoRanker) and map-only agents without image memory (Thinking with Map).
-- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (e.g. new candidates
-  vs the shown-candidate oracle), not against current greedy, which the existing selection gap would pass trivially.
+## Research plan (pivoted 2026-10-01; user's decision)
+**Question: can Qwen3.5-4B turn visual clues and geographic hypotheses into natural-language search queries that
+acquire useful evidence beyond whole-image retrieval and improve its final geolocation prediction?**
+- Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
+  final answer may be an initial candidate, a retrieved image's location, or any lat/lon.
+- First experiment: a fixed search loop with an existing model, no new SFT or RL. Full design, arms, gate and
+  prerequisites: `QUERY_EVIDENCE_PLAN.md`.
+- Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
+  That plan and the "learning what to search for" no-go are recorded in LEARNINGS.md (lessons 7-9). Known risks to
+  watch: SigLIP2's text tower knows concepts, not place names (lesson 7); off-list guesses are almost always wrong
+  (lesson 4); the SFT checkpoint was trained on one image + a candidate list, so multi-image evidence prompts are out
+  of distribution; the 200-photo dev set is too noisy for a 2-pt gate (use a larger one).
+- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (e.g. new evidence vs
+  the shown-candidate oracle and the extra-whole-image-retrieval arm), not against current greedy.
 
 ## Rules
 - Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`). Wikimedia isn't in
