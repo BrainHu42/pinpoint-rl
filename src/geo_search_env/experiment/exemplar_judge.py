@@ -42,6 +42,8 @@ TOPK = 8  # reranker ranks scored per photo in the full test
 TOPK_PAIRS = ROOT / "exemplar_topk_pairs.json"
 TOPK_SCORES = ROOT / "exemplar_topk_scores.json"
 WEIGHTS = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
+PAIR_K = 4  # candidates compared pairwise (12 ordered comparisons per photo)
+PAIR_PROMPT = "Which of photos 2 and 3 was taken at the same place as photo 1? Answer 2 or 3."
 
 
 def _jpeg(data: bytes) -> str:
@@ -354,14 +356,127 @@ def topk_cv(name: str) -> None:
               + f"   change <25 km {ci[0]:+.1%} [{ci[1]:+.1%}, {ci[2]:+.1%}]")
 
 
+def _p_third(server: str, query_b64: str, second_b64: str, third_b64: str) -> float | None:
+    """P(the third photo is the match) = P("3") / (P("2") + P("3")) for the pairwise comparator."""
+
+    body = {
+        "model": "vlm", "temperature": 0.0, "max_tokens": 1, "logprobs": True, "top_logprobs": 12, "chat_template_kwargs": {"enable_thinking": False},
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}} for b64 in (query_b64, second_b64, third_b64)
+        ] + [{"type": "text", "text": PAIR_PROMPT}]}],
+    }
+    request = urllib.request.Request(f"{server}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            top = json.loads(response.read())["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
+    except Exception:
+        return None
+    two = sum(math.exp(t["logprob"]) for t in top if t["token"].strip() == "2")
+    three = sum(math.exp(t["logprob"]) for t in top if t["token"].strip() == "3")
+    return three / (two + three) if two + three > 0 else None
+
+
+def pair_judge(server: str, name: str) -> None:
+    """Every ordered pair among each photo's top PAIR_K candidates (those with an exemplar): s[i][j] = P(candidate i matches) with i shown third and j second."""
+
+    photos = json.loads(TOPK_PAIRS.read_text(encoding="utf-8"))
+    images = MP16Images()
+    jobs = [(m, i, j) for m, p in enumerate(photos) for i in range(PAIR_K) for j in range(PAIR_K)
+            if i != j and i < len(p["exemplars"]) and j < len(p["exemplars"]) and p["exemplars"][i] and p["exemplars"][j]]
+
+    def run(job: tuple[int, int, int]) -> float | None:
+        m, i, j = job
+        p = photos[m]
+        query = Path(p["path"]).read_bytes() if p["path"] else images.read(p["image_id"])
+        return _p_third(server, _jpeg(query), _jpeg(images.read(p["exemplars"][j])), _jpeg(images.read(p["exemplars"][i])))
+
+    with ThreadPoolExecutor(32) as pool:
+        scores = list(pool.map(run, jobs))
+    for p in photos:
+        p["s"] = [[None] * PAIR_K for _ in range(PAIR_K)]
+    for (m, i, j), score in zip(jobs, scores):
+        photos[m]["s"][i][j] = score
+    _pair_path(name).write_text(json.dumps(photos) + "\n", encoding="utf-8")
+    print(f"{len(jobs)} ordered comparisons, {sum(s is None for s in scores)} failed -> {_pair_path(name)}")
+
+
+def _pair_path(name: str) -> Path:
+    return ROOT / f"exemplar_pair_scores_{name}.json"
+
+
+def _borda(s: list[list[float | None]], n: int) -> np.ndarray:
+    """Per candidate: the mean over the others of P(it beats the other), each pair judged in both orders (missing -> 0.5)."""
+
+    out = np.full(n, 0.5)
+    for i in range(n):
+        wins = []
+        for j in range(n):
+            if i == j:
+                continue
+            a, b = s[i][j], s[j][i]
+            wins.append(0.5 * ((0.5 if a is None else a) + 1 - (0.5 if b is None else b)))
+        out[i] = np.mean(wins) if wins else 0.5
+    return out
+
+
+def pair_report(name: str) -> None:
+    """Pairwise accuracy on choosing photos, and top-1 of -rank + w * logit(Borda score) over the top PAIR_K candidates (w fitted on dev), with a shuffled control."""
+
+    from .wiki_backend import _km
+
+    scored = json.loads(_pair_path(name).read_text(encoding="utf-8"))
+    excluded = set(json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8")))
+    data: dict[str, dict[str, list]] = {"dev": {"dist": [], "borda": [], "bench": []}, "val": {"dist": [], "borda": [], "bench": []}}
+    right_vs_wrong: dict[str, list[float]] = {"dev": [], "val": []}
+    for tag in ("dev", "val"):
+        photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+        mine = [p for p in scored if p["tag"] == tag]
+        for m, e in enumerate(photos):
+            if e["image_id"] in excluded:
+                continue
+            d = _km(np.asarray(e["pool"][:PAIR_K]), *e["truth"])
+            borda = _borda(mine[m]["s"], len(d))
+            data[tag]["dist"].append(d); data[tag]["borda"].append(borda); data[tag]["bench"].append(e.get("benchmark", "mp16"))
+            if d[0] >= 25 and (d[1:] < 25).any():  # top-1 wrong, a right candidate among the next ones: does the judge prefer the right one to the top-1?
+                right = int(np.argmin(np.where(d < 25, d, 1e9)))
+                right_vs_wrong[tag].append(float(borda[right] > borda[0]) + 0.5 * float(borda[right] == borda[0]))
+    for tag in ("dev", "val"):
+        v = np.asarray(right_vs_wrong[tag])
+        print(f"{tag}: top-1 wrong with a right candidate among ranks 2-{PAIR_K} (n={len(v)}): the judge's Borda score prefers the right candidate to the top-1 in {v.mean():.1%}")
+
+    logit = lambda b: np.log(np.clip(b, 0.02, 0.98) / (1 - np.clip(b, 0.02, 0.98)))
+
+    def top1(tag: str, w: float, shuffle: bool = False) -> np.ndarray:
+        d, b = data[tag]["dist"], data[tag]["borda"]
+        if shuffle:
+            b = [b[i] for i in np.random.default_rng(0).permutation(len(b))]
+        fit = lambda x, n: np.pad(x[:n], (0, max(0, n - len(x))), constant_values=0.5)
+        return np.asarray([x[int(np.argmax(-np.arange(len(x)) + w * logit(fit(l, len(x)))))] for x, l in zip(d, b)])
+
+    w = max(WEIGHTS, key=lambda v: ((top1("dev", v) < 25).mean(), -v))
+    print(f"\njudge {name} (pairwise, top {PAIR_K}): w fitted on dev for top-1 <25 km: {w:g}")
+    print(f"{'set':14s} {'n':>4s}  reranker top-1 <1/<25/<200 km    + pairwise judge (w={w:g})    change <1/<25/<200 km   <25 km 95% CI     shuffled control <25 km")
+    for tag, bench in (("dev", None), ("val", None), ("val", "im2gps3k"), ("val", "yfcc4k")):
+        sel = np.ones(len(data[tag]["dist"]), bool) if bench is None else np.asarray(data[tag]["bench"]) == bench
+        base, with_j, shuf = top1(tag, 0.0)[sel], top1(tag, w)[sel], top1(tag, w, shuffle=True)[sel]
+        line = f"{tag + (' ' + bench if bench else ''):14s} {int(sel.sum()):4d}  "
+        line += " ".join(f"{(base < t).mean():6.1%}" for t in (1, 25, 200)) + "      " + " ".join(f"{(with_j < t).mean():6.1%}" for t in (1, 25, 200)) + "      "
+        line += " ".join(f"{(with_j < t).mean() - (base < t).mean():+6.1%}" for t in (1, 25, 200))
+        ci = _bootstrap((with_j < 25).astype(float) - (base < 25))
+        print(line + f"    [{ci[1]:+.1%}, {ci[2]:+.1%}]    {(shuf < 25).mean() - (base < 25).mean():+.1%}")
+    for v in WEIGHTS[1:]:
+        print(f"  w={v:<4g} change <25 km: dev {(top1('dev', v) < 25).mean() - (top1('dev', 0.0) < 25).mean():+.1%}, val {(top1('val', v) < 25).mean() - (top1('val', 0.0) < 25).mean():+.1%}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report", "topk-diagnose", "topk-cv"))
+    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report", "topk-diagnose", "topk-cv", "pair-judge", "pair-report"))
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     parser.add_argument("--name", default="zeroshot-9b", help="which judge's top-k scores to write or analyse")
     args = parser.parse_args(argv)
     {"pairs": pairs, "judge": lambda: judge(args.server), "report": report, "topk-pairs": topk_pairs, "topk-judge": lambda: topk_judge(args.server, args.name),
-     "topk-report": lambda: topk_report(args.name), "topk-diagnose": lambda: topk_diagnose(args.name), "topk-cv": lambda: topk_cv(args.name)}[args.node]()
+     "topk-report": lambda: topk_report(args.name), "topk-diagnose": lambda: topk_diagnose(args.name), "topk-cv": lambda: topk_cv(args.name),
+     "pair-judge": lambda: pair_judge(args.server, args.name), "pair-report": lambda: pair_report(args.name)}[args.node]()
     return 0
 
 
