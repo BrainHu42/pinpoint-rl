@@ -216,6 +216,24 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       better, but the ceiling set by the number of choosing photos with text stays. Same pattern as lessons 13-18:
       photos with identifiable text are the ones retrieval already gets right.
 
+20. **Audit of the train / dev / val sets (`experiment/audit_sets.py`, 2026-10-02): sound, with two small flaws.**
+    - Clean: no photographer overlap between train (34,523 photos), dev (1,000) and val (1,000; 656 photographers unknown to
+      MP16); near-duplicates (cosine >= 0.95) of train photos: 2 in dev, 0 in val; none inside dev; truths are not on coarse
+      grids (0.0-0.1% on a 0.01 deg grid, chance 0.04%); sharing the exact truth coordinate with >= 5 gallery photos (28% of
+      dev) doesn't raise reranker top-1 <1 km (15% vs 16%); country mix matches (US 29-30%, UK 10-11%); a photographer-clustered
+      standard error equals the per-photo one (design effect 0.99-1.03); 0 of 1,000 val photos pass the burned-in-GPS filter
+      (dev is filtered by construction).
+    - Flaw 1: 15 val photos (1.5%, 3% of the yfcc4k half) are Flickr's "photo is no longer available" image (none in train
+      or dev); unlocatable, and they form 105 of val's 106 duplicate pairs. Without them val top-1 <1/<25/<200 km goes
+      18.4 / 42.8 / 60.2 -> 18.7 / 43.5 / 61.0 and the pool oracle <25 km 64.5 -> 65.4. Flagged in
+      `artifacts/query_evidence/val/exclude.json`; analyses from the attribute test on drop them (earlier val numbers include
+      them).
+    - Flaw 2: 3.7% of dev and 5.3% of val photos have a gallery photo with cosine >= 0.95 even after same-photographer
+      exclusion (flags in `<tag>/near_duplicate.json`); the reranker's top-1 <25 km on them is 73 / 70% vs 33 / 41% for the
+      rest. Without them dev top-1 <25 km is 34.2 -> 32.7 and the pool oracle 53.0 -> 52.2 (val 43.5 -> 42.0 and 65.4 ->
+      64.3, also without placeholders). It lifts every method alike, so comparisons are unbiased, but absolute accuracies
+      are ~1.5 pts optimistic.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

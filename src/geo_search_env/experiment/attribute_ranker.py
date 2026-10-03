@@ -53,9 +53,12 @@ def fit() -> None:
         print(f"fitted {name}", flush=True)
 
     report: dict[str, Any] = {"photos": sizes, "seeds": list(SEEDS)}
-    groups = {"dev": rows["dev"], "val": rows["val"]}
-    benchmark = np.asarray([e["benchmark"] for e in sets["val"]["photos"]])
-    groups |= {f"val {b}": rows["val"][benchmark == b] for b in ("im2gps3k", "yfcc4k")}
+    excluded = set(json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8")))  # Flickr "photo no longer available" placeholders (audit_sets.py)
+    keep = np.asarray([e["image_id"] not in excluded for e in sets["val"]["photos"]])
+    val_rows = rows["val"][keep]
+    benchmark = np.asarray([e["benchmark"] for e in sets["val"]["photos"]])[keep]
+    groups = {"dev": rows["dev"], "val": val_rows}
+    groups |= {f"val {b}": val_rows[benchmark == b] for b in ("im2gps3k", "yfcc4k")}
     base = "A original features"
     for g, idx in groups.items():
         print(f"\n{g} (n={len(idx)})   top-1 accuracy {'<1 km':>7s} {'<25 km':>7s} {'<200 km':>8s}   change vs A (<1 / <25 / <200 km); <25 km 95% CI")
