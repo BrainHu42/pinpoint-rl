@@ -60,6 +60,7 @@ def main() -> int:
     if sys.argv[1:] == ["pairwise"]:
         pairwise()
         return 0
+    keep_all = sys.argv[1:] == ["all"]  # every candidate with an exemplar and its distance; labels are cut by the trainer
     from scipy.spatial import cKDTree
 
     photos = json.loads((ROOT / "train" / "dev.json").read_text(encoding="utf-8"))
@@ -70,7 +71,7 @@ def main() -> int:
     chord = 2 * math.sin(EXEMPLAR_KM / EARTH_KM / 2)
     OUT.mkdir(parents=True, exist_ok=True)
     kept = {"positive": 0, "negative": 0, "dropped": 0, "no exemplar": 0}
-    with (OUT / "pairs_train.jsonl").open("w", encoding="utf-8") as out:
+    with (OUT / ("pairs_train_all.jsonl" if keep_all else "pairs_train.jsonl")).open("w", encoding="utf-8") as out:
         for m, e in enumerate(photos):
             coords, valid, ranking = saved["coords"][e["index"]], saved["valid"][e["index"]], saved["ranking"][e["index"]]
             top = [c for c in ranking if valid[c]][:TOPK]
@@ -79,6 +80,8 @@ def main() -> int:
             for rank, c in enumerate(top):
                 km = float(_km(coords[c][None, :], *e["truth"])[0])
                 label = 1 if km < POSITIVE_KM else 0 if km >= NEGATIVE_KM else None
+                if keep_all:
+                    label = 1 if km < 25 else 0  # placeholder; the trainer recomputes it from km
                 if label is None:
                     kept["dropped"] += 1
                     continue

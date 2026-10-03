@@ -32,15 +32,20 @@ PAIRWISE = ROOT / "comparator" / "pairwise_train.jsonl"
 SIZE = 448
 NEG_PER_POSITIVE_PHOTO = 3
 PAIRS = ROOT / "comparator" / "pairs_train.jsonl"
+PAIRS_ALL = ROOT / "comparator" / "pairs_train_all.jsonl"  # every top-8 candidate with its distance (comparator_data.py all)
 
 
-def load_rows(samples: int | None, seed: int = 0, mode: str = "same") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def load_rows(samples: int | None, seed: int = 0, mode: str = "same", label_km: tuple[float, float] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if mode == "pairwise":  # rows are (query, right exemplar, wrong exemplar); the same 3% of photos is held out
         rows = [json.loads(line) for line in PAIRWISE.read_text(encoding="utf-8").splitlines()]
         order = np.random.default_rng(seed).permutation(len(rows))
         rows = [rows[i] for i in order]
         return [r for r in rows if r["photo"] % 33 != 0][:samples], [r for r in rows if r["photo"] % 33 == 0]
-    rows = [json.loads(line) for line in PAIRS.read_text(encoding="utf-8").splitlines()]
+    if label_km:  # positive below label_km[0], negative from label_km[1] on, the band between dropped
+        rows = [json.loads(line) for line in PAIRS_ALL.read_text(encoding="utf-8").splitlines()]
+        rows = [dict(r, label=1 if r["km"] < label_km[0] else 0) for r in rows if r["km"] < label_km[0] or r["km"] >= label_km[1]]
+    else:
+        rows = [json.loads(line) for line in PAIRS.read_text(encoding="utf-8").splitlines()]
     by_photo: dict[int, list[dict[str, Any]]] = {}
     for r in rows:
         by_photo.setdefault(r["photo"], []).append(r)
@@ -96,7 +101,8 @@ def auc(score: np.ndarray, label: np.ndarray) -> float:
     return float((pos > neg).mean() + 0.5 * (pos == neg).mean())
 
 
-def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1, mode: str = "same", init_adapter: str | None = None) -> None:
+def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1, mode: str = "same", init_adapter: str | None = None,
+          label_km: tuple[float, float] | None = None) -> None:
     import torch
     from peft import LoraConfig, get_peft_model
     from torch.utils.data import DataLoader
@@ -115,7 +121,7 @@ def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulat
     model.print_trainable_parameters()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
-    train_rows, held_rows = load_rows(samples, seed, mode)
+    train_rows, held_rows = load_rows(samples, seed, mode, label_km)
     pos = sum(r["label"] for r in train_rows) if mode == "same" else len(train_rows) // 2
     print(f"train rows {len(train_rows)} ({pos} positive), held-out rows {len(held_rows)}", flush=True)
     collator = Collator(processor, mode)
@@ -178,10 +184,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--mode", choices=("same", "pairwise"), default="same")
     parser.add_argument("--init-adapter", help="start from this LoRA adapter instead of a fresh one")
+    parser.add_argument("--label-km", type=float, nargs=2, metavar=("POSITIVE", "NEGATIVE"), help="pointwise labels from pairs_train_all.jsonl: positive below the first distance, negative from the second")
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=-1, help="speed test: stop after this many optimizer steps and keep nothing")
     args = parser.parse_args(argv)
-    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps, mode=args.mode, init_adapter=args.init_adapter)
+    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps, mode=args.mode, init_adapter=args.init_adapter,
+          label_km=tuple(args.label_km) if args.label_km else None)
     return 0
 
 
