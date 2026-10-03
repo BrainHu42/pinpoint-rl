@@ -320,6 +320,14 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     48.8 / 61.0, 4B 43.9 / 57.0, 9B 41.0 / 56.1, 27B 46.6 / 59.3. 74-93% of answers lie within 25 km of a shown candidate (4B 88 / 90,
     9B 74 / 83, 27B 90 / 93). The 9B is no better than the 4B; the 27B is closest but still below the reranker.
 
+28. **Nearby Wikipedia text per candidate helps the zero-shot chooser a little, not enough (`wiki_nearby.py`, `knowledge_scaling.py --wiki`,
+    2026-10-03).** Each shown candidate line gets its nearest geotagged Wikipedia articles within 3 km (up to 3: titles, the first with its first
+    sentence cut at 90 characters; 91% of candidates have at least one). Same prompt and models as lesson 27, top-1 <25 km (dev / val):
+    4B 29.9 / 38.3 (vs 29.1 / 38.5 without), 9B 30.4 / 39.9 (vs 29.1 / 38.8), 27B 31.6 / 40.6 (vs 32.4 / 40.7); against the reranker
+    34.2 / 43.5 they are -4.3 / -5.2, -3.8 / -3.6 and -2.6 / -2.8 (all CIs exclude 0). <200 km: 9B 42.9 / 58.7 (vs 41.0 / 56.1). The 9B gains
+    about +1.2 pts, the 4B +0.3 on average, the 27B nothing. Knowledge about what lies at each candidate is not what separates the small
+    models from the reranker.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
