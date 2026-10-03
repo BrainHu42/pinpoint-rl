@@ -403,6 +403,19 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Wrong ground truth, 1 / 30: a Disneyland Paris photo geotagged in central Paris.
     - Implication: about 20% of the 12.6-pt gap between top-1 and the top-8 oracle (<25 km) is recoverable from the photo, i.e. ~2.5-3 pts, part of
       which the comparator already takes. That explains why every chooser stalls near +0.7.
+36. **Coarse thresholds have as much headroom, and our evidence doesn't help there either (2026-10-03; `threshold_headroom.py`).** 1,985 dev + val
+    photos; cross-validated combiners over the top 8 retrained with the reward "within T km".
+    - Headroom, as reranker top-1 / top-8 oracle / pool oracle: 25 km 38.8 / 51.4 / 59.1; 200 km 54.9 / 67.9 / 78.0; 750 km 72.8 / 84.0 / 90.9;
+      2500 km 85.3 / 92.5 / 97.1. The gap to the pool oracle is 20.4 / 23.2 / 18.1 / 11.8 pts, so region and country have as much room as city.
+    - Change vs the reranker (95% CI, ~±0.6-1.0):
+      - comparator: 25 km +0.6, 200 km +0.3, 750 km -0.1, 2500 km -0.2;
+      - 27B vote: -0.0 / -0.5 / +0.2 / -0.5 (4B and 9B similar);
+      - categories: 0.0 / -0.4 / -0.2 / -0.3;
+      - everything together: +0.8 / +0.3 / +0.2 / +0.2.
+    - Retargeting the ranking alone (rank features with the coarse reward) never changes the pick. The reranker's order is already its best guess
+      at every scale.
+    - So region- and country-level choosing needs knowledge the reranker lacks, and the zero-shot answers don't supply it: they are anchored on the
+      candidate list (lesson 27: 88-93% land near a shown candidate). Untested: a candidate-free answer as an independent coarse vote.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
