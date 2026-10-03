@@ -10,7 +10,7 @@ coast:     log distance to the nearest coastline pixel (land next to ocean in ET
 urbanness: log of the Overture places count in the 0.02 degree cell and in its 3x3 neighbourhood
 country:   ISO code of the nearest GeoNames populated place (languages come from GeoNames countryInfo, see `country_languages`)
 
-Writes artifacts/query_evidence/attributes/candidates_<tag>.npz with `num` (photos, candidates, 10) and `country` (photos, candidates).
+Writes artifacts/query_evidence/attributes/candidates_<tag>.npz (or truth_<tag>.npz for `truth`) with `num` (photos, candidates, 10) and `country` (photos, candidates).
 """
 
 from __future__ import annotations
@@ -110,12 +110,16 @@ def country_languages() -> dict[str, list[str]]:
     return out
 
 
-def candidate_sets() -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """(coords, valid) of the pooled candidates for each photo set, in the photo lists' order."""
+def candidate_sets(kind: str = "candidates") -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """(coords, valid) of the pooled candidates for each photo set, in the photo lists' order; kind "truth" gives each photo's true location
+    as a single candidate instead (shape (photos, 1, 2))."""
 
     sets = {}
     for tag in ("train", "dev", "val"):
         photos = json.loads((OUT.parent / tag / "dev.json").read_text(encoding="utf-8"))
+        if kind == "truth":
+            sets[tag] = (np.asarray([e["truth"] for e in photos])[:, None, :], np.ones((len(photos), 1), dtype=bool))
+            continue
         index = [e["index"] for e in photos]
         path = ART / "strategy_search" / "search_features.npz" if "path" in photos[0] else ART / "sft" / "candidates.npz"
         saved = dict(np.load(path))
@@ -123,10 +127,10 @@ def candidate_sets() -> dict[str, tuple[np.ndarray, np.ndarray]]:
     return sets
 
 
-def build() -> None:
+def build(kind: str = "candidates") -> None:
     from scipy.ndimage import uniform_filter
 
-    sets = candidate_sets()
+    sets = candidate_sets(kind)
     points = np.concatenate([coords[valid] for coords, valid in sets.values()])
     lat, lon = points[:, 0], points[:, 1]
     print(f"{len(points)} candidate points", flush=True)
@@ -173,7 +177,7 @@ def build() -> None:
         n_out = np.zeros(valid.shape + (len(FEATURES),), dtype=np.float32)
         c_out = np.full(valid.shape, "", dtype="<U2")
         n_out[valid], c_out[valid] = num[start : start + count], country[start : start + count]
-        np.savez(OUT / f"candidates_{tag}.npz", num=n_out, country=c_out)
+        np.savez(OUT / f"{kind}_{tag}.npz", num=n_out, country=c_out)
         start += count
         print(f"saved {tag}: {valid.shape[0]} photos", flush=True)
     (OUT / "country_languages.json").write_text(json.dumps(country_languages()) + "\n", encoding="utf-8")
@@ -188,9 +192,9 @@ def build() -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("build",))
-    parser.parse_args(argv)
-    build()
+    parser.add_argument("node", choices=("build", "truth"), help="build: the pooled candidates; truth: each photo's true location")
+    args = parser.parse_args(argv)
+    build("candidates" if args.node == "build" else "truth")
     return 0
 
 
