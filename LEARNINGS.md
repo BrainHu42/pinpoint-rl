@@ -294,6 +294,17 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Reading: real but small. The exemplar is the most similar photo near the candidate, so the comparator largely re-derives
       what the reranker's similarity features already encode; the judge's own top pick is still worse than the reranker's.
 
+25. **More judge variants don't beat the pointwise comparator (2026-10-03).**
+    - Hard cases (reranker top-1 >= 25 km off and a candidate < 1 km from the truth among ranks 2-8; n = 77 of 1,985 photos): the judge
+      scores the right candidate above the top-1 in 74% [64, 83] of them for `comparator-a` (dev 82, val 67) vs 67.5% for the zero-shot
+      9B. Only ~4% of photos are such cases, which caps what an exact-place judge can add at the strict level.
+    - Pairwise comparator (`pairwise-a`, `--mode pairwise`: query + exemplars of two candidates, answer 2 or 3; warm start from
+      `comparator-a`; 21,262 rows, 7,135 photos, the reranker's two best-ranked wrong candidates always paired with the right one;
+      1 h; held-out hard pairs accuracy 71.4%, AUC 0.802): over the top-4 candidates with Borda scores and -rank + w * logit, top-1
+      <25 km +0.9 [-0.4, +2.2] dev, -0.1 [-1.6, +1.5] val, and <1 km -1.5 / -2.3. No better than the pointwise comparator; dropped.
+    - Cross-validated learned combiner over dev + val (1,985 photos): `comparator-a` alone +0.7 [+0.2, +1.2] (<1 km +0.3, <200 km
+      +0.5); + exemplar similarity +0.3 [-0.3, +0.9]; + similarity + the zero-shot judge +0.4 [-0.2, +1.0]. Extra features only add noise.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
