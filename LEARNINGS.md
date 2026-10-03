@@ -416,6 +416,15 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       at every scale.
     - So region- and country-level choosing needs knowledge the reranker lacks, and the zero-shot answers don't supply it: they are anchored on the
       candidate list (lesson 27: 88-93% land near a shown candidate). Untested: a candidate-free answer as an independent coarse vote.
+37. **The 4B's own geographic knowledge, without candidates, is far weaker than retrieval at every scale and adds nothing (2026-10-03;
+    `free_guess.py`, `scripts/free_guess.sh`).** Base Qwen3.5-4B, photo only ("Where was this photo taken? ... name the country and region"),
+    greedy + 8 samples at T = 0.7, 1,985 dev + val photos, ~5 min per 1,000 photos.
+    - Greedy guess alone vs the reranker top-1, at 25 / 200 / 750 / 2500 km: 19.4 vs 38.8, 31.8 vs 54.9, 49.1 vs 72.8, 65.9 vs 85.3. It is right
+      where the reranker is wrong for only 2.6-4.2% of photos, and wrong where the reranker is right for 22-28%.
+    - As a vote (distance to the greedy guess, share of samples within 25 / 200 / 750 km of each candidate) in the per-threshold combiners: rank +
+      vote +0.1 / -0.6 / +0.2 / -0.1; rank + comparator + vote +0.6 / +0.1 / +0.1 / -0.6 (vs rank + comparator +0.6 / +0.3 / -0.1 / -0.2).
+    - So the anchored answers (lesson 33) weren't hiding independent knowledge. At the 4B scale, the VLM knows less about where a photo is than
+      whole-image retrieval over 9M geotagged photos, even at country level.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
