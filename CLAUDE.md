@@ -9,31 +9,45 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research plan (paused 2026-09-30)
-**Current hypothesis: choosing among retrieved candidates is capped by the evidence the model has about each one.**
-- Where we are (details in LEARNINGS.md):
-  - Retrieval already returns the answer: the ~17 shown candidates contain it for 33.4 / 59.0% (within 1 / 25 km),
-    but every chooser we trained (reranker, SFT, GRPO) tops out at ~16.9 / 38 (LEARNINGS 1-3).
-  - Finding *new* candidates doesn't help: text and crop queries add < 2 pts to the candidate oracle (LEARNINGS 7).
-    The query-rewriting plan ("learning what to search for", locked 2026-09-29) failed its go/no-go and is dropped.
-  - Gemini, given the same kind of candidate list, closes about two thirds of the gap (27.7 / 55.7 on the 300 subset),
-    so the cap is not fundamental; for a 4B model the missing piece is knowledge, and per-candidate evidence is the
-    substitute (LEARNINGS 9).
-  - Untrained, per-candidate evidence helps a little: + nearby GeoNames landmarks or + one exemplar photo per
-    candidate each add ~+1.3 pts within 25 km to the base 4B (LEARNINGS 8).
-- Proposed next step (not started): one SFT run with both kinds of evidence (exemplar photo + nearby place names per
-  candidate), same data/recipe as sft-34k-retrieval, full eval halves.
-  - Go (evidence gathering becomes the core of the agent) if it clearly beats the reranker (> ~2 pts within 25 km
-    over 38.2). Same as sft-34k-retrieval (16.3 / 37.2) → the 4B chooser is knowledge-capped; rethink (larger model,
-    or a different research question).
-  - Cost: dataset build ~30 min (`experiment/evidence_test.py` has the evidence builders), SFT ~5-6 h.
-- If go, the agent: tools that fetch evidence *about candidates* (exemplar photos, nearby places via a fuzzy
-  geocoder / OpenStreetMap, basic geography), then `answer`; SFT warm start on trajectories built from ground truth
-  (no Gemini distillation); multi-turn GRPO with hard-photo filtering, entropy control, step-0 and best-of-8 evals
-  (LEARNINGS 3). Novelty to argue: candidate-conditioned evidence gathering over a geotagged image memory, vs
-  one-shot retrieve-then-pick (Img2Loc, G3, GeoRanker) and map-only agents without image memory (Thinking with Map).
-- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (e.g. new candidates
-  vs the shown-candidate oracle), not against current greedy, which the existing selection gap would pass trivially.
+## Research plan (pivoted 2026-10-01, staged 2026-10-02; user's decisions)
+**Stage 1 (now): acquire new evidence.** Can Qwen3.5-4B write search queries that retrieve evidence beyond what we
+already have (whole-image retrieval, the reranker's candidates) that contains the answer? **Metric: oracle accuracy**
+= % of photos where at least one location stage 2 would see (pooled candidates + retrieved evidence coordinates) is
+within 1 / 25 / 200 km (street / city / region) of the truth. It is the ceiling for any stage-2 chooser, with no
+chooser in the loop. The baseline is the whole candidate pool the pipeline finds (~17 per photo), not the reranker's
+top-10; the gain over it is the stage-1 result. Report it next to the reranker top-1 / top-10 and an extra-whole-image-
+retrieval control at matched budget (`stage1_eval.py`), since the oracle only grows with more results. **Second metric
+(user's point): evidence informativeness**, because evidence can help choose among candidates without adding one:
+support of a candidate = results within 25 km, its rate on correct vs wrong candidates, within-photo AUC, and top-1
+of -rank + w * support (w fitted on dev), against the reranker top-1. Report both axes. Backends: SigLIP2 photo search, offline geotagged Wikipedia (`wiki_backend.py`), later live APIs.
+**Stage 2 (later): consume the evidence and decide between candidates.** Out of scope until stage 1 works. The first
+attempt (LEARNINGS 11: 4B, query photo + six evidence photos in one prompt) failed and is not a fair test: too many
+images for a 4B model (see the small-VLM-prompts memory).
+- Protocol (user's decision, 2026-10-02): **develop on the MP16 dev set** (1,000 held-out MP16 val photos; tag `dev`,
+  `query_evidence select`) and **validate on 1,000 photos from the im2gps3k / yfcc4k eval halves** (500 each, fixed
+  seed; tag `val`, `query_evidence select --source bench --tag val`), not the full 3,795, to keep runs manageable.
+  Validation reference (reranker top-1 / shown top-10 oracle, % <1 km / <25 km): 18.4 / 42.8 and 34.1 / 59.0
+  (im2gps3k 20.4 / 50.8 and 38.8 / 64.2; yfcc4k 16.4 / 34.8 and 29.4 / 53.8). The 50/50 mix is not comparable to the
+  pooled 3,795 numbers (yfcc4k is 61% of those). Final test: wikimedia once its loader exists (still to add).
+- Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
+  final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = the oracle
+  accuracy gain from the retrieved coordinates, computed from ground truth.
+- Where things stand (2026-10-03; LEARNINGS 11-29, always against the reranker top-1):
+  - Stage 1 (acquiring evidence) is closed for now: search queries from the 4B / 27B (SigLIP2, Wikipedia, an 80M-place name
+    index), transcribed text and photo attributes against offline map attributes all add 1-3 oracle points over the
+    candidate pool and nothing for a learned chooser, because they re-encode what image retrieval already knows
+    (LEARNINGS 11-21). A third of the headroom (pool oracle 64.5% vs reranker top-1 43.5% <25 km on val) is in choosing.
+  - Stage 2 (consuming evidence): the one signal with real discrimination is comparing the query photo with an exemplar
+    photo of each candidate. A fine-tuned 4B comparator (query + exemplar -> same place?, LoRA, 48k pairs from MP16 train
+    photos' top-8 candidates, `comparator_*.py`) lifts top-1 <25 km by +0.7 [+0.3, +1.2] on all 3,713 benchmark eval-half
+    photos (im2gps3k +1.4, yfcc4k +0.3), combiner weight fitted on MP16 dev only (LEARNINGS 22-26, 29). Pairwise and 25 km
+    variants, zero-shot judges, Wikipedia text per candidate, and bigger zero-shot choosers (4B / 9B / 27B, all below the
+    reranker) do not beat it (LEARNINGS 25-28).
+  - Not tried: RL over a comparison budget with the comparator as a tool; a comparator trained on far more pairs or epochs
+    (loss was still falling); a stronger retrieval pool. The query design is in `QUERY_EVIDENCE_PLAN.md` (superseded).
+- Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
+- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
+  and the shown-candidate oracle), not against current greedy.
 
 ## Rules
 - Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`). Wikimedia isn't in
@@ -80,5 +94,21 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
 - `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
   `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
-- Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool); `artifacts/` is not tracked.
+- `experiment/query_evidence.py`: fixed query → SigLIP2 evidence → revise loop on MP16 dev photos
+  (`scripts/query_evidence.sh`; outputs `artifacts/query_evidence/<tag>/`).
+- `experiment/wiki_backend.py`: offline geotagged-Wikipedia search (`/data/pinpoint/wikipedia/enwiki_geo.sqlite` BM25 +
+  `enwiki_geo_bge-base.f16.npy` dense; run with `~/.venvs/sft/bin/python`, `.venv` lacks pyarrow), `probe` go/no-go.
+- `experiment/stage1_eval.py`: stage-1 evaluation (oracle accuracy over the pool, matched whole-image control, evidence informativeness);
+  `evidence_ranker.py`, `attribute_ranker.py`: learned-reranker tests with evidence / attribute features; `photo_attributes.py`,
+  `candidate_attributes.py` (run with `~/.venvs/geo/bin/python`: rasterio, WorldClim + ETOPO under `/data/pinpoint/geo`),
+  `attribute_check.py`; `overture_text.py` (80M-place name index, `/data/pinpoint/overture`), `evidence_screen.py`, `audit_sets.py`
+  (leakage / near-duplicate / placeholder audit of train, dev, val; flags in `artifacts/query_evidence/<tag>/`).
+- `experiment/exemplar_judge.py`: exemplar "same place?" judge: screens, top-8 scoring, combiner and full-eval-halves report;
+  `comparator_data.py`, `comparator_train.py` (pointwise / pairwise LoRA comparator; merge with `sft_train merge`);
+  `knowledge_scaling.py` (zero-shot choosers by model size, optional nearby Wikipedia text from `wiki_nearby.py`).
+  Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`, `text_screen.sh`,
+  `photo_attributes.sh`, `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
+  (all 3,795 eval-half), `train` (MP16 train) under `artifacts/query_evidence/`.
+- Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
+  experiments); `artifacts/` is not tracked.
 - Full setup from scratch: `SETUP.md`.
