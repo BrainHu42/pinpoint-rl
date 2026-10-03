@@ -425,6 +425,27 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       vote +0.1 / -0.6 / +0.2 / -0.1; rank + comparator + vote +0.6 / +0.1 / +0.1 / -0.6 (vs rank + comparator +0.6 / +0.3 / -0.1 / -0.2).
     - So the anchored answers (lesson 33) weren't hiding independent knowledge. At the 4B scale, the VLM knows less about where a photo is than
       whole-image retrieval over 9M geotagged photos, even at country level.
+38. **A geo-aware adapter on SigLIP2 adds about +1 pt of candidate recall over the region prior (2026-10-03; `geo_embed.py`).** Residual MLP on frozen
+    SigLIP2 (identity start), multi-positive InfoNCE over each MP16 bucket-99 train photo's cached neighbours. Positives are neighbours < 25 km from the
+    truth; negatives are the top-96 look-alikes plus 128 random deeper neighbours. 29,933 train photos have a positive in their top 1000 (2.9M gallery
+    rows); dev and benchmark photographers' rows are blocked; selection uses held-out train photographers. Training takes minutes.
+    - Look-alike negatives alone are a trap: selection MRR rose 0.32 -> 0.45, but on the full lists the adapter ranked right places *worse* than raw
+      similarity (val, right-place cluster in the first 10: 42.8 vs 51.4%). It lifted deep neighbours it had never seen. Adding random deep negatives
+      fixed it (selection MRR 0.32 -> 0.41; 4096 hidden, lr 2e-3, best around epoch 5).
+    - Right-place cluster (< 25 km) in the first 10 / 50 clusters:
+
+      | Ranking | dev @10 | dev @50 | val @10 | val @50 |
+      |---|---|---|---|---|
+      | raw | 37.7 | 54.5 | 51.4 | 67.7 |
+      | raw + region prior | 43.0 | 59.3 | 57.0 | 70.5 |
+      | adapter | 40.9 | 57.6 | 52.7 | 70.3 |
+      | raw + adapter + prior | 44.5 | 60.0 | 57.6 | 71.7 |
+
+      The 200 km numbers move the same way.
+    - Current pool + 5 / 10 / 20 extra clusters, oracle gain < 25 km: adapter +3.0 / +4.9 / +7.9 (dev) and +3.0 / +5.1 / +7.9 (val), vs the matched
+      control (raw + prior) +2.2 / +4.5 / +8.0 and +2.0 / +3.9 / +6.0. That is ~+1 pt at small K, about what the region-diversified pool gave (lesson 31).
+    - So geography-aware re-scoring of the same neighbours is real but small, like everything else on this pool. Training data is the binding limit:
+      the rules allow only bucket 99 (~30k usable queries).
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
