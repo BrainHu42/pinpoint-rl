@@ -468,15 +468,104 @@ def pair_report(name: str) -> None:
         print(f"  w={v:<4g} change <25 km: dev {(top1('dev', v) < 25).mean() - (top1('dev', 0.0) < 25).mean():+.1%}, val {(top1('val', v) < 25).mean() - (top1('val', 0.0) < 25).mean():+.1%}")
 
 
+def full_pairs() -> None:
+    """The best exemplar of each of the top TOPK candidates for every photo of the `full` set (all im2gps3k and yfcc4k eval-half photos), with a flag for the
+    Flickr "photo no longer available" placeholders (embedding cosine >= 0.95 to the known placeholder)."""
+
+    from scipy.spatial import cKDTree
+
+    photos = json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))
+    ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    world = load_world()
+    tree = cKDTree(_xyz(world.mp16["latlon"]))
+    chord = 2 * math.sin(EXEMPLAR_KM / EARTH_KM / 2)
+    index = {q["image_id"]: i for i, q in enumerate(world.queries)}
+    ref_id = json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8"))[0]
+    ref = world.query_embeddings[index[ref_id]] / np.linalg.norm(world.query_embeddings[index[ref_id]])
+    out = []
+    for m, e in enumerate(photos):
+        q = world.query_embeddings[e["index"]] / np.linalg.norm(world.query_embeddings[e["index"]])
+        placeholder = bool(q @ ref >= 0.95)
+        author = int(world.query_author[e["index"]])
+        found: list[str | None] = []
+        for latlon in ([] if placeholder else e["pool"][:TOPK]):
+            rows = [r for r in tree.query_ball_point(_xyz(np.asarray(latlon)), chord) if world.mp16["author"][r] != author]
+            if not rows:
+                found.append(None)
+                continue
+            rows = np.sort(rows)
+            emb = np.asarray(world.mp16["embeddings"][rows], dtype=np.float32)
+            found.append(ids[rows[int(np.argmax(emb @ q / np.linalg.norm(emb, axis=1)))]])
+        out.append({"image_id": e["image_id"], "path": e["path"], "benchmark": e["benchmark"], "placeholder": placeholder, "exemplars": found})
+        if (m + 1) % 1000 == 0:
+            print(f"  {m + 1}/{len(photos)} photos", flush=True)
+    (ROOT / "exemplar_full_pairs.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
+    print(f"{len(out)} photos, {sum(p['placeholder'] for p in out)} placeholders; candidates with an exemplar {np.mean([x is not None for p in out for x in p['exemplars']]):.0%}")
+
+
+def full_judge(server: str, name: str) -> None:
+    photos = json.loads((ROOT / "exemplar_full_pairs.json").read_text(encoding="utf-8"))
+    images = MP16Images()
+    jobs = [(i, r) for i, p in enumerate(photos) for r, x in enumerate(p["exemplars"]) if x is not None]
+
+    def run(job: tuple[int, int]) -> float | None:
+        i, r = job
+        p = photos[i]
+        return _p_same(server, _jpeg(Path(p["path"]).read_bytes()), _jpeg(images.read(p["exemplars"][r])))
+
+    with ThreadPoolExecutor(32) as pool:
+        scores = list(pool.map(run, jobs))
+    for p in photos:
+        p["p_same"] = [None] * len(p["exemplars"])
+    for (i, r), score in zip(jobs, scores):
+        photos[i]["p_same"][r] = score
+    path = ROOT / f"exemplar_full_scores_{name}.json"
+    path.write_text(json.dumps(photos) + "\n", encoding="utf-8")
+    print(f"{len(jobs)} comparisons, {sum(s is None for s in scores)} failed -> {path}")
+
+
+def full_report(name: str) -> None:
+    """Top-1 of -rank + w * logit(P(same)) on every im2gps3k / yfcc4k eval-half photo (placeholders dropped), with w fitted on the MP16 dev photos only."""
+
+    from .wiki_backend import _km
+
+    dev = [p for p in _load_topk(name) if p["tag"] == "dev"]
+
+    def pick(dist: list[np.ndarray], logit: list[np.ndarray], w: float) -> np.ndarray:
+        return np.asarray([d[int(np.argmax(-np.arange(len(d)) + w * l[: len(d)]))] for d, l in zip(dist, logit)])
+
+    dev_dist, dev_logit = [p["dist"] for p in dev], [_logit(p["p"]) for p in dev]
+    w = max(WEIGHTS, key=lambda v: ((pick(dev_dist, dev_logit, v) < 25).mean(), -v))
+    scored = json.loads((ROOT / f"exemplar_full_scores_{name}.json").read_text(encoding="utf-8"))
+    photos = {e["image_id"]: e for e in json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))}
+    rows = [(p["benchmark"], _km(np.asarray(photos[p["image_id"]]["pool"][:TOPK]), *photos[p["image_id"]]["truth"]),
+             _logit(np.asarray([np.nan if x is None else x for x in p["p_same"]][: TOPK], dtype=np.float64))) for p in scored if not p["placeholder"]]
+    print(f"judge {name}: w = {w:g} fitted on dev only; {len(rows)} benchmark eval-half photos (placeholders dropped: {sum(p['placeholder'] for p in scored)})")
+    print(f"{'set':10s} {'n':>5s}  reranker top-1 <1/<25/<200 km    + judge             change <1/<25/<200 km   <25 km 95% CI      shuffled control <25 km")
+    rng = np.random.default_rng(0)
+    for label, keep in (("all", lambda b: True), ("im2gps3k", lambda b: b == "im2gps3k"), ("yfcc4k", lambda b: b == "yfcc4k")):
+        sel = [r for r in rows if keep(r[0])]
+        dist, logit = [r[1] for r in sel], [r[2] for r in sel]
+        base, with_j = pick(dist, logit, 0.0), pick(dist, logit, w)
+        shuffled = pick(dist, [logit[i] for i in rng.permutation(len(logit))], w) if len(sel) else base
+        ci = _bootstrap((with_j < 25).astype(float) - (base < 25))
+        print(f"{label:10s} {len(sel):5d}  " + " ".join(f"{(base < t).mean():6.1%}" for t in (1, 25, 200)) + "      " + " ".join(f"{(with_j < t).mean():6.1%}" for t in (1, 25, 200))
+              + "      " + " ".join(f"{(with_j < t).mean() - (base < t).mean():+6.1%}" for t in (1, 25, 200)) + f"    [{ci[1]:+.1%}, {ci[2]:+.1%}]    {(shuffled < 25).mean() - (base < 25).mean():+.1%}")
+    for v in WEIGHTS[1:]:
+        dist, logit = [r[1] for r in rows], [r[2] for r in rows]
+        print(f"  w={v:<4g} change <25 km (all): {(pick(dist, logit, v) < 25).mean() - (pick(dist, logit, 0.0) < 25).mean():+.1%}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report", "topk-diagnose", "topk-cv", "pair-judge", "pair-report"))
+    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report", "topk-diagnose", "topk-cv", "pair-judge", "pair-report", "full-pairs", "full-judge", "full-report"))
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     parser.add_argument("--name", default="zeroshot-9b", help="which judge's top-k scores to write or analyse")
     args = parser.parse_args(argv)
     {"pairs": pairs, "judge": lambda: judge(args.server), "report": report, "topk-pairs": topk_pairs, "topk-judge": lambda: topk_judge(args.server, args.name),
      "topk-report": lambda: topk_report(args.name), "topk-diagnose": lambda: topk_diagnose(args.name), "topk-cv": lambda: topk_cv(args.name),
-     "pair-judge": lambda: pair_judge(args.server, args.name), "pair-report": lambda: pair_report(args.name)}[args.node]()
+     "pair-judge": lambda: pair_judge(args.server, args.name), "pair-report": lambda: pair_report(args.name), "full-pairs": full_pairs,
+     "full-judge": lambda: full_judge(args.server, args.name), "full-report": lambda: full_report(args.name)}[args.node]()
     return 0
 
 
