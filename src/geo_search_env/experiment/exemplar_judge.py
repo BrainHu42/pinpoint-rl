@@ -199,7 +199,13 @@ def topk_pairs() -> None:
     TOPK_PAIRS.write_text(json.dumps(out) + "\n", encoding="utf-8")
 
 
-def topk_judge(server: str) -> None:
+def _scores_path(name: str) -> Path:
+    """Scores of the zero-shot 9B keep their original file name; other judges are stored by name."""
+
+    return TOPK_SCORES if name == "zeroshot-9b" else ROOT / f"exemplar_topk_scores_{name}.json"
+
+
+def topk_judge(server: str, name: str) -> None:
     photos = json.loads(TOPK_PAIRS.read_text(encoding="utf-8"))
     images = MP16Images()
     jobs = [(i, r) for i, p in enumerate(photos) for r, x in enumerate(p["exemplars"]) if x is not None]
@@ -216,29 +222,41 @@ def topk_judge(server: str) -> None:
         p["p_same"] = [None] * len(p["exemplars"])
     for (i, r), score in zip(jobs, scores):
         photos[i]["p_same"][r] = score
-    TOPK_SCORES.write_text(json.dumps(photos) + "\n", encoding="utf-8")
-    print(f"{len(jobs)} comparisons, {sum(s is None for s in scores)} failed -> {TOPK_SCORES}")
+    _scores_path(name).write_text(json.dumps(photos) + "\n", encoding="utf-8")
+    print(f"{len(jobs)} comparisons, {sum(s is None for s in scores)} failed -> {_scores_path(name)}")
 
 
-def topk_report() -> None:
-    """Top-1 accuracy of score = -rank + w * logit(P(same place)) over each photo's top candidates, w fitted on dev; shuffled control."""
+def _load_topk(name: str) -> list[dict[str, Any]]:
+    """Per dev / val photo (placeholders dropped): its top candidates' distances to the truth in reranker order and the judge's P(same) (NaN: none)."""
 
     from .wiki_backend import _km
 
-    scored = json.loads(TOPK_SCORES.read_text(encoding="utf-8"))
+    scored = json.loads(_scores_path(name).read_text(encoding="utf-8"))
     excluded = set(json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8")))
-    data: dict[str, dict[str, Any]] = {}
+    out = []
     for tag in ("dev", "val"):
         photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
         mine = [p for p in scored if p["tag"] == tag]
-        keep = [m for m, e in enumerate(photos) if e["image_id"] not in excluded]
-        dist = [_km(np.asarray(photos[m]["pool"][:TOPK]), *photos[m]["truth"]) for m in keep]
-        logit = []
-        for m in keep:
-            raw = np.asarray([np.nan if x is None else x for x in mine[m]["p_same"]], dtype=np.float64)
-            raw = np.where(np.isnan(raw), 0.5, np.clip(raw, 0.02, 0.98))  # no exemplar or failed call: neutral
-            logit.append(np.log(raw / (1 - raw)))
-        data[tag] = {"dist": dist, "logit": logit, "bench": np.asarray([photos[m].get("benchmark", "mp16") for m in keep])}
+        for m, e in enumerate(photos):
+            if e["image_id"] in excluded:
+                continue
+            d = _km(np.asarray(e["pool"][:TOPK]), *e["truth"])
+            p = np.asarray([np.nan if x is None else x for x in mine[m]["p_same"]][: len(d)], dtype=np.float64)
+            out.append({"tag": tag, "bench": e.get("benchmark", "mp16"), "dist": d, "p": p})
+    return out
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    p = np.where(np.isnan(p), 0.5, np.clip(p, 0.02, 0.98))  # no exemplar or a failed call: neutral
+    return np.log(p / (1 - p))
+
+
+def topk_report(name: str) -> None:
+    """Top-1 accuracy of score = -rank + w * logit(P(same place)) over each photo's top candidates, w fitted on dev; shuffled control."""
+
+    photos = _load_topk(name)
+    data = {tag: {"dist": [p["dist"] for p in photos if p["tag"] == tag], "logit": [_logit(p["p"]) for p in photos if p["tag"] == tag],
+                  "bench": np.asarray([p["bench"] for p in photos if p["tag"] == tag])} for tag in ("dev", "val")}
 
     def top1(tag: str, w: float, shuffle: bool = False) -> np.ndarray:
         d, lg = data[tag]["dist"], data[tag]["logit"]
@@ -248,7 +266,7 @@ def topk_report() -> None:
         return np.asarray([x[int(np.argmax(-np.arange(len(x)) + w * fit(l, len(x))))] for x, l in zip(d, lg)])
 
     w = max(WEIGHTS, key=lambda v: ((top1("dev", v) < 25).mean(), -v))
-    print(f"w fitted on dev for top-1 <25 km: {w:g}; candidates scored per photo: top {TOPK}\n")
+    print(f"judge {name}: w fitted on dev for top-1 <25 km: {w:g}; candidates scored per photo: top {TOPK}\n")
     print(f"{'set':14s} {'n':>4s}  reranker top-1 <1/<25/<200 km    + exemplar judge (w={w:g})     change <1/<25/<200 km   <25 km 95% CI     shuffled-judge control <25 km")
     for tag, bench in (("dev", None), ("val", None), ("val", "im2gps3k"), ("val", "yfcc4k")):
         sel = np.ones(len(data[tag]["dist"]), bool) if bench is None else data[tag]["bench"] == bench
@@ -262,13 +280,88 @@ def topk_report() -> None:
         print(f"  w={v:<4g} change <25 km: dev {(top1('dev', v) < 25).mean() - (top1('dev', 0.0) < 25).mean():+.1%}, val {(top1('val', v) < 25).mean() - (top1('val', 0.0) < 25).mean():+.1%}")
 
 
+def topk_diagnose(name: str) -> None:
+    """Candidate-level separation and within-photo ranking of the judge, and how often combining flips the top-1 right or wrong."""
+
+    photos = _load_topk(name)
+
+    def auc(pos: list[float], neg: list[float]) -> float:
+        a, b = np.asarray(pos)[:, None], np.asarray(neg)[None, :]
+        return float((a > b).mean() + 0.5 * (a == b).mean())
+
+    print(f"judge {name}")
+    for tag in ("dev", "val"):
+        mine = [p for p in photos if p["tag"] == tag]
+        pick = lambda lo, hi: [x for p in mine for x, k in zip(p["p"], p["dist"]) if lo <= k < hi and not np.isnan(x)]
+        near, mid, far = pick(0, 1), pick(1, 25), pick(25, 1e9)
+        print(f"{tag}: mean P(same) for candidates <1 km from the truth {np.mean(near):.2f} (n={len(near)}), 1-25 km {np.mean(mid):.2f} (n={len(mid)}), >=25 km {np.mean(far):.2f} (n={len(far)})")
+        print(f"     candidate-level AUC: <1 km vs >=25 km {auc(near, far):.3f}; 1-25 km vs >=25 km {auc(mid, far):.3f}")
+        with_near = [p for p in mine if (p["dist"] < 1).any() and not np.isnan(p["p"]).all()]
+        print(f"     photos with a candidate within 1 km among the top {TOPK} (n={len(with_near)}): the judge's top pick is within 1 km in "
+              f"{np.mean([p['dist'][int(np.nanargmax(p['p']))] < 1 for p in with_near]):.0%}, the reranker top-1 in {np.mean([p['dist'][0] < 1 for p in with_near]):.0%}")
+        for w in (0.5, 1.0, 2.0):
+            fixed = broke = 0
+            for p in mine:
+                pick_i = int(np.argmax(-np.arange(len(p["dist"])) + w * _logit(p["p"])))
+                fixed += (p["dist"][pick_i] < 25) and not (p["dist"][0] < 25)
+                broke += (p["dist"][0] < 25) and not (p["dist"][pick_i] < 25)
+            print(f"     w={w}: top-1 flips to a right answer {fixed}, away from a right answer {broke}")
+
+
+def topk_cv(name: str) -> None:
+    """Cross-validated learned combiner of the reranker rank and judge features over dev + val (5 folds, 3 seeds): an upper bound for the scalar rule."""
+
+    import torch
+
+    photos = _load_topk(name)
+    D, F, tags = [], [], np.asarray([p["tag"] for p in photos])
+    for p in photos:
+        lg, n = _logit(p["p"]), len(p["dist"])
+        rank = np.arange(n, dtype=float)
+        order = (-lg).argsort().argsort().astype(float)  # the judge's rank within the photo
+        f = np.stack([rank, (rank == 0).astype(float), (rank < 3).astype(float), lg, lg * rank, lg - lg.max(), order, (order == 0).astype(float), lg * (rank == 0)], axis=1)
+        D.append(np.pad(p["dist"], (0, TOPK - n), constant_values=1e5)); F.append(np.pad(f, ((0, TOPK - n), (0, 0))))
+    D, F = np.asarray(D), np.asarray(F, dtype=np.float32)
+    valid = D < 9e4
+    reward = np.where(valid, (D < 25) * 1.0 + (D < 1) * 0.5, 0.0).astype(np.float32)
+    mean, std = F[valid].mean(0), F[valid].std(0) + 1e-6
+    X, M, R = torch.as_tensor((F - mean) / std), torch.as_tensor(valid), torch.as_tensor(reward)
+
+    def fit(idx: np.ndarray, seed: int):
+        torch.manual_seed(seed)
+        net = torch.nn.Sequential(torch.nn.Linear(F.shape[-1], 16), torch.nn.GELU(), torch.nn.Linear(16, 1))
+        opt = torch.optim.AdamW(net.parameters(), lr=1e-2, weight_decay=1e-2)
+        idx_t = torch.as_tensor(idx)
+        for _ in range(300):
+            loss = -(torch.softmax(net(X[idx_t]).squeeze(-1).masked_fill(~M[idx_t], float("-inf")), -1) * R[idx_t]).sum(-1).mean()
+            opt.zero_grad(); loss.backward(); opt.step()
+        return net
+
+    folds = np.array_split(np.random.default_rng(0).permutation(len(D)), 5)
+    hits = {t: np.zeros(len(D)) for t in (1.0, 25.0, 200.0)}
+    for seed in range(3):
+        for f in folds:
+            net = fit(np.setdiff1d(np.arange(len(D)), f), seed)
+            with torch.no_grad():
+                pick = net(X[f]).squeeze(-1).masked_fill(~M[f], float("-inf")).argmax(1).numpy()
+            for t in hits:
+                hits[t][f] += (D[f, pick] < t) / 3
+    base = {t: (D[:, 0] < t).astype(float) for t in hits}
+    print(f"judge {name}: learned combiner of rank + judge features, 5-fold CV, 3 seeds, {len(D)} photos, vs reranker top-1")
+    for label, sel in (("all", np.ones(len(D), bool)), ("dev", tags == "dev"), ("val", tags == "val")):
+        ci = _bootstrap(hits[25.0][sel] - base[25.0][sel])
+        print(f"  {label:4s} n={int(sel.sum()):4d}  reranker " + " ".join(f"{base[t][sel].mean():6.1%}" for t in hits) + "   learned " + " ".join(f"{hits[t][sel].mean():6.1%}" for t in hits)
+              + f"   change <25 km {ci[0]:+.1%} [{ci[1]:+.1%}, {ci[2]:+.1%}]")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report"))
+    parser.add_argument("node", choices=("pairs", "judge", "report", "topk-pairs", "topk-judge", "topk-report", "topk-diagnose", "topk-cv"))
     parser.add_argument("--server", default="http://127.0.0.1:8765")
+    parser.add_argument("--name", default="zeroshot-9b", help="which judge's top-k scores to write or analyse")
     args = parser.parse_args(argv)
-    {"pairs": pairs, "judge": lambda: judge(args.server), "report": report, "topk-pairs": topk_pairs,
-     "topk-judge": lambda: topk_judge(args.server), "topk-report": topk_report}[args.node]()
+    {"pairs": pairs, "judge": lambda: judge(args.server), "report": report, "topk-pairs": topk_pairs, "topk-judge": lambda: topk_judge(args.server, args.name),
+     "topk-report": lambda: topk_report(args.name), "topk-diagnose": lambda: topk_diagnose(args.name), "topk-cv": lambda: topk_cv(args.name)}[args.node]()
     return 0
 
 
