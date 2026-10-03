@@ -26,7 +26,33 @@ POSITIVE_KM, NEGATIVE_KM = 1.0, 10.0
 OUT = ROOT / "comparator"
 
 
+def pairwise(negatives_per_positive: int = 4, seed: int = 0) -> None:
+    """Pairwise rows from pairs_train.jsonl: for every photo with a positive candidate, the positive's best exemplar against the best exemplar of up to
+    `negatives_per_positive` negative candidates (>= 10 km). Which is shown first is decided at training time."""
+
+    rng = np.random.default_rng(seed)
+    by_photo: dict[int, list[dict]] = {}
+    for line in (OUT / "pairs_train.jsonl").read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        if r["exemplar_rank"] == 0:
+            by_photo.setdefault(r["photo"], []).append(r)
+    rows = []
+    for photo, rs in by_photo.items():
+        pos, neg = [r for r in rs if r["label"] == 1], [r for r in rs if r["label"] == 0]
+        for p in pos[:1]:  # one positive per photo (the best-ranked one)
+            for i in rng.permutation(len(neg))[:negatives_per_positive]:
+                rows.append({"photo": photo, "query": p["query"], "right": p["exemplar"], "wrong": neg[i]["exemplar"], "right_rank": p["rank"], "wrong_rank": neg[i]["rank"],
+                             "wrong_km": neg[i]["km"]})
+    (OUT / "pairwise_train.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    print(f"{len(rows)} pairwise rows from {len({r['photo'] for r in rows})} photos -> {OUT / 'pairwise_train.jsonl'}")
+
+
 def main() -> int:
+    import sys
+
+    if sys.argv[1:] == ["pairwise"]:
+        pairwise()
+        return 0
     from scipy.spatial import cKDTree
 
     photos = json.loads((ROOT / "train" / "dev.json").read_text(encoding="utf-8"))

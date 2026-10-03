@@ -27,12 +27,19 @@ from .sft_data import MP16Images
 from .sft_train import BASE_MODEL, LORA_TARGETS, RUNS
 
 PROMPT = "Were these two photos taken at the same place? Answer yes or no."
+PROMPT_PAIR = "Which of photos 2 and 3 was taken at the same place as photo 1? Answer 2 or 3."
+PAIRWISE = ROOT / "comparator" / "pairwise_train.jsonl"
 SIZE = 448
 NEG_PER_POSITIVE_PHOTO = 3
 PAIRS = ROOT / "comparator" / "pairs_train.jsonl"
 
 
-def load_rows(samples: int | None, seed: int = 0) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def load_rows(samples: int | None, seed: int = 0, mode: str = "same") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if mode == "pairwise":  # rows are (query, right exemplar, wrong exemplar); the same 3% of photos is held out
+        rows = [json.loads(line) for line in PAIRWISE.read_text(encoding="utf-8").splitlines()]
+        order = np.random.default_rng(seed).permutation(len(rows))
+        rows = [rows[i] for i in order]
+        return [r for r in rows if r["photo"] % 33 != 0][:samples], [r for r in rows if r["photo"] % 33 == 0]
     rows = [json.loads(line) for line in PAIRS.read_text(encoding="utf-8").splitlines()]
     by_photo: dict[int, list[dict[str, Any]]] = {}
     for r in rows:
@@ -50,10 +57,11 @@ def load_rows(samples: int | None, seed: int = 0) -> tuple[list[dict[str, Any]],
 class Collator:
     """Two images per row (query first, exemplar second), the chat template with thinking off, left padding so the last position generates the answer."""
 
-    def __init__(self, processor) -> None:
+    def __init__(self, processor, mode: str = "same") -> None:
         self.processor = processor
+        self.mode = mode
         self.images: MP16Images | None = None  # opened lazily, once per dataloader worker
-        self.ids = {w: processor.tokenizer.convert_tokens_to_ids(w) for w in ("Yes", "No")}
+        self.ids = {w: processor.tokenizer.convert_tokens_to_ids(w) for w in (("Yes", "No") if mode == "same" else ("3", "2"))}  # (positive, negative) answer tokens
         processor.tokenizer.padding_side = "left"
 
     def _image(self, image_id: str):
@@ -67,11 +75,19 @@ class Collator:
         import torch
 
         self.images = self.images or MP16Images()
-        messages = [{"role": "user", "content": [{"type": "image"}, {"type": "image"}, {"type": "text", "text": PROMPT}]}]
-        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
-        images = [im for r in rows for im in (self._image(r["query"]), self._image(r["exemplar"]))]
+        pair = self.mode == "pairwise"
+        content = [{"type": "image"}] * (3 if pair else 2) + [{"type": "text", "text": PROMPT_PAIR if pair else PROMPT}]
+        text = self.processor.apply_chat_template([{"role": "user", "content": content}], tokenize=False, add_generation_prompt=True, enable_thinking=False)
+        if pair:
+            third_right = [(r["photo"] + 7 * r["right_rank"] + r["wrong_rank"]) % 2 == 0 for r in rows]  # which of the two exemplars comes third: fixed per row, half and half
+            images = [im for r, t in zip(rows, third_right)
+                      for im in (self._image(r["query"]), self._image(r["wrong"] if t else r["right"]), self._image(r["right"] if t else r["wrong"]))]
+            labels = [float(t) for t in third_right]
+        else:
+            images = [im for r in rows for im in (self._image(r["query"]), self._image(r["exemplar"]))]
+            labels = [r["label"] for r in rows]
         batch = self.processor(text=[text] * len(rows), images=images, return_tensors="pt", padding=True)
-        batch["labels"] = torch.tensor([r["label"] for r in rows], dtype=torch.float32)
+        batch["labels"] = torch.tensor(labels, dtype=torch.float32)
         return batch
 
 
@@ -80,7 +96,7 @@ def auc(score: np.ndarray, label: np.ndarray) -> float:
     return float((pos > neg).mean() + 0.5 * (pos == neg).mean())
 
 
-def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1) -> None:
+def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1, mode: str = "same") -> None:
     import torch
     from peft import LoraConfig, get_peft_model
     from torch.utils.data import DataLoader
@@ -94,11 +110,11 @@ def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulat
     model.print_trainable_parameters()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
-    train_rows, held_rows = load_rows(samples, seed)
-    pos = sum(r["label"] for r in train_rows)
+    train_rows, held_rows = load_rows(samples, seed, mode)
+    pos = sum(r["label"] for r in train_rows) if mode == "same" else len(train_rows) // 2
     print(f"train rows {len(train_rows)} ({pos} positive), held-out rows {len(held_rows)}", flush=True)
-    collator = Collator(processor)
-    yes, no = collator.ids["Yes"], collator.ids["No"]
+    collator = Collator(processor, mode)
+    yes, no = list(collator.ids.values())
     loader = DataLoader(train_rows, batch_size=batch, shuffle=False, collate_fn=collator, num_workers=6, prefetch_factor=4, persistent_workers=True)
     steps = len(loader) // accumulation if max_steps < 0 else max_steps
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr, weight_decay=0.0)
@@ -155,10 +171,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=40_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--mode", choices=("same", "pairwise"), default="same")
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=-1, help="speed test: stop after this many optimizer steps and keep nothing")
     args = parser.parse_args(argv)
-    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps)
+    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps, mode=args.mode)
     return 0
 
 
