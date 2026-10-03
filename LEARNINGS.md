@@ -370,6 +370,15 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       pool test barely moves: regional pool at 17 is 51.6 / 64.8% (current 52.3 / 64.4%); as 5 extras +4.1 / +4.2 vs the control's +2.8 / +2.4.
     - So region classification from frozen SigLIP2 is saturated at ~43% top-1 on MP16. The perfect-region ceiling (lesson 31) is out of reach for this
       family of classifiers. Getting there would need information the embedding lacks: text, signs, live evidence.
+33. **Stage-2 go/no-go: the models' own answers add nothing beyond reranker + comparator (2026-10-03; `model_vote_cv.py`).**
+    - Setup: a cross-validated combiner (5 folds, 3 seeds) over each dev + val photo's top-8 candidates (1,985 photos; reranker top-1 <25 km 38.8%,
+      top-8 oracle 51.4%). Features: rank, `comparator-a` scores, and a "vote" from each zero-shot chooser's answer (lesson 27): distance to each
+      candidate, whether it is within 25 km, whether it is the nearest.
+    - Rank + vote: 4B +0.0, 9B +0.0, 27B -0.0. Rank + comparator: +0.6 [+0.1, +1.1]. Adding any vote to rank + comparator: -0.2 / +0.1 / +0.1
+      (CIs about ±0.7). The choosers mostly repeat the reranker (lesson 1), so their answers carry no independent signal.
+    - Implication: a stage-2 policy that sees only the photo, the candidates and the comparator has about +0.7 pts of learnable headroom over
+      the reranker. A combiner that sees every comparator score is an upper bound for a budgeted agent using the same tool. RL with these tools
+      would be a framework, not a gain; it needs a new information source (stronger comparator, live street-level photos) to have something to learn.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
