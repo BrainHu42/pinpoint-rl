@@ -23,10 +23,22 @@ from .stage1_eval import _bootstrap
 from .wiki_backend import _km
 
 
-def run(name: str, server: str, tag: str, max_tokens: int) -> None:
+def _options_wiki(entry: dict, nearby: list[list[dict]]) -> str:
+    """The candidate lines of the default prompt, each followed by the nearest Wikipedia articles (the first with its first sentence cut at 90 characters)."""
+
+    lines = []
+    for rank, ((name, lat, lon), articles) in enumerate(zip(entry["candidates"], nearby), start=1):
+        near = "; ".join(a["title"] + (f" ({a['lead'][:90]})" if k == 0 and a["lead"] else "") for k, a in enumerate(articles))
+        lines.append(f"{rank}. {name} ({lat:.3f}, {lon:.3f})" + (f" - near: {near}" if near else ""))
+    return "\n".join(lines)
+
+
+def run(name: str, server: str, tag: str, max_tokens: int, wiki: bool = False) -> None:
     photos = _load(tag, "dev.json")
     images = MP16Images()
-    raws = _parallel(lambda e: _chat(server, [_photo(images, e), {"type": "text", "text": PROMPT.format(options=_options(e))}], max_tokens), photos, workers=16 if "27b" in name else 64)
+    nearby = _load(tag, "wiki_nearby.json") if wiki else {}
+    options = lambda e: _options_wiki(e, nearby[e["image_id"]]) if wiki else _options(e)
+    raws = _parallel(lambda e: _chat(server, [_photo(images, e), {"type": "text", "text": PROMPT.format(options=options(e))}], max_tokens), photos, workers=16 if "27b" in name else 64)
     out = {e["image_id"]: {"raw": raw, "answer": parse_coordinates(raw)} for e, raw in zip(photos, raws)}
     (ROOT / tag / f"scaling_{name}.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
     print(f"{name} {tag}: {len(out)} photos, unparsed {sum(v['answer'] is None for v in out.values())}")
@@ -66,8 +78,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--max-tokens", type=int, default=600)
+    parser.add_argument("--wiki", action="store_true", help="add each candidate's nearest Wikipedia articles to the prompt (wiki_nearby.py)")
     args = parser.parse_args(argv)
-    run(args.name, args.server, args.tag, args.max_tokens) if args.node == "run" else report(args.names)
+    run(args.name, args.server, args.tag, args.max_tokens, args.wiki) if args.node == "run" else report(args.names)
     return 0
 
 
