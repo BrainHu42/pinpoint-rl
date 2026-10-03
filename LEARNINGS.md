@@ -305,6 +305,14 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Cross-validated learned combiner over dev + val (1,985 photos): `comparator-a` alone +0.7 [+0.2, +1.2] (<1 km +0.3, <200 km
       +0.5); + exemplar similarity +0.3 [-0.3, +0.9]; + similarity + the zero-shot judge +0.4 [-0.2, +1.0]. Extra features only add noise.
 
+26. **A comparator trained for the 25 km metric is no better (run `comparator-25km`, 2026-10-03).** Same trainer, warm start from
+    `comparator-a`, pointwise labels positive < 25 km from the truth and negative >= 50 km (`pairs_train_all.jsonl`, 40,000 rows, 31,001
+    positive, 1.3 h at 8.8 samples/s; held-out pairs accuracy 67.8%, AUC 0.807). Candidate-level AUC rose where intended (1-25 km vs
+    >= 25 km: 0.844 dev / 0.815 val vs 0.789 / 0.778 for `comparator-a`; < 1 km vs >= 25 km fell to 0.855 / 0.822), but the top-1 gain did
+    not: scalar rule (w = 2 on dev) +0.7 [-0.5, +1.8] dev, -0.1 [-1.4, +1.2] val; cross-validated combiner +0.5 [+0.1, +0.9] (all 1,985
+    photos). Both comparators together in the combiner: +0.5 [-0.0, +1.0]. The exemplar-comparison signal saturates around +0.5 to +0.7
+    pts of top-1 <25 km at this scale (48k pairs, 1 epoch).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
