@@ -337,6 +337,20 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     those 202 +1.0 [-1.0, +3.0]. Larger weights do slightly better (w = 2 / 4 / 8: +0.9 / +1.0 / +0.9 on all photos; fitted on dev, w = 1 is
     reported). The scoring of 30k pairs takes ~8 minutes on the shared GPU.
 
+30. **The gallery isn't thin, and going deeper than the pool doesn't help either (2026-10-03; `deep_rerank.py`).**
+    - Coverage: 79 / 78% of dev / val photos have more than 1,000 MP16 + OSV photos within 25 km of the truth; only 1 / 4% of the photos the pool
+      misses are in places with fewer than 10. Misses are retrieval failures, not missing data.
+    - A right-place photo (< 25 km) is among the top K raw neighbours (MP16 + OSV merged by similarity) for K = 100 / 300 / 1000: 60 / 69 / 80% of
+      dev photos and 71 / 80 / 88% of val, vs 53 / 65% for the ~17-candidate pool. But that recall is deep and spread out: clustering the top-1000
+      neighbours at 1 km and keeping the first K clusters gives a right-place cluster for K = 10 / 25 / 50 in only 38 / 47 / 55% (dev) and
+      51 / 61 / 68% (val), i.e. +2-3 pts over the pool at 50 clusters.
+    - Re-ranking those 50 clusters (each represented by its best photo, ~99k comparisons with `comparator-a`), top-1 <25 km over dev + val (1,985
+      photos): original reranker 38.8; raw similarity's best cluster 26.9; comparator alone 27.1; cross-validated learned combiners: similarity +
+      comparator 29.3, similarity + reranker rank 36.9, all three 38.0 (-0.8 [-2.0, +0.4]). The reranker's pool (Pinpoint's GPS gallery and the
+      region prior) is far better than raw similarity, and over many look-alike candidates the comparator's false positives outweigh its hits.
+    - So the deep recall (80-88% at 1,000 neighbours) sits where precision is lowest. Pulling it in needs a better ranking of the raw neighbours
+      themselves (a geo-aware embedding) or a better region prior, not a judge over more candidates.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
