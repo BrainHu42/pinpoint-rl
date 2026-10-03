@@ -278,6 +278,22 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     cross-validated learned combiner (dev + val, 5 folds, 3 seeds) over rank + judge + similarity gives +0.4 [-0.2, +1.0] at <25 km, and
     rank + similarity without the judge gives the same +0.4 [-0.3, +1.0]: the zero-shot judge adds nothing beyond similarity.
 
+24. **A fine-tuned comparator beats the zero-shot judge and gives the first small positive result (`comparator_data.py`,
+    `comparator_train.py`, run `comparator-a`; 2026-10-03).** Qwen3.5-4B + LoRA (r 32, all language linears, 448 px images), input
+    = query photo + one exemplar (database photo within 1 km of a pool candidate, best by embedding similarity, not by the query's
+    photographer), output = Yes/No at the generation position, balanced binary loss, 48,000 pairs (15,947 positive: candidates < 1 km
+    from the truth; negatives >= 10 km; the 1-10 km band dropped) from the 34,523 MP16 train photos' top-8 candidates, 1 epoch,
+    1.5 h on the shared GPU at 8.7 samples/s (13 GiB). Held-out train-photo pairs: accuracy 77.8%, AUC 0.825.
+    - Candidate-level AUC (< 1 km vs >= 25 km from the truth, dev / val): 0.899 / 0.866 (zero-shot 9B 0.787 / 0.789); 1-25 km vs
+      >= 25 km 0.789 / 0.778 (0.655 / 0.674).
+    - Within a photo the judge's top pick is within 1 km in 48 / 40% of photos that have such a candidate in the top 8 (zero-shot
+      35 / 33%), still below the reranker's top-1 (62 / 56%).
+    - Top-1 <25 km with score = -rank + w * logit(P(same)), w = 1 fitted on dev: dev +0.8 [-0.1, +1.7], val +0.7 [-0.1, +1.6]
+      (im2gps3k +1.4 [+0.2, +2.8], yfcc4k +0.0); flips to a right answer vs away at w = 1: 15 vs 7 (dev), 13 vs 6 (val); shuffled-
+      judge control -0.1 / +0.2. Cross-validated learned combiner (5 folds, 3 seeds, 1,985 photos): +0.6 [+0.1, +1.1].
+    - Reading: real but small. The exemplar is the most similar photo near the candidate, so the comparator largely re-derives
+      what the reranker's similarity features already encode; the judge's own top pick is still worse than the reranker's.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

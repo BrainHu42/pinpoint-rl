@@ -96,7 +96,7 @@ def auc(score: np.ndarray, label: np.ndarray) -> float:
     return float((pos > neg).mean() + 0.5 * (pos == neg).mean())
 
 
-def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1, mode: str = "same") -> None:
+def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulation: int = 2, rank: int = 32, seed: int = 0, max_steps: int = -1, mode: str = "same", init_adapter: str | None = None) -> None:
     import torch
     from peft import LoraConfig, get_peft_model
     from torch.utils.data import DataLoader
@@ -106,7 +106,12 @@ def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulat
     out.mkdir(parents=True, exist_ok=True)
     processor = AutoProcessor.from_pretrained(BASE_MODEL, max_pixels=SIZE * SIZE)
     model = AutoModelForImageTextToText.from_pretrained(BASE_MODEL, dtype=torch.bfloat16).cuda()
-    model = get_peft_model(model, LoraConfig(r=rank, lora_alpha=2 * rank, lora_dropout=0.05, target_modules=r".*language_model.*\.(" + "|".join(LORA_TARGETS) + ")$"))
+    if init_adapter:  # continue from an earlier adapter (e.g. the pointwise comparator for the pairwise task)
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, init_adapter, is_trainable=True)
+    else:
+        model = get_peft_model(model, LoraConfig(r=rank, lora_alpha=2 * rank, lora_dropout=0.05, target_modules=r".*language_model.*\.(" + "|".join(LORA_TARGETS) + ")$"))
     model.print_trainable_parameters()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
@@ -172,10 +177,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--mode", choices=("same", "pairwise"), default="same")
+    parser.add_argument("--init-adapter", help="start from this LoRA adapter instead of a fresh one")
     parser.add_argument("--accumulation", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=-1, help="speed test: stop after this many optimizer steps and keep nothing")
     args = parser.parse_args(argv)
-    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps, mode=args.mode)
+    train(args.run, args.samples, lr=args.lr, batch=args.batch, accumulation=args.accumulation, max_steps=args.max_steps, mode=args.mode, init_adapter=args.init_adapter)
     return 0
 
 

@@ -26,9 +26,13 @@ POSITIVE_KM, NEGATIVE_KM = 1.0, 10.0
 OUT = ROOT / "comparator"
 
 
-def pairwise(negatives_per_positive: int = 4, seed: int = 0) -> None:
+HARD_NEGATIVES = 2  # per positive: the two best-ranked negatives (the reranker's most plausible mistakes), the rest random
+
+
+def pairwise(negatives_per_positive: int = 4, seed: int = 0, hard: bool = True) -> None:
     """Pairwise rows from pairs_train.jsonl: for every photo with a positive candidate, the positive's best exemplar against the best exemplar of up to
-    `negatives_per_positive` negative candidates (>= 10 km). Which is shown first is decided at training time."""
+    `negatives_per_positive` negative candidates (>= 10 km), `HARD_NEGATIVES` of them the best-ranked negatives when `hard`. Which is shown first is
+    decided at training time."""
 
     rng = np.random.default_rng(seed)
     by_photo: dict[int, list[dict]] = {}
@@ -39,8 +43,11 @@ def pairwise(negatives_per_positive: int = 4, seed: int = 0) -> None:
     rows = []
     for photo, rs in by_photo.items():
         pos, neg = [r for r in rs if r["label"] == 1], [r for r in rs if r["label"] == 0]
+        neg = sorted(neg, key=lambda r: r["rank"])  # the competitors the reranker found most plausible come first
         for p in pos[:1]:  # one positive per photo (the best-ranked one)
-            for i in rng.permutation(len(neg))[:negatives_per_positive]:
+            first = list(range(min(HARD_NEGATIVES, len(neg)))) if hard else []
+            rest = [int(i) for i in rng.permutation(len(neg)) if int(i) not in first][: negatives_per_positive - len(first)]
+            for i in first + rest:
                 rows.append({"photo": photo, "query": p["query"], "right": p["exemplar"], "wrong": neg[i]["exemplar"], "right_rank": p["rank"], "wrong_rank": neg[i]["rank"],
                              "wrong_km": neg[i]["km"]})
     (OUT / "pairwise_train.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
