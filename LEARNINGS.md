@@ -350,6 +350,18 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       region prior) is far better than raw similarity, and over many look-alike candidates the comparator's false positives outweigh its hits.
     - So the deep recall (80-88% at 1,000 neighbours) sits where precision is lowest. Pulling it in needs a better ranking of the raw neighbours
       themselves (a geo-aware embedding) or a better region prior, not a judge over more candidates.
+31. **A region-diversified pool adds ~2 oracle pts at matched budget; the region classifier is the bottleneck (2026-10-03; `region_prior.py`).**
+    - Same cached top-1000 raw neighbours (CPU only). "Regional" pools cluster inside each of the region head's top-10 (state, country)
+      regions and interleave them by P(region) / (rank in region + 1) ** beta; the control extends the pipeline's own raw source
+      (similarity + 0.01 * log prior). Dev (1,000) / val (985), <25 km.
+    - Alone at the pool's size (17), no pool beats the current one (dev 52.3 / val 64.4%; best regional 52.3 / 63.7%).
+    - Current pool + K extra candidates, oracle gain: regional (head, beta = 2) +4.0 / +6.3 / +9.1 (dev, K = 5 / 10 / 20) and +3.6 / +5.9 / +8.1
+      (val), vs the control's +2.2 / +4.5 / +8.0 and +2.0 / +3.9 / +6.0. So ~+1.5-2 pts beyond the matched control: real but below the 3-pt bar, and
+      past lessons say extra candidates rarely turn into top-1. Mixing in Pinpoint's GPS-kNN region votes ranks the true region higher
+      (dev top-1 40 -> 47%) but doesn't improve the pools.
+    - Ceiling: clustering only inside the *true* region gives 77.6 / 85.1% at 17 candidates (vs 52.3 / 64.4) and +27 / +22 pts as 10 extras. The
+      head ranks the true region 1st for 40 / 53% of photos and in its top 10 for only 72 / 82%. The headroom is in region classification itself,
+      and earlier attempts to choose the region better (VLM, retrieval evidence; lesson 5) failed.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
