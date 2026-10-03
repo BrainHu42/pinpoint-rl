@@ -379,6 +379,18 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Implication: a stage-2 policy that sees only the photo, the candidates and the comparator has about +0.7 pts of learnable headroom over
       the reranker. A combiner that sees every comparator score is an upper bound for a budgeted agent using the same tool. RL with these tools
       would be a framework, not a gain; it needs a new information source (stronger comparator, live street-level photos) to have something to learn.
+34. **Kinds of places near a candidate don't discriminate either (2026-10-03; `category_evidence.py`).** Map side: Overture places of 61 visual
+    categories (church, castle, stadium, beach, lighthouse, marina...; 8.1M places) counted within 1 / 5 km of every pool candidate. Photo side:
+    SigLIP2 zero-shot over the same categories (its sigmoid P is ~0 everywhere; the ranking is sensible, so a per-photo softmax). Match = sum of
+    P(visible) * idf * [category nearby]. Top-8 candidates of 1,985 dev + val photos.
+    - On 250 "choosing" photos (right candidate in the top 8, top-1 wrong): the right candidate's match beats the wrong top-1's 56% of the time,
+      ties 0-3%, loses 41-44%. The photo's most likely category lies near the right candidate in 115 / 168 of them (1 / 5 km) and near the wrong top-1
+      in 115 / 161. Within-photo AUC right vs wrong is 0.54 / 0.57.
+    - Cross-validated combiner, top-1 <25 km vs the reranker (38.8%): rank + categories -0.3; rank + comparator +0.6; rank + comparator + categories
+      +0.1; with shuffled categories +0.2. Categories beyond rank + comparator: -0.5 [-1.2, +0.1].
+    - Same mechanism as lesson 21: the wrong candidates come from photos that look like the query, so the same kinds of places are near them. Overture
+      is sparse for physical features (lighthouses 3k, castles 15k), so OpenStreetMap would be denser. But the right/wrong split is even (115 vs 115),
+      which says density isn't the limiting factor. Not worth the OSM download.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
