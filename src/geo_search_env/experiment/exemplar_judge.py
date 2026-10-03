@@ -532,19 +532,24 @@ def full_report(name: str) -> None:
     dev = [p for p in _load_topk(name) if p["tag"] == "dev"]
 
     def pick(dist: list[np.ndarray], logit: list[np.ndarray], w: float) -> np.ndarray:
-        return np.asarray([d[int(np.argmax(-np.arange(len(d)) + w * l[: len(d)]))] for d, l in zip(dist, logit)])
+        fit = lambda l, n: np.pad(l[:n], (0, max(0, n - len(l))))  # a shuffled vector may be shorter or longer than the photo's candidate list
+        return np.asarray([d[int(np.argmax(-np.arange(len(d)) + w * fit(l, len(d))))] for d, l in zip(dist, logit)])
 
     dev_dist, dev_logit = [p["dist"] for p in dev], [_logit(p["p"]) for p in dev]
     w = max(WEIGHTS, key=lambda v: ((pick(dev_dist, dev_logit, v) < 25).mean(), -v))
     scored = json.loads((ROOT / f"exemplar_full_scores_{name}.json").read_text(encoding="utf-8"))
     photos = {e["image_id"]: e for e in json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))}
+    with np.load(Path("artifacts/strategy_search") / "neighbors.npz") as cache:  # top raw neighbour similarity after same-photographer exclusion
+        raw = np.maximum(cache["mp16_raw_sim"][:, 0], cache["osv_raw_sim"][:, 0])
     rows = [(p["benchmark"], _km(np.asarray(photos[p["image_id"]]["pool"][:TOPK]), *photos[p["image_id"]]["truth"]),
-             _logit(np.asarray([np.nan if x is None else x for x in p["p_same"]][: TOPK], dtype=np.float64))) for p in scored if not p["placeholder"]]
+             _logit(np.asarray([np.nan if x is None else x for x in p["p_same"]][: TOPK], dtype=np.float64)),
+             bool(raw[photos[p["image_id"]]["index"]] >= 0.95)) for p in scored if not p["placeholder"]]
     print(f"judge {name}: w = {w:g} fitted on dev only; {len(rows)} benchmark eval-half photos (placeholders dropped: {sum(p['placeholder'] for p in scored)})")
     print(f"{'set':10s} {'n':>5s}  reranker top-1 <1/<25/<200 km    + judge             change <1/<25/<200 km   <25 km 95% CI      shuffled control <25 km")
     rng = np.random.default_rng(0)
-    for label, keep in (("all", lambda b: True), ("im2gps3k", lambda b: b == "im2gps3k"), ("yfcc4k", lambda b: b == "yfcc4k")):
-        sel = [r for r in rows if keep(r[0])]
+    for label, keep in (("all", lambda r: True), ("im2gps3k", lambda r: r[0] == "im2gps3k"), ("yfcc4k", lambda r: r[0] == "yfcc4k"),
+                        ("no near-dup", lambda r: not r[3]), ("near-dup", lambda r: r[3])):
+        sel = [r for r in rows if keep(r)]
         dist, logit = [r[1] for r in sel], [r[2] for r in sel]
         base, with_j = pick(dist, logit, 0.0), pick(dist, logit, w)
         shuffled = pick(dist, [logit[i] for i in rng.permutation(len(logit))], w) if len(sel) else base

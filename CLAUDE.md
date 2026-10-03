@@ -32,10 +32,19 @@ images for a 4B model (see the small-VLM-prompts memory).
 - Long-term goal: an RL agent that learns what to search for, how to interpret new evidence, and when to stop. The
   final answer may be an initial candidate, a retrieved image's location, or any lat/lon. Stage 1 reward = the oracle
   accuracy gain from the retrieved coordinates, computed from ground truth.
-- Where stage 1 stands (LEARNINGS 11-12, always against the reranker top-1): SigLIP2 text search finds almost nothing
-  new; Wikipedia search works with good names (Gemini's: +12 pts oracle over reranker on 645 landmark photos), but the
-  4B's names add only +2.5 greedy / +4.2 best of 8, the 27B +4.7 / +6.2. New coverage beyond the shown candidates is
-  ~1-2 pts for the 4B. The query design is in `QUERY_EVIDENCE_PLAN.md` (its stage-2 revision loop is superseded).
+- Where things stand (2026-10-03; LEARNINGS 11-29, always against the reranker top-1):
+  - Stage 1 (acquiring evidence) is closed for now: search queries from the 4B / 27B (SigLIP2, Wikipedia, an 80M-place name
+    index), transcribed text and photo attributes against offline map attributes all add 1-3 oracle points over the
+    candidate pool and nothing for a learned chooser, because they re-encode what image retrieval already knows
+    (LEARNINGS 11-21). A third of the headroom (pool oracle 64.5% vs reranker top-1 43.5% <25 km on val) is in choosing.
+  - Stage 2 (consuming evidence): the one signal with real discrimination is comparing the query photo with an exemplar
+    photo of each candidate. A fine-tuned 4B comparator (query + exemplar -> same place?, LoRA, 48k pairs from MP16 train
+    photos' top-8 candidates, `comparator_*.py`) lifts top-1 <25 km by +0.7 [+0.3, +1.2] on all 3,713 benchmark eval-half
+    photos (im2gps3k +1.4, yfcc4k +0.3), combiner weight fitted on MP16 dev only (LEARNINGS 22-26, 29). Pairwise and 25 km
+    variants, zero-shot judges, Wikipedia text per candidate, and bigger zero-shot choosers (4B / 9B / 27B, all below the
+    reranker) do not beat it (LEARNINGS 25-28).
+  - Not tried: RL over a comparison budget with the comparator as a tool; a comparator trained on far more pairs or epochs
+    (loss was still falling); a stronger retrieval pool. The query design is in `QUERY_EVIDENCE_PLAN.md` (superseded).
 - Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the shown-candidate oracle), not against current greedy.
@@ -89,5 +98,17 @@ images for a 4B model (see the small-VLM-prompts memory).
   (`scripts/query_evidence.sh`; outputs `artifacts/query_evidence/<tag>/`).
 - `experiment/wiki_backend.py`: offline geotagged-Wikipedia search (`/data/pinpoint/wikipedia/enwiki_geo.sqlite` BM25 +
   `enwiki_geo_bge-base.f16.npy` dense; run with `~/.venvs/sft/bin/python`, `.venv` lacks pyarrow), `probe` go/no-go.
-- Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool); `artifacts/` is not tracked.
+- `experiment/stage1_eval.py`: stage-1 evaluation (oracle accuracy over the pool, matched whole-image control, evidence informativeness);
+  `evidence_ranker.py`, `attribute_ranker.py`: learned-reranker tests with evidence / attribute features; `photo_attributes.py`,
+  `candidate_attributes.py` (run with `~/.venvs/geo/bin/python`: rasterio, WorldClim + ETOPO under `/data/pinpoint/geo`),
+  `attribute_check.py`; `overture_text.py` (80M-place name index, `/data/pinpoint/overture`), `evidence_screen.py`, `audit_sets.py`
+  (leakage / near-duplicate / placeholder audit of train, dev, val; flags in `artifacts/query_evidence/<tag>/`).
+- `experiment/exemplar_judge.py`: exemplar "same place?" judge: screens, top-8 scoring, combiner and full-eval-halves report;
+  `comparator_data.py`, `comparator_train.py` (pointwise / pairwise LoRA comparator; merge with `sft_train merge`);
+  `knowledge_scaling.py` (zero-shot choosers by model size, optional nearby Wikipedia text from `wiki_nearby.py`).
+  Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`, `text_screen.sh`,
+  `photo_attributes.sh`, `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
+  (all 3,795 eval-half), `train` (MP16 train) under `artifacts/query_evidence/`.
+- Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
+  experiments); `artifacts/` is not tracked.
 - Full setup from scratch: `SETUP.md`.

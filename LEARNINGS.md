@@ -328,6 +328,15 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     about +1.2 pts, the 4B +0.3 on average, the 27B nothing. Knowledge about what lies at each candidate is not what separates the small
     models from the reranker.
 
+29. **The comparator's gain holds on all benchmark eval-half photos (2026-10-03; `exemplar_judge full-report`, run `comparator-a`).** Top-8
+    exemplar pairs for all 3,795 im2gps3k + yfcc4k eval-half photos (3,713 after dropping 82 Flickr placeholders; every candidate had an
+    exemplar), scored by the merged `comparator-a`, combiner weight w = 1 fitted on the MP16 dev photos only (nothing on the benchmarks was
+    used to fit): top-1 <1 / <25 / <200 km, reranker 17.1 / 38.9 / 56.4 -> 17.3 / 39.7 / 56.9, change +0.2 / +0.7 [+0.3, +1.2] / +0.5;
+    shuffled-judge control -0.2. im2gps3k (n = 1,480) 47.8 -> 49.3 (+1.4 [+0.7, +2.2]); yfcc4k (n = 2,233) 33.0 -> 33.3 (+0.3 [-0.3, +0.8]).
+    Not a near-duplicate effect: without the 202 photos whose top gallery neighbour has cosine >= 0.95 (n = 3,511) +0.7 [+0.3, +1.2]; on
+    those 202 +1.0 [-1.0, +3.0]. Larger weights do slightly better (w = 2 / 4 / 8: +0.9 / +1.0 / +0.9 on all photos; fitted on dev, w = 1 is
+    reported). The scoring of 30k pairs takes ~8 minutes on the shared GPU.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
