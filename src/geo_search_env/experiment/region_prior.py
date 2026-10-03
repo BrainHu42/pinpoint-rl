@@ -1,5 +1,5 @@
 # Does a region prior turn the raw neighbours' deep recall into candidates? Region-diversified pools on dev / val (CPU, cached neighbours).
-# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.region_prior
+# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.region_prior [--head <name from region_head_big>]
 
 """Region = MP16-Pro (state, country), as in strategy_search. The region distribution is the MLP region head on frozen SigLIP2 (query
 photographers held out), optionally mixed with Pinpoint's GPS-gallery kNN votes. All candidates come from the cached top-1000 raw
@@ -15,6 +15,7 @@ Also: the current pool plus K extra candidates from each source (oracle gain ove
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from pathlib import Path
@@ -80,6 +81,9 @@ def _hit(points, truth, t) -> bool:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--head", default=None, help="a region_head_big head instead of the pipeline's region head")
+    args = parser.parse_args()
     dev = json.loads((ROOT / "dev" / "dev.json").read_text(encoding="utf-8"))
     world = load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in dev])
     excluded = set(json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8")))
@@ -92,7 +96,7 @@ def main() -> None:
         photos = [e for e in json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8")) if e["image_id"] not in excluded]
         with np.load(root / "neighbors.npz") as saved:
             cache = {k: saved[k] for k in ("mp16_raw_idx", "mp16_raw_sim", "osv_raw_idx", "osv_raw_sim", "mp16_gps_idx", "mp16_gps_sim")}
-        heads = dict(np.load(root / "region_head.npz"))
+        heads = dict(np.load(root / "region_head.npz" if args.head is None else OUT / f"head_{args.head}_{'sft' if tag == 'dev' else 'bench'}.npz"))
         truth = np.asarray([e["truth"] for e in photos])
         truth_region = world.region_grid.lookup(truth[:, 0], truth[:, 1])
         pools: dict[str, list[list[tuple[float, float]]]] = {}
@@ -140,7 +144,7 @@ def main() -> None:
                 hit = {t: np.asarray([_hit(_extend(pools["current"][i], p, k), truth[i], t) for i, p in enumerate(rows)]) for t in THRESHOLDS}
                 entry["extra"][arm][f"+{k}"] = {f"<{t:g} km": list(_bootstrap((hit[t] & ~current_hit[t]).astype(float))) for t in THRESHOLDS}
         report[tag] = entry
-        (OUT / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        (OUT / ("report.json" if args.head is None else f"report_{args.head}.json")).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
         print(f"\n== {tag} (n={len(photos)}) ==")
         for key in region_rank:

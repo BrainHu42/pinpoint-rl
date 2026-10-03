@@ -362,6 +362,14 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Ceiling: clustering only inside the *true* region gives 77.6 / 85.1% at 17 candidates (vs 52.3 / 64.4) and +27 / +22 pts as 10 extras. The
       head ranks the true region 1st for 40 / 53% of photos and in its top 10 for only 72 / 82%. The headroom is in region classification itself,
       and earlier attempts to choose the region better (VLM, retrieval evidence; lesson 5) failed.
+32. **A bigger region head, or more data for it, barely moves region accuracy (2026-10-03; `region_head_big.py`).**
+    - Heads on frozen SigLIP2, selected on 2,000 held-out MP16 photos (not dev), true region top-1 / 10. Existing setup (1 hidden layer 2048, 2 epochs,
+      1.5M photos: all MP16-query photographers held out): 41.5 / 73.4%. Two layers of 4096 trained for 10-20 epochs overfit (39.0 / 71.3%). Holding out only
+      benchmark + dev + selection photographers (3.56M photos): 42.7 / 75.3%; two layers of 4096 for 3 epochs: 43.0 / 75.3%; plus 2M OSV-5M street photos: 43.2 / 75.2%.
+    - With the best head (wide, 3.56M), dev true region top-1 goes 40 -> 44% and val 53 -> 55% (val's pipeline head already had the bigger data). The
+      pool test barely moves: regional pool at 17 is 51.6 / 64.8% (current 52.3 / 64.4%); as 5 extras +4.1 / +4.2 vs the control's +2.8 / +2.4.
+    - So region classification from frozen SigLIP2 is saturated at ~43% top-1 on MP16. The perfect-region ceiling (lesson 31) is out of reach for this
+      family of classifiers. Getting there would need information the embedding lacks: text, signs, live evidence.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
