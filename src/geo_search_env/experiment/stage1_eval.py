@@ -51,6 +51,12 @@ Answer: ```json
 {{"queries": ["<place 1>", "<place 2>", "<place 3>"]}}
 ```""",
 }
+# Text screen: the model only transcribes legible text (signs, shop and street names); each string is a search query.
+READ_PROMPT = """Copy any legible text in this photo that could help locate it (signs, shop names, street names, banners).
+Answer: ```json
+{{"text": ["", ""]}}
+```"""
+PROMPTS |= {"text-9b": READ_PROMPT, "text-4b": READ_PROMPT}  # served by the Qwen3.5-9B / 4B respectively; separate output files
 THRESHOLDS = (1.0, 25.0, 200.0)  # street, city, region
 RESULTS_PER_QUERY = 2  # SigLIP: one MP16 + one OSV photo; Wikipedia: two articles
 WHOLE_PER_CORPUS = 3  # equal budget (6 results) for the whole-image control
@@ -65,9 +71,10 @@ def places(tag: str, server: str, variant: str = "v2", max_tokens: int | None = 
 
     dev = _load(tag, "dev.json")
     images = MP16Images()
-    budget = max_tokens or (700 if variant.endswith("27b") else 150)
+    reading = variant.startswith("text")
+    budget = max_tokens or (700 if variant.endswith("27b") else 300 if reading else 150)
     raws = _parallel(lambda e: _chat(server, [_photo(images, e), {"type": "text", "text": PROMPTS[variant]}], budget), dev)
-    out = {e["image_id"]: {"raw": raw, "queries": parse_queries(raw)} for e, raw in zip(dev, raws)}
+    out = {e["image_id"]: {"raw": raw, "queries": parse_queries(raw, "text", 6) if reading else parse_queries(raw)} for e, raw in zip(dev, raws)}
     _save(tag, f"places{_suffix(variant)}.json", out)
     counts = np.bincount([len(v["queries"]) for v in out.values()], minlength=4)
     print(f"queries per photo 0/1/2/3: {counts.tolist()}")

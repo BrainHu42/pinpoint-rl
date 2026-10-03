@@ -180,6 +180,25 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       database covers poorly (27B: +2-3 pts oracle; 4B: ~+1). The un-redundant channels left are reading fine detail
       (text, signs) and knowledge about places, which suits per-candidate checking (stage 2) more than search.
 
+18. **Text screen (Qwen3.5-9B transcribes legible text; strings searched in SigLIP2 text space and Wikipedia; `evidence_screen.py`,
+    2026-10-02): fails the screen.** Prompt: "Copy any legible text in this photo that could help locate it (signs, shop names,
+    street names, banners)"; dev / val, 1,000 photos each.
+    - 27% of photos have any text, the same share among pool misses (28%) and "choosing" photos (20-27%), so text isn't
+      concentrated where retrieval fails. The reranker is as good on text photos as on others (top-1 34 vs 34% dev, 47 vs 41%
+      val; pool holds the answer 52 vs 53% / 64 vs 65%).
+    - Most strings are generic: "AF 593", "A10", "73", "AIR FRANCE", "yelp", a URL, Flickr's "photo no longer available".
+      The specific ones sometimes work (a gravestone name: evidence 2 km vs pool 214 km; "Loch Dunvegan, Glasgow,
+      Caledonian MacBrayne": 5 vs 11 km).
+    - Evidence within 25 km of the truth: 28 / 27% when the pool holds the answer, 8.5 / 13.3% when it misses; it recovers
+      11 of 470 and 13 of 355 misses = +1.1 / +1.3 pts oracle over the pool, about the 4B naming result (lesson 13). Against
+      matched whole-image results: SigLIP2 +0.4 (CI -0.2, +1.0), Wikipedia -0.1 to +0.1 on val.
+    - Informativeness: touches 5-11% of pools; one-parameter combiner top-1 change -0.3 to +0.3 (intervals include 0).
+      "Choosing" photos with text are few (n = 44-50); there the evidence backs a right candidate 20% vs the wrong top-1
+      8-14%, too few to read.
+    - Caveat: searching strings is limited by the backend. Shop and street names live in OpenStreetMap, not Wikipedia
+      (1.15M notable articles). The earlier readable-text win (lesson 4) was the LLM reading and reasoning about the text
+      (language, country), not searching it, and that is untested here.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

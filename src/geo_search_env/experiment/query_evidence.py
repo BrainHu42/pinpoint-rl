@@ -68,12 +68,12 @@ REVISE_PROMPT = "Where was this photo taken? Candidates:\n{options}\nYour earlie
 EVIDENCE_PROMPT = "Where was the first photo taken? Candidates:\n{options}\nPhotos 2-{last} are search results, taken at: {places}. They may be wrong.\n" + ANSWER_FORMAT
 
 
-def parse_queries(answer: str) -> list[str]:
-    """Distinct non-empty strings from the answer's "queries" list (at most three), in order."""
+def parse_queries(answer: str, key: str = "queries", limit: int = 3) -> list[str]:
+    """Distinct non-empty strings from the answer's `key` list (at most `limit`), in order."""
 
-    match = re.search(r'"queries"\s*:\s*\[(.*?)\]', answer, re.DOTALL)
+    match = re.search(rf'"{key}"\s*:\s*\[(.*?)\]', answer, re.DOTALL)
     found = [s.strip() for s in re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1))] if match else []
-    return list(dict.fromkeys(s for s in found if s))[:3]
+    return list(dict.fromkeys(s for s in found if s))[:limit]
 
 
 def _path(tag: str, name: str) -> Path:
