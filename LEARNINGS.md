@@ -162,6 +162,24 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Even a perfect chooser over pool + 27B evidence gains only ~2-3 pts; the gap to close is choosing (pool oracle
       64.5% vs reranker top-1 42.8% <25 km on val).
 
+17. **Why stage 1 found so little: the search evidence is right on the same photos retrieval is already right on
+    (2026-10-02; dev and val, <25 km, SigLIP2 + Wikipedia-dense results together).** A photo is locatable when it contains
+    something identifying (landmark, readable text, distinctive architecture); then image retrieval finds it, the reranker
+    keeps it, and an LLM can name it. When it doesn't, none of them can.
+    - Evidence lands near the truth for 33-43% of photos whose pool already holds the answer, but for 3-7% of photos whose
+      pool misses it (4B 2.6 / 5.6%, 27B 7.0 / 6.8% on dev / val): it recovers 12-33 of 355-470 misses.
+    - Where the reranker's top-1 is right it supports that top-1 for 42-55% of photos; where the top-1 is wrong but the
+      answer is in the pool ("choosing" photos, 19-22% of photos) it supports a right candidate for only 15-23% and the
+      wrong top-1 for 12-19%: mostly silent exactly where help is needed.
+    - The pool-miss photos are generic or unlocatable: kayaks in a marsh, a lion cub in grass, a dusk street silhouette
+      (named "Toronto", truth Kuwait), a party, a table setting. The LLM's guesses are a regional prior the region head
+      already holds. 16 of the 1,000 val photos (15 yfcc4k, 3% of yfcc4k) are Flickr "photo is no longer available"
+      placeholders, which no method can locate.
+    - Consequence: a text query is the LLM re-describing the same pixels, a smaller and less-informed version of what
+      retrieval over ~10M photos already did, so it adds information only where the model knows a place that the photo
+      database covers poorly (27B: +2-3 pts oracle; 4B: ~+1). The un-redundant channels left are reading fine detail
+      (text, signs) and knowledge about places, which suits per-candidate checking (stage 2) more than search.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
