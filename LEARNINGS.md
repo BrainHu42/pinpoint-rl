@@ -234,6 +234,26 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       64.3, also without placeholders). It lifts every method alike, so comparisons are unbiased, but absolute accuracies
       are ~1.5 pts optimistic.
 
+21. **Attribute test: the VLM's photo attributes are accurate but redundant with what retrieval already encodes
+    (`photo_attributes.py`, `candidate_attributes.py`, `attribute_ranker.py`, `attribute_check.py`; 2026-10-02).**
+    Qwen3.5-9B described every photo (setting, terrain, water, vegetation, weather, text language; 91% fully valid);
+    candidates got climate, elevation, ruggedness, coast distance and urbanness from WorldClim, ETOPO and Overture.
+    - The attributes track the truth: photos called "sea" lie a median 0.9-1.1 km from the coast (26-34 km for "none"),
+      "mountain" 152-322 m elevation std (flat 15-19), "tropical" 22.6-24.9 C (conifer 7.2-7.5), "city" 13.6-17.4k places
+      within ~6 km (wild 31-45), and a named text language is official at the true location's country for 86-90% of photos.
+    - Learned reranker, MP16-train refit, top-1 <25 km, 3 seeds (dev / val without placeholders): A original 34.7 / 44.0;
+      F + candidate attributes 35.0 / 43.3; G + photo attributes, their products with the candidate attributes and a language
+      match 34.2 / 43.7; H = G with photo attributes shuffled across photos 34.4 / 42.6. G minus A -0.5 / -0.2 (CIs include 0),
+      G minus F -0.7 / +0.4; G minus H -0.1 / +1.1 (val CI +0.1, +2.2), but H falls below A, so G's edge is less harm from
+      the extra features, not a gain over the baseline.
+    - Why: on "choosing" photos (answer in the pool, top-1 wrong; dev + val) the wrong top-1 fits the photo's attributes as
+      well as the right candidate: sea 98% vs 93% coastal, mountain 84% vs 84%, flat 63% vs 66%, city 72% vs 69%, text
+      language 89% vs 85%. A rule separates the two for only 4-36% of photos and then favours the right one 0-55% of the time
+      (rural 28%, wild 29%, language 17%). Both candidates came from visual-similarity retrieval, so they already agree with
+      the photo on climate, terrain, water and setting.
+    - Summary of lessons 11-21: search queries (4B, 27B, text, a name index of 80M places) and photo attributes all add at
+      most 1-3 oracle points and nothing to a learned chooser. The information they carry is already in the photo embedding.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
