@@ -148,6 +148,20 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     Untested: richer evidence features (similarity scores, article text), a larger or better searcher, an LLM reading
     the articles.
 
+16. **A stronger searcher doubles the oracle gain but still doesn't help a simple chooser (Qwen3.6-27B Q4_K_M via llama.cpp,
+    same prompt v2, dev and val photos; no Gemini).** The 27B writes an analysis before its JSON: at max_tokens 150, 82%
+    of photos got no query (invalid comparison); at 700, 90-93% give three distinct places (2.7-2.8 queries per photo vs
+    2.1 for the 4B; 21-25% name a shown candidate's city vs 12-13%).
+    - Oracle gain over the pool at <25 km (dev / val): 27B Wikipedia dense +2.5 / +2.0, BM25 +2.4 / +1.9, SigLIP2 +2.1 /
+      +0.9, SigLIP2 + dense (12 results) +3.3 / +2.4; 4B dense +1.0 / +1.1, combined +1.2 / +2.0. Against
+      matched-budget whole-image results the 27B adds +1.1 to +1.6 (4B: +0.1 to +0.3, combined +0.3 / +1.1).
+    - Informativeness: the 27B's evidence touches 53-62% of pools (4B 41-50%), AUC 0.61-0.64 (4B 0.58-0.61), on correct
+      vs wrong candidates 35-43% vs 9-14%. One-parameter combiner top-1 change: 0.0 to +0.1 (weights 0-0.25), no
+      better than the 4B's +0.0 to +0.6.
+    - Not tested: a learned chooser on 27B evidence (needs 27B names for the 34k training photos, ~3 h of generation).
+    - Even a perfect chooser over pool + 27B evidence gains only ~2-3 pts; the gap to close is choosing (pool oracle
+      64.5% vs reranker top-1 42.8% <25 km on val).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

@@ -38,6 +38,7 @@ Answer: ```json
 # places and use placeholders in the template.
 PROMPTS = {
     "v2": PLACES_PROMPT,
+    "v2-27b": PLACES_PROMPT,  # same prompt, answered by the Qwen3.6-27B (llama.cpp on :8766); separate output files
     "v2c": """Where was this photo taken? Use any readable text.
 Name 3 different specific places it could be (landmark, venue, building, park or street, with city and country), most likely first.
 Answer: ```json
@@ -59,10 +60,13 @@ def _suffix(variant: str) -> str:
     return "" if variant == "v2" else f"_{variant}"
 
 
-def places(tag: str, server: str, variant: str = "v2") -> None:
+def places(tag: str, server: str, variant: str = "v2", max_tokens: int | None = None) -> None:
+    """`max_tokens` defaults to 150 (the 4B answers with the JSON straight away) and 700 for the 27B, which writes an analysis first."""
+
     dev = _load(tag, "dev.json")
     images = MP16Images()
-    raws = _parallel(lambda e: _chat(server, [_photo(images, e), {"type": "text", "text": PROMPTS[variant]}], 150), dev)
+    budget = max_tokens or (700 if variant.endswith("27b") else 150)
+    raws = _parallel(lambda e: _chat(server, [_photo(images, e), {"type": "text", "text": PROMPTS[variant]}], budget), dev)
     out = {e["image_id"]: {"raw": raw, "queries": parse_queries(raw)} for e, raw in zip(dev, raws)}
     _save(tag, f"places{_suffix(variant)}.json", out)
     counts = np.bincount([len(v["queries"]) for v in out.values()], minlength=4)
