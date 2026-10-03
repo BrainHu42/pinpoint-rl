@@ -254,6 +254,24 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Summary of lessons 11-21: search queries (4B, 27B, text, a name index of 80M places) and photo attributes all add at
       most 1-3 oracle points and nothing to a learned chooser. The information they carry is already in the photo embedding.
 
+22. **Exemplar comparison (zero-shot Qwen3.5-9B judges "same place?" for the query photo vs one database photo taken within 1 km
+    of a candidate; `exemplar_judge.py`; 2026-10-02): informative per candidate, no gain in top-1.**
+    - Screen on "choosing" photos (right answer in the pool, top-1 wrong; 402 photos, dev 187 + val 215): the right candidate's
+      best exemplar scores above the wrong top-1's in 58.5% [54, 63] of photos (dev 56, val 60.5); embedding similarity of the
+      same exemplars 50.5%. By distance of the right candidate to the truth: within 1 km 69.4% [62, 76] (n = 144), 1-25 km 52.3%
+      (n = 258). A second exemplar adds nothing.
+    - Full test: top 8 candidates of every dev and val photo, one exemplar each (~16,000 comparisons, all had an exemplar).
+      Candidate-level: mean P(same) 0.74 / 0.78 (dev / val) for candidates < 1 km from the truth, 0.57 / 0.65 for 1-25 km,
+      0.38 / 0.44 for >= 25 km (AUC 0.79 for < 1 km vs >= 25 km, 0.66-0.67 for 1-25 km vs >= 25 km).
+    - But within a photo the judge's highest-scoring candidate is within 1 km in only 35 / 33% of photos that have such a
+      candidate among the top 8, vs 62 / 56% for the reranker's top-1. Combined as -rank + w * logit(P): best w = 0.25 gives
+      top-1 <25 km +0.1 [-0.2, +0.4] dev and +0.2 [-0.3, +0.8] val; larger w hurts (w = 1: flips to a right answer 13 vs away
+      19 on dev, 25 vs 25 on val; w = 8: -0.6 / -1.7). A cross-validated learned combiner (rank + judge features, 5 folds,
+      3 seeds, 1,985 photos): -0.1 [-0.5, +0.2]. Shuffled-judge control: 0.0 / -0.3.
+    - Reading: the judge separates "the true place" from "far away" but not the exact place from its neighbours among
+      plausible candidates, and its noise outweighs the reranker's ordering. Untested: a judge fine-tuned on pairs with
+      ground-truth labels (exemplar within 1 km of the truth vs hard negatives from the same pool).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
