@@ -272,6 +272,12 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       plausible candidates, and its noise outweighs the reranker's ordering. Untested: a judge fine-tuned on pairs with
       ground-truth labels (exemplar within 1 km of the truth vs hard negatives from the same pool).
 
+23. **The zero-shot judge's skill is mostly exemplar similarity (2026-10-02, `exemplar_judge.py`, zero-shot 9B, top-8 pairs).** The
+    judge's candidate-level AUC (candidates < 1 km from the truth vs >= 25 km) by tercile of the exemplar's embedding similarity to the
+    query: low 0.50 / 0.54 (dev / val), mid 0.72 / 0.71, high 0.85 / 0.86. 90% of the positives sit in the mid and high terciles. A
+    cross-validated learned combiner (dev + val, 5 folds, 3 seeds) over rank + judge + similarity gives +0.4 [-0.2, +1.0] at <25 km, and
+    rank + similarity without the judge gives the same +0.4 [-0.3, +1.0]: the zero-shot judge adds nothing beyond similarity.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
