@@ -199,6 +199,23 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       (1.15M notable articles). The earlier readable-text win (lesson 4) was the LLM reading and reasoning about the text
       (language, country), not searching it, and that is untested here.
 
+19. **A real name index doesn't rescue the text channel (`overture_text.py`, Overture Maps places 2026-09-23.1: 80.5M POIs,
+    SQLite FTS5, 8.4 GB; Qwen3.5-9B's strings; 2026-10-02).** A candidate is "supported" if a place whose name contains all
+    the tokens of one of the photo's strings lies within 3 km of it. dev / val, ~270 photos with text each:
+    - A name match exists for 190 / 174 of them (70 / 64%), a specific one (<= 50 places) for 74 / 93.
+    - Among photos with any support, a correct candidate is supported 73 / 71% of the time vs 49 / 39% for a wrong one
+      (AUC 0.69 / 0.66; Wikipedia-based text evidence was 0.52-0.60). Supports are common for wrong candidates because
+      pools hold several candidates in one city and many names are chains or generic words.
+    - But the photos that matter are few: "choosing" photos (answer in the pool, top-1 wrong) with any support number
+      27 / 29 of 1,000, so even a perfect use of the text could move top-1 by at most ~2.7 pts. There the support backs a
+      right candidate 67 / 69% and the wrong top-1 74 / 48%: no usable signal.
+    - Specific strings as global evidence: 29 / 36% within 25 km when the pool holds the answer, 14 / 11% when it misses
+      (recovers 4 + 4 misses, +0.4 pts oracle). One-parameter combiner (w = 2, fitted on dev): top-1 +0.1 / +0.1
+      (fixed/broke 2/1 and 4/3).
+    - Crude matching (all-tokens AND, no IDF weighting, no confidence filter), so a tuned version would do somewhat
+      better, but the ceiling set by the number of choosing photos with text stays. Same pattern as lessons 13-18:
+      photos with identifiable text are the ones retrieval already gets right.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
