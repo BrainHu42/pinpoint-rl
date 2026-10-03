@@ -313,6 +313,13 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     photos). Both comparators together in the combiner: +0.5 [-0.0, +1.0]. The exemplar-comparison signal saturates around +0.5 to +0.7
     pts of top-1 <25 km at this scale (48k pairs, 1 epoch).
 
+27. **Model size alone doesn't make a zero-shot chooser beat the reranker (`knowledge_scaling.py`, 2026-10-03).** The `default` prompt
+    (photo + the reranker's top-10 candidates as text, think briefly, JSON coordinates), temperature 0, dev / val (placeholders dropped),
+    top-1 <25 km: reranker 34.2 / 43.5, candidate oracle 47.2 / 59.8; Qwen3.5-4B 29.1 / 38.5 (-5.1 / -5.0, CIs exclude 0), Qwen3.5-9B
+    29.1 / 38.8 (-5.1 / -4.7), Qwen3.6-27B (Q4_K_M, llama.cpp) 32.4 / 40.7 (-1.8 [-3.5, -0.2] / -2.7 [-4.8, -0.7]). At <200 km: reranker
+    48.8 / 61.0, 4B 43.9 / 57.0, 9B 41.0 / 56.1, 27B 46.6 / 59.3. 74-93% of answers lie within 25 km of a shown candidate (4B 88 / 90,
+    9B 74 / 83, 27B 90 / 93). The 9B is no better than the 4B; the 27B is closest but still below the reranker.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
