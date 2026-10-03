@@ -391,6 +391,18 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - Same mechanism as lesson 21: the wrong candidates come from photos that look like the query, so the same kinds of places are near them. Overture
       is sparse for physical features (lighthouses 3k, castles 15k), so OpenStreetMap would be denser. But the right/wrong split is even (115 vs 115),
       which says density isn't the limiting factor. Not worth the OSM download.
+35. **By eye, most of the choosing gap can't be recovered from the photo (2026-10-03; `choosing_sheet.py`, 30 of the 250 choosing photos, 15 dev + 15 val,
+    each with the query, the right candidate's exemplar and the wrong top-1's exemplar).** Tags:
+    - Near-miss at the 25 km line, 9 / 30: the top-1 is 26-35 km away in the same metro area, park or département, and the right candidate is no more
+      convincing. Across all 250 choosing photos, the wrong top-1 is within 25-50 km of the truth for 21% (50-200 km 29%, >= 200 km 50%).
+    - Nothing place-specific, 10 / 30: insects, food, fireworks, sky, bowling alleys, gardens, generic coast. A person can't choose either.
+    - A specific place is visible, 6 / 30: a sculpture in Milan, Oasis 21 in Nagoya, a Liverpool plaza, a readable café name, a distinctive building, an
+      arena. The comparator already scores the right exemplar high in 3 (0.81-0.98). Elsewhere the exemplar shows a different spot (multi-exemplar
+      would help), the text needs reading, or the cue misleads (visiting team's jerseys).
+    - Needs knowledge, 4 / 30: Thai lacquer art, Gambel oak leaves, granite summits, a Patagonian skyline.
+    - Wrong ground truth, 1 / 30: a Disneyland Paris photo geotagged in central Paris.
+    - Implication: about 20% of the 12.6-pt gap between top-1 and the top-8 oracle (<25 km) is recoverable from the photo, i.e. ~2.5-3 pts, part of
+      which the comparator already takes. That explains why every chooser stalls near +0.7.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
