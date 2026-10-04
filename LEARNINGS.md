@@ -6,6 +6,46 @@ photos within 1 km / 25 km of the truth, with same-photographer gallery images e
 im2gps3k + yfcc4k eval-half query (n = 3,795; SE about 0.6 pts at 1 km, 0.8 at 25 km). "300 subset" = the stratified
 study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
 
+## Summary (read this first; details in "Main lessons" below, numbered)
+
+**Where we are (2026-10-04).** Against Pinpoint's reranker top-1, the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
+from a fine-tuned 4B comparator (query photo + exemplar photo of a candidate -> same place?) combined with the reranker's rank (lessons 24, 29, 40, 41).
+On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing fitted on them:
+
+| | < 1 km | < 25 km | < 200 km |
+|---|---|---|---|
+| Reranker top-1 (baseline) | 17.1% | 38.9% | 56.4% |
+| + comparator-b, 4 exemplars, combiner trained on dev | 17.2% | 39.9% | 56.9% |
+| Oracle over the reranker's top 8 | 30.1% | 52.5% | 70.1% |
+| Oracle over the whole ~17-candidate pool | 34.2% | 60.2% | 80.3% |
+
+The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle), but by eye only ~3 pts of it is recoverable from the photo (lesson 35).
+Every lever tried lands between -0.5 and +1 point. Next untested: the wikimedia final test set (landmark-heavy; loader not yet built).
+
+**One line per lesson.**
+- 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
+- 5-10: "where to search" is not the bottleneck; GeoNames needs fuzzy matching; rewriting retrieval queries adds < 2 oracle pts; per-candidate evidence helps an
+  untrained chooser a little; go/no-go must be measured beyond what we already have (the shown-candidate oracle), on the full eval halves.
+- 11-19 (stage 1, new evidence): 4B / 27B search queries, geotagged Wikipedia, transcribed text, an 80M-place name index add 1-3 oracle pts over the pool and
+  nothing for a learned chooser; the evidence is right on the photos retrieval is already right on (17, 18, 19).
+- 20: train / dev / val audit is sound; Flickr "no longer available" placeholders (flagged) and near-duplicates make absolute numbers ~1.5 pts optimistic.
+- 21: the VLM's photo attributes are accurate but redundant with what retrieval encodes.
+- 22-23: a zero-shot exemplar judge separates the true place from far away, not from its neighbours; its skill is mostly exemplar similarity.
+- 24-26, 29: the fine-tuned comparator is the only positive: +0.7 [+0.3, +1.2] on all benchmark photos; pairwise and 25 km variants are no better.
+- 27-28: bigger zero-shot choosers (9B, 27B) and nearby Wikipedia text stay below the reranker.
+- 30: the gallery isn't thin; reranking deeper than the pool (50 clusters) is worse (-0.8).
+- 31-32: a region-diversified pool adds ~2 oracle pts at matched budget; the region head is the bottleneck and a bigger one barely helps.
+- 33-34: the models' own answers and nearby place categories add nothing beyond rank + comparator.
+- 35: by eye, of 30 choosing photos 9 are near-misses at the 25 km line, 10 have nothing place-specific, 6 show a specific place, 4 need knowledge, 1 is label noise.
+- 36-37: coarse thresholds (200 / 750 / 2500 km) have as much headroom and the same null results; the 4B's candidate-free guess is far below retrieval.
+- 38: a geo-aware adapter on SigLIP2 adds ~+1 pt candidate recall over the region prior; Pinpoint's own retriever has worse top-10 recall than raw + prior.
+- 39-41: several exemplars per candidate help ~+0.3-0.6 without retraining; comparator-b (3x pairs) adds ~+0.3 more; full benchmark test +0.9 (the rule dev
+  picks is null, +0.4; the post-hoc best-of-4 rule +1.7 is a hypothesis, not a result).
+
+**Traps worth remembering.** Choose scorers on dev, not by looking at val or the benchmarks (41). A judge's Yes/No logit level can drift in training; always
+check the failed-score count and restrict output to the answer tokens (40). Compare against the reranker top-1, not current greedy; the pool oracle is the
+baseline for new evidence (10, 13).
+
 ## Headline numbers (full eval halves)
 
 | System | Greedy | Single sample | Best of 8 | Right answer among shown candidates |
