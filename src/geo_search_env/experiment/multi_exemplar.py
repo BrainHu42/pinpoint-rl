@@ -34,11 +34,18 @@ from .strategy_search import EARTH_KM, MP16_EMBED, _xyz, load_world
 
 EXEMPLARS = 4
 PAIRS = ROOT / "multi_exemplar_pairs.json"
-FULL_PAIRS = ROOT / "multi_exemplar_full_pairs.json"
 
 
-def _scores_path(name: str, full: bool = False) -> Path:
-    return ROOT / f"multi_exemplar_{'full_' if full else ''}scores_{name}.json"
+def _is_wikimedia(tag: str) -> bool:
+    return tag.startswith("wikimedia")
+
+
+def _pairs_path(tag: str) -> Path:
+    return ROOT / f"multi_exemplar_{tag}_pairs.json"
+
+
+def _scores_path(name: str, tag: str | None = None) -> Path:
+    return ROOT / f"multi_exemplar_{tag + '_' if tag else ''}scores_{name}.json"
 
 
 def _exemplars(world: Any, tree: Any, ids: list[str], chord: float, q: np.ndarray, author: int, latlon: Any) -> list[str]:
@@ -83,29 +90,31 @@ def pairs() -> None:
     PAIRS.write_text(json.dumps(out) + "\n", encoding="utf-8")
 
 
-def full_pairs() -> None:
+def full_pairs(tag: str = "full") -> None:
     """Exemplars of the top TOPK candidates of every `full` photo; the Flickr "photo no longer available" placeholders (cosine >= 0.95 to the known one) get none."""
 
     from scipy.spatial import cKDTree
 
-    photos = json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))
+    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
     ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
-    world = load_world()
+    world = load_world(benchmarks=("wikimedia",)) if _is_wikimedia(tag) else load_world()
     tree = cKDTree(_xyz(world.mp16["latlon"]))
     chord = 2 * math.sin(EXEMPLAR_KM / EARTH_KM / 2)
     index = {q["image_id"]: i for i, q in enumerate(world.queries)}
-    ref_id = json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8"))[0]
-    ref = world.query_embeddings[index[ref_id]] / np.linalg.norm(world.query_embeddings[index[ref_id]])
+    ref = None
+    if not _is_wikimedia(tag):  # the Flickr "photo no longer available" placeholder, known from the benchmark halves
+        ref_id = json.loads((ROOT / "val" / "exclude.json").read_text(encoding="utf-8"))[0]
+        ref = world.query_embeddings[index[ref_id]] / np.linalg.norm(world.query_embeddings[index[ref_id]])
     out = []
     for m, e in enumerate(photos):
         q = world.query_embeddings[e["index"]] / np.linalg.norm(world.query_embeddings[e["index"]])
-        placeholder = bool(q @ ref >= 0.95)
+        placeholder = bool(ref is not None and q @ ref >= 0.95)
         author = int(world.query_author[e["index"]])
         found = [] if placeholder else [_exemplars(world, tree, ids, chord, q, author, latlon) for latlon in e["pool"][:TOPK]]
         out.append({"image_id": e["image_id"], "path": e["path"], "benchmark": e["benchmark"], "placeholder": placeholder, "exemplars": found})
         if (m + 1) % 1000 == 0:
             print(f"  {m + 1}/{len(photos)} photos", flush=True)
-    FULL_PAIRS.write_text(json.dumps(out) + "\n", encoding="utf-8")
+    _pairs_path(tag).write_text(json.dumps(out) + "\n", encoding="utf-8")
     counts = [len(x) for p in out for x in p["exemplars"]]
     print(f"{len(out)} photos, {sum(p['placeholder'] for p in out)} placeholders; exemplars per candidate mean {np.mean(counts):.2f}, none {np.mean(np.asarray(counts) == 0):.1%}")
 
@@ -136,8 +145,8 @@ def _p_same(server: str, query_b64: str, exemplar_b64: str, yes_no: tuple[int, i
     return 1.0 / (1.0 + math.exp(by_token["No"] - by_token["Yes"]))
 
 
-def judge(server: str, name: str, full: bool = False) -> None:
-    photos = json.loads((FULL_PAIRS if full else PAIRS).read_text(encoding="utf-8"))
+def judge(server: str, name: str, tag: str | None = None) -> None:
+    photos = json.loads((_pairs_path(tag) if tag else PAIRS).read_text(encoding="utf-8"))
     images = MP16Images()
     yes_no = tuple(_post(server, "/tokenize", {"model": "vlm", "prompt": w, "add_special_tokens": False})["tokens"][0] for w in ("Yes", "No"))
     jobs = [(i, r, j) for i, p in enumerate(photos) for r, xs in enumerate(p["exemplars"]) for j in range(len(xs))]
@@ -154,7 +163,7 @@ def judge(server: str, name: str, full: bool = False) -> None:
         p["p_same"] = [[None] * len(xs) for xs in p["exemplars"]]
     for (i, r, j), score in zip(jobs, scores):
         photos[i]["p_same"][r][j] = score
-    path = _scores_path(name, full)
+    path = _scores_path(name, tag)
     path.write_text(json.dumps(photos) + "\n", encoding="utf-8")
     print(f"{len(jobs)} comparisons, {sum(s is None for s in scores)} failed -> {path}")
 
@@ -275,7 +284,7 @@ def report(name: str) -> None:
     (ROOT / f"multi_exemplar_report_{name}.json").write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
 
-def full_report(name: str) -> None:
+def full_report(name: str, tag: str = "full") -> None:
     """Top-1 on every im2gps3k / yfcc4k eval-half photo (placeholders dropped) against the reranker, with everything chosen or trained on the MP16 dev photos:
     the (aggregate, weight) of the scalar rule is the pair with the best dev top-1 < 25 km, the listwise combiner is trained on dev only."""
 
@@ -294,9 +303,9 @@ def full_report(name: str) -> None:
     fitted = {agg: max(WEIGHTS, key=lambda v: (top1(D_dev, valid_dev, -rank_dev + v * a).mean(), -v)) for agg, a in aggs_dev.items()}
     chosen = max(fitted, key=lambda agg: top1(D_dev, valid_dev, -rank_dev + fitted[agg] * aggs_dev[agg]).mean())
 
-    scored = json.loads(_scores_path(name, True).read_text(encoding="utf-8"))
-    photos = {e["image_id"]: e for e in json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))}
-    with np.load(Path("artifacts/strategy_search") / "neighbors.npz") as cache:  # top raw neighbour similarity after same-photographer exclusion
+    scored = json.loads(_scores_path(name, tag).read_text(encoding="utf-8"))
+    photos = {e["image_id"]: e for e in json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))}
+    with np.load(Path("artifacts/wikimedia" if _is_wikimedia(tag) else "artifacts/strategy_search") / "neighbors.npz") as cache:  # top raw neighbour similarity after same-photographer exclusion
         raw = np.maximum(cache["mp16_raw_sim"][:, 0], cache["osv_raw_sim"][:, 0])
     keep = [p for p in scored if not p["placeholder"]]
     Df, Lf, bench, near = [], [], [], []
@@ -322,17 +331,18 @@ def full_report(name: str) -> None:
         arms[f"rule: {agg} (w={fitted[agg]:g}){'  <- chosen on dev' if agg == chosen else ''}"] = np.where(valid, -rank + fitted[agg] * a, -np.inf).argmax(1)
     for kind in ("first", "all"):
         arms[f"combiner trained on dev: rank + {kind} exemplar{'s' if kind == 'all' else ''}"] = _fit_apply(D_dev, _features(L_dev, kind), valid_dev, _features(Lf, kind), valid)
-    print(f"{name}: {len(Df)} benchmark eval-half photos (placeholders dropped: {sum(p['placeholder'] for p in scored)}); exemplars per candidate "
+    print(f"{name} on {tag}: {len(Df)} photos (placeholders dropped: {sum(p['placeholder'] for p in scored)}); exemplars per candidate "
           f"{(~np.isnan(Lf)).sum(-1)[valid].mean():.2f}; nothing fitted on them. Reranker top-1 <1/<25/<200 km: " + " / ".join(f"{base_t[t].mean():.1%}" for t in base_t) + "\n")
     out: dict[str, Any] = {"n": len(Df), "reranker": {f"<{t:g} km": float(v.mean()) for t, v in base_t.items()}, "arms": {}}
-    sets = (("all", np.ones(len(Df), bool)), ("im2gps3k", bench == "im2gps3k"), ("yfcc4k", bench == "yfcc4k"), ("no near-dup", ~near), ("near-dup", near))
+    sets = (("all", np.ones(len(Df), bool)), ("no near-dup", ~near), ("near-dup", near)) if _is_wikimedia(tag) else \
+        (("all", np.ones(len(Df), bool)), ("im2gps3k", bench == "im2gps3k"), ("yfcc4k", bench == "yfcc4k"), ("no near-dup", ~near), ("near-dup", near))
     for label, pick in arms.items():
         hits = {t: (Df[np.arange(len(Df)), pick] < t).astype(float) for t in base_t}
         cells = {k: _bootstrap(hits[25.0][s] - base[s]) for k, s in sets}
         out["arms"][label] = {"top1": {f"<{t:g} km": float(h.mean()) for t, h in hits.items()}, "change <25 km": cells}
         print(f"{label}\n    top-1 <1/<25/<200 km: " + " / ".join(f"{hits[t].mean():.1%}" for t in hits) + "   change: " + "  ".join(f"<{t:g} {100 * (hits[t].mean() - base_t[t].mean()):+.1f}" for t in hits))
         print("    <25 km change [95% CI]: " + "  ".join(f"{k} {100 * v[0]:+.1f} [{100 * v[1]:+.1f}, {100 * v[2]:+.1f}] (n={int(s.sum())})" for (k, s), v in zip(sets, cells.values())))
-    (ROOT / f"multi_exemplar_full_report_{name}.json").write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    (ROOT / f"multi_exemplar_{tag}_report_{name}.json").write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -340,6 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("node", choices=("pairs", "judge", "report", "full-pairs", "full-judge", "full-report"))
     parser.add_argument("--name", default="comparator-a")
     parser.add_argument("--server", default="http://127.0.0.1:8765")
+    parser.add_argument("--tag", default="full", help="photo set for full-*: full (im2gps3k + yfcc4k eval halves), wikimedia or wikimedia_balanced")
     args = parser.parse_args(argv)
     if args.node == "pairs":
         pairs()
@@ -348,11 +359,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.node == "report":
         report(args.name)
     elif args.node == "full-pairs":
-        full_pairs()
+        full_pairs(args.tag)
     elif args.node == "full-judge":
-        judge(args.server, args.name, full=True)
+        judge(args.server, args.name, args.tag)
     else:
-        full_report(args.name)
+        full_report(args.name, args.tag)
     return 0
 
 

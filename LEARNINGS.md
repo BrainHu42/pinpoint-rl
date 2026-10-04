@@ -19,7 +19,9 @@ On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing 
 | Oracle over the reranker's top 8 | 30.1% | 52.5% | 70.1% |
 | Oracle over the whole ~17-candidate pool | 34.2% | 60.2% | 80.3% |
 
-The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle), but by eye only ~3 pts of it is recoverable from the photo (lesson 35).
+The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a model could recover is open: a rough by-eye look at 30 photos (one reader, lesson 35)
+put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
+lever; we are testing it on the 4B first and scaling up only on a promising signal.
 Every lever tried lands between -0.5 and +1 point. Next untested: the wikimedia final test set (landmark-heavy; loader not yet built).
 
 **One line per lesson.**
