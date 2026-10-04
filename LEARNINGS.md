@@ -484,6 +484,27 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       the exemplar-comparison signal saturates near +1 pt of top-1 < 25 km at the 4B scale, consistent with the ~2.5-3 pt cap from lesson 35.
     - Scores with the broken extraction are kept as `multi_exemplar_scores_comparator-b_top12.json` for reference; do not use.
 
+41. **Full benchmark test of `comparator-b` with 4 exemplars: +0.9 [+0.3, +1.6] from a combiner trained on dev; the scalar rule that dev picks is null
+    (2026-10-04; `multi_exemplar.py full-pairs / full-judge / full-report`, `scripts/multi_exemplar_full.sh`).** All 3,713 im2gps3k + yfcc4k eval-half photos
+    (82 placeholders dropped), 95,490 comparisons (3.21 exemplars per candidate, 0 failed, 24 min), nothing fitted on them: aggregate and weight chosen on
+    the 1,000 MP16 dev photos, the listwise combiner trained on dev only. Reranker top-1 < 1 / 25 / 200 km: 17.1 / 38.9 / 56.4. Change at < 25 km [95% CI]:
+
+    | scorer | all | im2gps3k | yfcc4k |
+    |---|---|---|---|
+    | rule: first exemplar (w 4) **chosen on dev** | +0.4 [-0.5, +1.2] | +0.7 | +0.1 |
+    | rule: max over exemplars (w 4) | +1.7 [+0.9, +2.5] | +2.6 [+1.5, +3.8] | +1.1 [+0.1, +2.1] |
+    | rule: mean of best 2 (w 4) | +1.4 [+0.7, +2.2] | +2.3 | +0.9 |
+    | rule: mean (w 4) | +0.8 [+0.1, +1.5] | +1.5 | +0.4 |
+    | combiner trained on dev, first exemplar | +0.9 [+0.4, +1.4] | +1.1 | +0.7 |
+    | combiner trained on dev, all exemplars | +0.9 [+0.3, +1.6] | +1.2 | +0.7 [-0.2, +1.6] |
+
+    - Honest reading: by the pre-declared protocol (best dev scorer) the result is +0.4, not significant. The best row, max over exemplars (+1.7), was the
+      best of four scorers on val earlier, not chosen on dev (dev: first +1.6, max +1.4), so treat it as a hypothesis for a fresh test, not as the headline.
+      The trained combiner is the clean number: +0.9 [+0.3, +1.6], vs +0.7 [+0.3, +1.2] for `comparator-a` with one exemplar (lesson 29).
+    - Without the 202 near-duplicate photos the numbers are the same (max +1.7 [+0.9, +2.6]). < 1 km does not move (+0.1 to +0.7 with exemplars, -1.6 for the
+      dev-chosen rule); < 200 km +0.5 for max and the combiners.
+    - So the comparator line ends around +1 point of top-1 < 25 km on the benchmarks, whatever the exemplar count or the training volume.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
