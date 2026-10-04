@@ -446,6 +446,19 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
       control (raw + prior) +2.2 / +4.5 / +8.0 and +2.0 / +3.9 / +6.0. That is ~+1 pt at small K, about what the region-diversified pool gave (lesson 31).
     - So geography-aware re-scoring of the same neighbours is real but small, like everything else on this pool. Training data is the binding limit:
       the rules allow only bucket 99 (~30k usable queries).
+    - Pinpoint's own retriever is the same idea at scale (image tower vs location encoder on frozen SigLIP2, MP16 buckets 0-98 + OSV-5M, ~200M
+      samples). Same metric over its cached top-500 GPS-gallery rows (~40 clusters), right place in the first 10 clusters < 25 km | < 200 km:
+      dev 41.2 | 58.4, val 48.4 | 68.8, below raw + prior. Its strength is the top-1 (32.2 / 37.5% < 25 km); its list bunches around one guess. The
+      pool already merges it with raw + prior, which is why a smaller copy trained on bucket 99 adds little.
+39. **Several exemplars per candidate lift the comparator a little, without retraining (2026-10-03; `multi_exemplar.py`, `scripts/multi_exemplar.sh`).**
+    `comparator-a` as is; up to 4 exemplars per top-8 candidate (within 1 km, one per photographer, not the query's; mean 3.25; exemplar 0 is lesson
+    24's), 52k comparisons in 13 min. Top-1 < 25 km vs the reranker, -rank + w * aggregate(logit), w fitted on dev:
+    - first exemplar (lesson 24): dev +0.9 [+0.0, +1.8], val +0.5 [-0.3, +1.4] (im2gps3k +1.0, yfcc4k +0.0);
+    - max over exemplars (w 2): dev +1.2 [+0.2, +2.2], val +1.1 [-0.1, +2.3] (im2gps3k +2.2 [+0.4, +4.0], yfcc4k +0.0);
+    - mean of best 2 (w 4): dev +1.5, val +0.9; plain mean (w 8): dev +1.1, val +0.3.
+    - Cross-validated combiner over dev + val: first exemplar +0.7 [+0.2, +1.2], all exemplars +0.9 [+0.2, +1.7].
+    - So extra exemplars add about +0.3 to +0.6 pts over one, consistently on dev and val, all of it on im2gps3k (landmark-heavy). yfcc4k stays at 0.
+      The comparator was trained on one exemplar per candidate; training it on several, and on more pairs, is the untested part.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
