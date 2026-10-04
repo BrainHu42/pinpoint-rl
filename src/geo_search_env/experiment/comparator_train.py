@@ -1,5 +1,6 @@
 # LoRA fine-tuning of Qwen3.5-4B as a "same place?" comparator for (query photo, exemplar photo) pairs.
 # Usage: ~/.venvs/sft/bin/python -m geo_search_env.experiment.comparator_train train --run comparator-a --samples 40000
+#        ~/.venvs/sft/bin/python -m geo_search_env.experiment.comparator_train train --run comparator-b --mode multi --samples 0 --init-adapter /data/pinpoint/sft/comparator-a/adapter
 #        ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run comparator-a     (then serve the merged model with vLLM)
 #        PYTHONPATH=src ~/.venvs/sft/bin/python -m geo_search_env.experiment.comparator_train train --run speed --samples 400 --max-steps 12   (speed test)
 
@@ -33,9 +34,41 @@ SIZE = 448
 NEG_PER_POSITIVE_PHOTO = 3
 PAIRS = ROOT / "comparator" / "pairs_train.jsonl"
 PAIRS_ALL = ROOT / "comparator" / "pairs_train_all.jsonl"  # every top-8 candidate with its distance (comparator_data.py all)
+PAIRS_MULTI = ROOT / "comparator" / "pairs_train_multi.jsonl"  # up to 4 exemplars per labelled candidate (comparator_data.py multi)
+HARD_RANKED = 2  # multi mode: best-ranked negatives kept with all their exemplars
+
+
+def _multi_rows(seed: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Rows from pairs_train_multi.jsonl. Photos with a positive: every exemplar of every positive, every exemplar of the HARD_RANKED best-ranked
+    negatives (the reranker's most plausible mistakes) and the first exemplar of up to 2 other negatives. Photos without one: the first exemplar of
+    the best-ranked negative and of one random other. Held-out photos as in load_rows."""
+
+    by_candidate: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for line in PAIRS_MULTI.read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        by_candidate.setdefault((r["photo"], r["rank"]), []).append(r)
+    by_photo: dict[int, list[list[dict[str, Any]]]] = {}
+    for (photo, _), rs in sorted(by_candidate.items()):
+        by_photo.setdefault(photo, []).append(rs)
+    rng = np.random.default_rng(seed)
+    train, held = [], []
+    for photo, candidates in by_photo.items():
+        pos = [rs for rs in candidates if rs[0]["label"] == 1]
+        neg = [rs for rs in candidates if rs[0]["label"] == 0]  # in reranker order
+        if pos:
+            others = neg[HARD_RANKED:]
+            take = [r for rs in pos + neg[:HARD_RANKED] for r in rs] + [others[i][0] for i in rng.permutation(len(others))[:2]]
+        else:
+            take = [neg[0][0]] + [neg[1:][i][0] for i in rng.permutation(len(neg) - 1)[:1]] if neg else []
+        (held if photo % 33 == 0 else train).extend(take)
+    return train, held
 
 
 def load_rows(samples: int | None, seed: int = 0, mode: str = "same", label_km: tuple[float, float] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if mode == "multi":
+        train, held = _multi_rows(seed)
+        order = np.random.default_rng(seed).permutation(len(train))
+        return [train[i] for i in order[: samples or None]], held
     if mode == "pairwise":  # rows are (query, right exemplar, wrong exemplar); the same 3% of photos is held out
         rows = [json.loads(line) for line in PAIRWISE.read_text(encoding="utf-8").splitlines()]
         order = np.random.default_rng(seed).permutation(len(rows))
@@ -66,7 +99,7 @@ class Collator:
         self.processor = processor
         self.mode = mode
         self.images: MP16Images | None = None  # opened lazily, once per dataloader worker
-        self.ids = {w: processor.tokenizer.convert_tokens_to_ids(w) for w in (("Yes", "No") if mode == "same" else ("3", "2"))}  # (positive, negative) answer tokens
+        self.ids = {w: processor.tokenizer.convert_tokens_to_ids(w) for w in (("3", "2") if mode == "pairwise" else ("Yes", "No"))}  # (positive, negative) answer tokens
         processor.tokenizer.padding_side = "left"
 
     def _image(self, image_id: str):
@@ -122,7 +155,7 @@ def train(run: str, samples: int, *, lr: float = 1e-4, batch: int = 8, accumulat
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.enable_input_require_grads()
     train_rows, held_rows = load_rows(samples, seed, mode, label_km)
-    pos = sum(r["label"] for r in train_rows) if mode == "same" else len(train_rows) // 2
+    pos = sum(r["label"] for r in train_rows) if mode != "pairwise" else len(train_rows) // 2
     print(f"train rows {len(train_rows)} ({pos} positive), held-out rows {len(held_rows)}", flush=True)
     collator = Collator(processor, mode)
     yes, no = list(collator.ids.values())
@@ -182,7 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=40_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--mode", choices=("same", "pairwise"), default="same")
+    parser.add_argument("--mode", choices=("same", "pairwise", "multi"), default="same")
     parser.add_argument("--init-adapter", help="start from this LoRA adapter instead of a fresh one")
     parser.add_argument("--label-km", type=float, nargs=2, metavar=("POSITIVE", "NEGATIVE"), help="pointwise labels from pairs_train_all.jsonl: positive below the first distance, negative from the second")
     parser.add_argument("--accumulation", type=int, default=2)

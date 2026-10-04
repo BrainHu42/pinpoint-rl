@@ -1,5 +1,5 @@
 # Training pairs for the fine-tuned comparator: (query photo, exemplar of a pool candidate) -> same place?
-# Usage: .venv/bin/python -m geo_search_env.experiment.comparator_data   (CPU, ~10 min)
+# Usage: .venv/bin/python -m geo_search_env.experiment.comparator_data [all|pairwise|multi]   (CPU, ~10 min)
 
 """For every MP16 train photo (Pinpoint's held-out bucket 99, training photographers), its top TOPK pool candidates in reranker order, each with the
 best exemplar: the database photo within 1 km of the candidate (not by the query's photographer) most similar to the query, as at test time
@@ -54,11 +54,64 @@ def pairwise(negatives_per_positive: int = 4, seed: int = 0, hard: bool = True) 
     print(f"{len(rows)} pairwise rows from {len({r['photo'] for r in rows})} photos -> {OUT / 'pairwise_train.jsonl'}")
 
 
+MULTI_EXEMPLARS = 4  # as in multi_exemplar.py: at most one exemplar per photographer, the most similar to the query first
+
+
+def multi() -> None:
+    """pairs_train_multi.jsonl: every labelled top-TOPK candidate (< 1 km / >= 10 km) with up to MULTI_EXEMPLARS exemplars, chosen as at test time in
+    multi_exemplar.py. The trainer (`--multi`) picks which rows to use."""
+
+    from scipy.spatial import cKDTree
+
+    photos = json.loads((ROOT / "train" / "dev.json").read_text(encoding="utf-8"))
+    saved = dict(np.load(SFT_ROOT / "candidates.npz"))
+    ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    world = load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in photos])
+    tree = cKDTree(_xyz(world.mp16["latlon"]))
+    chord = 2 * math.sin(EXEMPLAR_KM / EARTH_KM / 2)
+    kept = {"positive": 0, "negative": 0, "dropped": 0, "no exemplar": 0, "rows": 0}
+    with (OUT / "pairs_train_multi.jsonl").open("w", encoding="utf-8") as out:
+        for m, e in enumerate(photos):
+            coords, valid, ranking = saved["coords"][e["index"]], saved["valid"][e["index"]], saved["ranking"][e["index"]]
+            q = world.query_embeddings[m] / np.linalg.norm(world.query_embeddings[m])
+            author = int(world.query_author[m])
+            for rank, c in enumerate([c for c in ranking if valid[c]][:TOPK]):
+                km = float(_km(coords[c][None, :], *e["truth"])[0])
+                label = 1 if km < POSITIVE_KM else 0 if km >= NEGATIVE_KM else None
+                if label is None:
+                    kept["dropped"] += 1
+                    continue
+                rows = np.sort([r for r in tree.query_ball_point(_xyz(coords[c]), chord) if world.mp16["author"][r] != author])
+                if not len(rows):
+                    kept["no exemplar"] += 1
+                    continue
+                emb = np.asarray(world.mp16["embeddings"][rows], dtype=np.float32)
+                sims = emb @ q / np.linalg.norm(emb, axis=1)
+                seen: set[int] = set()
+                for i in np.argsort(-sims):
+                    a = int(world.mp16["author"][rows[i]])
+                    if a in seen:
+                        continue
+                    out.write(json.dumps({"photo": m, "query": e["image_id"], "exemplar": ids[rows[i]], "label": label, "km": km, "rank": rank,
+                                          "exemplar_rank": len(seen), "sim": float(sims[i])}) + "\n")
+                    seen.add(a)
+                    kept["rows"] += 1
+                    if len(seen) == MULTI_EXEMPLARS:
+                        break
+                kept["positive" if label else "negative"] += 1
+            if (m + 1) % 5000 == 0:
+                print(f"  {m + 1}/{len(photos)} photos: {kept}", flush=True)
+    print(f"candidates: {kept}")
+
+
 def main() -> int:
     import sys
 
     if sys.argv[1:] == ["pairwise"]:
         pairwise()
+        return 0
+    if sys.argv[1:] == ["multi"]:
+        multi()
         return 0
     keep_all = sys.argv[1:] == ["all"]  # every candidate with an exemplar and its distance; labels are cut by the trainer
     from scipy.spatial import cKDTree
