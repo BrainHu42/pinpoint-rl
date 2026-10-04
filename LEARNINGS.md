@@ -460,6 +460,30 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     - So extra exemplars add about +0.3 to +0.6 pts over one, consistently on dev and val, all of it on im2gps3k (landmark-heavy). yfcc4k stays at 0.
       The comparator was trained on one exemplar per candidate; training it on several, and on more pairs, is the untested part.
 
+40. **Training the comparator on 3x the pairs with several exemplars each gains ~+0.3 pts, below the +2 go bar (2026-10-04; run `comparator-b`,
+    `comparator_data.py multi`, `comparator_train.py --mode multi`, `scripts/comparator_b.sh`).** Continued from `comparator-a`'s adapter on 141,646
+    rows (40,568 positive) from 33,052 bucket-99 train photos: every exemplar (up to 4, one per photographer) of every positive and of the reranker's
+    two best-ranked wrong candidates, one exemplar of up to two other wrong candidates; batch 16, lr 1e-4, one pass, 4.5 h at 8.7 pairs/s. Held-out
+    train-photo pairs: accuracy 77.5%, AUC 0.816 (`comparator-a`: 77.8% / 0.825, different pairs).
+    - Scoring trap: the loss fixes only logit(Yes) - logit(No), so the absolute Yes / No level drifted. For ~12% of photos `comparator-b` put almost
+      no mass on either (top token a digit at ~0.5%), and the top-12-logprobs extraction returned nothing for 13% of pairs (7,002 of 52,092). Fixed by
+      restricting the output to the two answer tokens (`allowed_token_ids` + `--logprobs-mode processed_logprobs`); all pairs now score. Always check
+      the failed count of a judge run.
+    - Same scoring, 4 exemplars per top-8 candidate, top-1 < 25 km vs the reranker (dev / val; w fitted on dev):
+
+      | scorer | `comparator-a` | `comparator-b` |
+      |---|---|---|
+      | first exemplar | +0.9 / +0.6 | +1.6 / -0.6 |
+      | max over exemplars | +1.2 / +0.9 | +1.4 / +1.8 [+0.3, +3.6] |
+      | mean of best 2 | +1.5 / +0.7 | +1.2 / +1.3 |
+      | cross-validated combiner, all exemplars (all 1,985) | +0.8 [+0.0, +1.6] | +1.1 [+0.4, +1.8] |
+
+      im2gps3k (max): a +2.0, b +2.0; yfcc4k: a -0.2, b +1.6 [-0.8, +4.1].
+    - So b is at best ~+0.3 over a on the combiner (+1.1 vs +0.8, CIs overlap) and ~+0.9 on the val rule (+1.8 vs +0.9); the val interval still
+      contains +0.9 and misses the +2 bar. On its own, b's first-exemplar score is no better than a's. Training mix and data volume change little:
+      the exemplar-comparison signal saturates near +1 pt of top-1 < 25 km at the 4B scale, consistent with the ~2.5-3 pt cap from lesson 35.
+    - Scores with the broken extraction are kept as `multi_exemplar_scores_comparator-b_top12.json` for reference; do not use.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

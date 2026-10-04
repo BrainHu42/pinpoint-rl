@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Sequence
@@ -21,7 +22,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from .category_evidence import _cv
-from .exemplar_judge import EXEMPLAR_KM, TOPK, WEIGHTS, _jpeg, _logit, _p_same
+from .exemplar_judge import EXEMPLAR_KM, PROMPT, TOPK, WEIGHTS, _jpeg, _logit
 from .query_evidence import ROOT
 from .sft_data import MP16Images
 from .stage1_eval import _bootstrap
@@ -73,16 +74,43 @@ def pairs() -> None:
     PAIRS.write_text(json.dumps(out) + "\n", encoding="utf-8")
 
 
+def _post(server: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    request = urllib.request.Request(f"{server}{path}", json.dumps(body).encode(), {"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=600) as response:
+        return json.loads(response.read())
+
+
+def _p_same(server: str, query_b64: str, exemplar_b64: str, yes_no: tuple[int, int]) -> float | None:
+    """P(yes) / (P(yes) + P(no)) with the output restricted to the two answer tokens (the server runs with --logprobs-mode processed_logprobs, so the
+    returned logprobs are renormalised over them). A model whose Yes / No logits drifted below its other tokens (comparator-b) still scores exactly."""
+
+    body = {"model": "vlm", "temperature": 0.0, "max_tokens": 1, "logprobs": True, "top_logprobs": 2, "allowed_token_ids": list(yes_no),
+            "chat_template_kwargs": {"enable_thinking": False},
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + query_b64}},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + exemplar_b64}},
+                {"type": "text", "text": PROMPT}]}]}
+    try:
+        top = _post(server, "/v1/chat/completions", body)["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
+    except Exception:
+        return None
+    by_token = {t["token"]: t["logprob"] for t in top}
+    if "Yes" not in by_token or "No" not in by_token:
+        return None
+    return 1.0 / (1.0 + math.exp(by_token["No"] - by_token["Yes"]))
+
+
 def judge(server: str, name: str) -> None:
     photos = json.loads(PAIRS.read_text(encoding="utf-8"))
     images = MP16Images()
+    yes_no = tuple(_post(server, "/tokenize", {"model": "vlm", "prompt": w, "add_special_tokens": False})["tokens"][0] for w in ("Yes", "No"))
     jobs = [(i, r, j) for i, p in enumerate(photos) for r, xs in enumerate(p["exemplars"]) for j in range(len(xs))]
 
     def run(job: tuple[int, int, int]) -> float | None:
         i, r, j = job
         p = photos[i]
         query = Path(p["path"]).read_bytes() if p["path"] else images.read(p["image_id"])
-        return _p_same(server, _jpeg(query), _jpeg(images.read(p["exemplars"][r][j])))
+        return _p_same(server, _jpeg(query), _jpeg(images.read(p["exemplars"][r][j])), yes_no)
 
     with ThreadPoolExecutor(32) as pool:
         scores = list(pool.map(run, jobs))

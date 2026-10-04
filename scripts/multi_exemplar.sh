@@ -8,7 +8,7 @@ run=${RUN:-comparator-a}
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 10; done
 mkdir -p artifacts/query_evidence/logs
 PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve /data/pinpoint/sft/$run/merged --served-model-name vlm --port 8765 --host 127.0.0.1 \
-  --dtype bfloat16 --gpu-memory-utilization 0.6 --max-model-len 4096 --max-num-seqs 64 --limit-mm-per-prompt '{"image":2}' \
+  --dtype bfloat16 --gpu-memory-utilization 0.6 --max-model-len 4096 --max-num-seqs 64 --logprobs-mode processed_logprobs --limit-mm-per-prompt '{"image":2}' \
   --mm-processor-kwargs '{"max_pixels": 786432}' > artifacts/query_evidence/logs/vllm_multi_$run.log 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null || true' EXIT
