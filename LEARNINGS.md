@@ -22,7 +22,7 @@ On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing 
 The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a model could recover is open: a rough by-eye look at 30 photos (one reader, lesson 35)
 put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
 lever; we are testing it on the 4B first and scaling up only on a promising signal.
-Every lever tried lands between -0.5 and +1 point. Next untested: the wikimedia final test set (landmark-heavy; loader not yet built).
+Every lever tried lands between -0.5 and +1 point. Wikimedia (lesson 42): reranker top-1 25.0% within 25 km, top-8 oracle 38.9%, comparator +0.4 to +0.8 (balanced subset): no wikimedia-specific gain.
 
 **One line per lesson.**
 - 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
@@ -546,6 +546,24 @@ baseline for new evidence (10, 13).
     - Without the 202 near-duplicate photos the numbers are the same (max +1.7 [+0.9, +2.6]). < 1 km does not move (+0.1 to +0.7 with exemplars, -1.6 for the
       dev-chosen rule); < 200 km +0.5 for max and the combiners.
     - So the comparator line ends around +1 point of top-1 < 25 km on the benchmarks, whatever the exemplar count or the training volume.
+
+42. **Wikimedia (the third final-test set) is harder, has the same choosing headroom, and the comparator gives nothing there (2026-10-04;
+    `wikimedia_eval.py`, `multi_exemplar.py full-pairs / full-judge / full-report --tag wikimedia_balanced`).** Loader: `benchmarks.py` entry `wikimedia`
+    (`/data/pinpoint/wikimedia/test.csv`, 6,017 photos, all flagged usable by a Gemma labeller, not Gemini; `test_balanced.csv` is a 3,036-photo density-
+    balanced subset), `load_world(benchmarks=("wikimedia",))`, pool and reranker order built as for MP16 photos (reranker fitted on the im2gps3k / yfcc4k tune
+    halves; nothing trained on wikimedia). No photographer overlap with MP16 (0 matches), 1.5% near-duplicates of a gallery photo (cosine >= 0.95).
+    - Baseline, % within 1 / 25 / 200 / 750 / 2500 km (all 6,017): Pinpoint GPS top-1 4.3 / 22.1 / 57.9 / 82.4 / 92.4; reranker top-1 8.0 / 25.0 / 59.4 / 83.0 /
+      93.1; oracle over its top 8 15.2 / 38.9 / 72.6 / 89.4 / 96.0; oracle over the whole pool (18 candidates) 18.2 / 49.4 / 83.3 / 93.8 / 97.9. Balanced
+      subset: reranker 7.2 / 20.9 / 49.2 / 75.8 / 88.7, top-8 oracle 13.7 / 33.7 / 63.9 / 84.2 / 93.1, pool oracle 16.7 / 43.1 / 75.4 / 90.2 / 96.2.
+      Top-1 at 25 km is 14 pts below the Flickr benchmarks (38.9), but the gap to the top-8 oracle is the same size (13.9 pts at 25 km, 7.2 at 1 km).
+    - `comparator-b`, 4 exemplars (2.8 per candidate, 0.5% of candidates have none), balanced subset, everything chosen on MP16 dev as in lesson 41, change in
+      top-1 < 25 km: dev-chosen rule +0.7 [-0.1, +1.5]; best-of-4 rule +0.7; combiner trained on dev +0.8 [+0.3, +1.3] with the first exemplar, +0.4 [-0.4, +1.1]
+      with all. < 1 km -0.3 to +0.6, < 200 km 0.0 to +0.6. Without the 62 near-duplicate photos the gains are +0.1 to +0.5. On the 62 near-duplicates the
+      gain is +14.5 [+4.8, +24.2] (the exemplar is near-identical to the query), which says the comparator matches known photos well and nothing more.
+    - So the landmark-heavy set did not turn the comparator into a larger gain: there is no wikimedia-specific lever in the comparator. The +2 go bar was
+      not met; the scoring of the other 2,981 photos was not run.
+    - Ops note: the shared GPU was taken by another project's back-to-back jobs for ~5 h; the script now retries the vLLM start (a job that grabs memory while
+      our server loads kills it) instead of failing.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
