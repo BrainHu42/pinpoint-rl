@@ -50,6 +50,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 43: near-misses are the largest 1 km target; 93% have a gallery photo within 1 km of the truth, 73% among cached neighbours, 59% among our local candidates.
 - 44-45: a near-band comparator (c: 55k rows, d: 219k rows) lifts within-photo AUC 0.735 -> ~0.80 but top-1 < 1 km only +0.8 / +0.9; 4x data adds nothing.
 - 46: combiner variants (relative-to-top-1 features, switching margin) chosen by CV on held-out train photos: +0.7; fixes and breaks move together.
+- 47-49 (map search pivot): searching within 25 km of the top-1 reaches 70-82% of near-misses within 100-300 photos (fixed list 56%), but SigLIP2 (AUC
+  0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
+  look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. Directions 1-3 below are tested and closed for now.
 
 **Still-promising directions (2026-10-05, ranked).**
 1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the
@@ -663,6 +666,17 @@ baseline for new evidence (10, 13).
     benchmarks 0.777 -> 0.842, held-out train 0.803 -> 0.855. CV on held-out train picks "4 exemplars + relative, gate 3" (+0.95 CV): dev -0.2 [-1.3, +0.9],
     benchmarks +0.9 [+0.3, +1.4]. The plain 4-exemplar combiner (not chosen, CV +0.83) gives benchmarks +1.3 [+0.7, +1.8], dev +0.8. Below the +1.3 bar set
     beforehand: the comparator-over-the-fixed-list line is closed. An AUC of 0.84 within the photo still flips about 2 near-misses per exact photo broken.
+
+49. **No verifier we have separates the right place among the search's look-alikes, so map search has nothing to steer by (2026-10-05;
+    `scripts/map_comparator.sh`, `geo_match.py report --verifier comparator-d`).** comparator-d on the same top-100 gallery photos as lesson 47 (30,777 MP16
+    pairs; OSV photos unscored). Within-photo AUC, photo < 1 km vs 1-25 km from the truth, near-misses: comparator-d 0.575, SigLIP2 0.543, keypoint inliers
+    0.524 (all photos with top-1 < 25 km: 0.616 / 0.577 / 0.541). The top-scored photo is < 1 km for 15.3% of near-misses (inliers 13.1%, SigLIP2 6.6%).
+    Rules on comparator scores: -1.3 to +0.3 on dev.
+    - The same comparator reaches 0.84 over the fixed local list (lesson 48) because there the wrong candidates mostly lack a look-alike photo nearby; among
+      the 100 most similar photos within 25 km, every wrong one is a look-alike, and its skill falls to near chance. Most of its 0.84 is "is there a
+      look-alike near this place", which SigLIP2 already encodes.
+    - Consequence for RL map search (the plan's cheapest test, hand-written policy steered by comparator + matcher): not run, since neither signal separates
+      the places a policy would have to choose between. Search reach is there (lesson 47: 70-82% of near-misses within 100-300 photos); a signal is not.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
