@@ -303,6 +303,48 @@ def exemplar_pairs(tag: str = "dev") -> None:
     print(f"{len(out)} photos, {sum(c > 0 for c in counts)} local candidates with an exemplar of {int((local['dist'] < 9e4).sum())}")
 
 
+MULTI_EXEMPLARS = 4
+
+
+def multi_exemplar_pairs() -> None:
+    """Up to MULTI_EXEMPLARS exemplars (one per photographer, most similar to the query first, so exemplar 0 is the one already scored) per local candidate of the
+    held-out train photos, dev and the benchmark photos (tags nearmiss4_trainhold / nearmiss4_dev / nearmiss4_full)."""
+
+    import math
+
+    from scipy.spatial import cKDTree
+
+    from .multi_exemplar import _exemplars, _pairs_path
+    from .strategy_search import EARTH_KM as R, _xyz, load_world
+
+    queries = json.loads((SFT_CACHE / "queries.json").read_text(encoding="utf-8"))
+    train_idx = [i for i, q in enumerate(queries) if q["group"] == "held_out" and q["split"] == "train"]
+    ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    chord = 2 * math.sin(1.0 / R / 2)
+    for tag in ("trainhold", "dev", "full"):
+        local = _local_set("train" if tag == "trainhold" else tag)
+        if tag == "trainhold":
+            rows = [k for k in range(len(train_idx)) if k % HOLDOUT_MOD == HOLDOUT_REMAINDER]
+            world = load_world(mp16_queries=[{"row": queries[i]["row"], "image_id": queries[i]["image_id"]} for i in train_idx])
+            photos = [{"image_id": queries[train_idx[k]]["image_id"], "path": None, "pos": k, "m": k} for k in rows]
+        else:
+            found, _, _ = _top1_photos(tag)
+            world = load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in found]) if tag == "dev" else load_world()
+            photos = [{"image_id": e["image_id"], "path": e.get("path"), "pos": m if tag == "dev" else e["index"], "m": m} for m, e in enumerate(found)]
+        tree = cKDTree(_xyz(world.mp16["latlon"]))
+        out = []
+        for e in photos:
+            q = world.query_embeddings[e["pos"]] / np.linalg.norm(world.query_embeddings[e["pos"]])
+            author, m = int(world.query_author[e["pos"]]), e["m"]
+            out.append({"image_id": e["image_id"], "path": e["path"],
+                        "exemplars": [_exemplars(world, tree, ids, chord, q, author, c)[:MULTI_EXEMPLARS] if local["dist"][m, k] < 9e4 else []
+                                      for k, c in enumerate(local["coords"][m])]})
+        _pairs_path(f"nearmiss4_{tag}").write_text(json.dumps(out) + "\n", encoding="utf-8")
+        counts = [len(x) for p in out for x in p["exemplars"] if x]
+        print(f"nearmiss4_{tag}: {len(out)} photos, {len(counts)} candidates with an exemplar, {sum(counts)} pairs ({np.mean(counts):.2f} per candidate)", flush=True)
+        del world, tree
+
+
 def exemplar_report(name: str, tag: str = "dev") -> None:
     """How well a comparator's score on the local candidates' exemplars separates a candidate within 1 km of the truth from one 1-25 km away (all within the
     photo), whether its top local candidate beats the top-1, and a cross-validated listwise combiner with the 12 local features."""
@@ -474,6 +516,128 @@ def final_report(name: str) -> None:
     (ROOT / f"near_miss_final_{name}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
+def _aggregate_scores(prefix: str, tag: str, name: str, d: np.ndarray) -> dict[str, np.ndarray] | None:
+    """Per local candidate, aggregates of the comparator logits over its scored exemplars (first / max / mean / mean of the best 2 / count), [photos, candidates]."""
+
+    from .multi_exemplar import _logit, _scores_path
+
+    path = _scores_path(name, f"{prefix}_{tag}")
+    if not path.exists():
+        return None
+    scored = json.loads(path.read_text(encoding="utf-8"))
+    assert len(scored) == len(d)
+    out = {k: np.zeros(d.shape) for k in ("first", "max", "mean", "best2", "count")}
+    for m, p in enumerate(scored):
+        for k, xs in enumerate(p["p_same"]):
+            if not xs or xs[0] is None or d[m, k] >= 9e4:
+                continue
+            L = _logit(np.asarray([x for x in xs if x is not None]))
+            top = np.sort(L)[::-1]
+            out["first"][m, k], out["max"][m, k], out["mean"][m, k], out["best2"][m, k], out["count"][m, k] = L[0], top[0], L.mean(), top[:2].mean(), len(L)
+    return out
+
+
+def _relative(a: np.ndarray, has: np.ndarray) -> list[np.ndarray]:
+    """Incumbent- and photo-relative views of one per-candidate score: minus the top-1's, minus the photo's best, softmax within the photo, rank within the photo."""
+
+    masked = np.where(has, a, -np.inf)
+    best = masked.max(1, keepdims=True)
+    best = np.where(np.isfinite(best), best, 0.0)
+    e = np.where(has, np.exp(a - best), 0.0)
+    order = (-masked).argsort(1).argsort(1).astype(float)
+    return [np.where(has & has[:, :1], a - a[:, :1], 0.0), np.where(has, a - best, 0.0), e / np.maximum(e.sum(1, keepdims=True), 1e-9), np.where(has, order, 24.0)]
+
+
+def _variant_features(local: dict[str, np.ndarray], single: dict | None, multi: dict | None) -> dict[str, np.ndarray]:
+    feats = local["feats"]
+    out = {"local": feats}
+    if single is not None:
+        has = single["count"] > 0
+        base = np.stack([single["first"], has.astype(float)], -1)
+        gap = _relative(single["first"], has)[1][..., None]
+        out["local + 1 exemplar"] = np.concatenate((feats, base, gap), -1)
+        out["local + 1 exemplar + relative"] = np.concatenate((feats, base, np.stack(_relative(single["first"], has), -1)), -1)
+    if multi is not None:
+        has = multi["count"] > 0
+        aggs = np.stack([multi[k] for k in ("first", "max", "mean", "best2")] + [np.log1p(multi["count"])], -1)
+        out["local + 4 exemplars"] = np.concatenate((feats, aggs, has[..., None].astype(float)), -1)
+        out["local + 4 exemplars + relative"] = np.concatenate((feats, aggs, has[..., None].astype(float),
+                                                                np.stack(_relative(multi["max"], has) + _relative(multi["mean"], has), -1)), -1)
+    return {k: v.astype(np.float32) for k, v in out.items()}
+
+
+GATES = (0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0)  # switch away from the top-1 only if the combiner's score margin over it exceeds this
+
+
+def _gated(score: np.ndarray, gate: float) -> np.ndarray:
+    pick = np.argmax(score, axis=1)
+    margin = score[np.arange(len(score)), pick] - score[:, 0]
+    return np.where(margin > gate, pick, 0)
+
+
+def combiners(name: str) -> None:
+    """Combiner variants (local features; + 1 exemplar logit; + incumbent-relative views; + 4-exemplar aggregates) and a margin gate on switching away from
+    the top-1. The variant and gate are chosen by 5-fold CV on the held-out train photos only; the chosen ones are then fitted on all of them and scored once on
+    dev and the benchmark photos. Every variant's dev / benchmark numbers are printed too, marked as not used for the choice."""
+
+    from .stage1_eval import _bootstrap
+
+    train = _local_set("train")
+    hold = np.flatnonzero(np.arange(len(train["dist"])) % HOLDOUT_MOD == HOLDOUT_REMAINDER)
+    sets = {"trainhold": {k: v[hold] for k, v in train.items()}, "dev": _local_set("dev"), "full": _local_set("full")}
+    F = {t: _variant_features(s, _aggregate_scores("nearmiss", t, name, s["dist"]), _aggregate_scores("nearmiss4", t, name, s["dist"])) for t, s in sets.items()}
+    variants = [v for v in F["trainhold"] if all(v in F[t] for t in sets)]
+    valid = {t: s["dist"] < 9e4 for t, s in sets.items()}
+    multi = _aggregate_scores("nearmiss4", "dev", name, sets["dev"]["dist"])
+    if multi is not None:  # how much the aggregates separate a < 1 km candidate from a 1-25 km one
+        for t in sets:
+            m = _aggregate_scores("nearmiss4", t, name, sets[t]["dist"])
+            d, has = sets[t]["dist"], m["count"] > 0
+            line = []
+            for agg in ("first", "max", "mean", "best2"):
+                wins = pairs = 0.0
+                for i in range(len(d)):
+                    a, b = m[agg][i, has[i] & (d[i] < 1)], m[agg][i, has[i] & (d[i] >= 1) & (d[i] < RADIUS_KM)]
+                    if len(a) and len(b):
+                        wins += (a[:, None] > b[None, :]).sum() + 0.5 * (a[:, None] == b[None, :]).sum(); pairs += len(a) * len(b)
+                line.append(f"{agg} {wins / max(pairs, 1):.3f}")
+            print(f"{name} 4 exemplars on {t}: within-photo AUC {', '.join(line)}; {m['count'][has].mean():.2f} exemplars per scored candidate")
+    d, v = sets["trainhold"]["dist"], valid["trainhold"]
+    base = d[:, 0]
+    folds = np.array_split(np.random.default_rng(0).permutation(len(d)), 5)
+    cv: dict[tuple[str, float], float] = {}
+    for variant in variants:
+        oof = np.zeros(d.shape)
+        for f in folds:
+            tr = np.setdiff1d(np.arange(len(d)), f)
+            oof[f] = sum(s(F["trainhold"][variant][f], v[f]) for s in [_fit_listwise(F["trainhold"][variant][tr], d[tr], v[tr], seed) for seed in range(3)]) / 3
+        for gate in GATES:
+            pick = _gated(oof, gate)
+            cv[(variant, gate)] = float((d[np.arange(len(d)), pick] < 1).mean() - (base < 1).mean())
+        print(f"CV on held-out train (n={len(d)}), {variant:32s}: " + ", ".join(f"gate {g}: {100 * cv[(variant, g)]:+.2f}" for g in GATES), flush=True)
+    chosen = max(cv, key=cv.get)
+    print(f"chosen by CV: {chosen[0]}, gate {chosen[1]} (CV {100 * cv[chosen]:+.2f} at 1 km over the top-1)")
+    report: dict[str, dict] = {"cv": {f"{k[0]} | gate {k[1]}": x for k, x in cv.items()}, "chosen": list(chosen)}
+    for variant in variants:
+        scorers = [_fit_listwise(F["trainhold"][variant], d, v, seed) for seed in range(3)]
+        best_gate = max(GATES, key=lambda g: cv[(variant, g)])
+        for t in ("dev", "full"):
+            dt = sets[t]["dist"]
+            score = sum(s(F[t][variant], valid[t]) for s in scorers) / 3
+            for gate in sorted({0.0, best_gate}):
+                pick = _gated(score, gate)
+                c, b = dt[np.arange(len(dt)), pick], dt[:, 0]
+                nm, ex = (b < RADIUS_KM) & (b >= 1), b < 1
+                ci1, ci25 = _bootstrap((c < 1).astype(float) - (b < 1)), _bootstrap((c < 25).astype(float) - (b < 25))
+                mark = "CHOSEN" if (variant, gate) == chosen else ("cv-best gate" if gate == best_gate else "")
+                report.setdefault(f"{variant} | gate {gate}", {})[t] = {"< 1 km": float((c < 1).mean()), "top-1 < 1 km": float((b < 1).mean()), "change < 1 km": ci1,
+                                                                        "change < 25 km": ci25, "fixed": int((nm & (c < 1)).sum()), "broken": int((ex & (c >= 1)).sum())}
+                print(f"{variant:32s} gate {gate:4.2f} {t:4s} (n={len(dt)}): < 1 km {(b < 1).mean():.1%} -> {(c < 1).mean():.1%}, change {100 * ci1[0]:+.1f} "
+                      f"[{100 * ci1[1]:+.1f}, {100 * ci1[2]:+.1f}]; < 25 km {100 * ci25[0]:+.1f}; fixes {int((nm & (c < 1)).sum())} of {int(nm.sum())}, "
+                      f"breaks {int((ex & (c >= 1)).sum())} of {int(ex.sum())} {mark}", flush=True)
+    (ROOT / f"near_miss_combiners_{name}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+
 NEAR_ROWS_FULL = ROOT / "comparator" / "pairs_train_near_full.jsonl"
 FULL_ROW_BUDGET = 219_000  # ~7 h of training at 8.7 pairs/s
 
@@ -537,12 +701,16 @@ def near_pairs_full(seed: int = 0) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("ceiling", "rules", "local-rerank", "exemplar-pairs", "exemplar-report", "near-pairs", "near-pairs-full", "final-report"))
+    parser.add_argument("node", choices=("ceiling", "rules", "local-rerank", "exemplar-pairs", "exemplar-report", "near-pairs", "near-pairs-full", "final-report", "multi-exemplar-pairs", "combiners"))
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--name", default="comparator-b")
     args = parser.parse_args(argv)
     if args.node == "near-pairs-full":
         near_pairs_full()
+    elif args.node == "multi-exemplar-pairs":
+        multi_exemplar_pairs()
+    elif args.node == "combiners":
+        combiners(args.name)
     elif args.node == "near-pairs":
         near_pairs()
     elif args.node == "final-report":
