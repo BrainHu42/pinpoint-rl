@@ -27,6 +27,7 @@ PAIRS, SCORES = ROOT / "map_search_match_pairs_dev.json", ROOT / "map_search_mat
 OSV_IMAGES = Path("/data/hf/datasets/osv5m/images/train")
 LONG_SIDE, KEYPOINTS = 1024, 2048
 THRESHOLDS = (10, 15, 20, 30, 50, 80, 120)
+LOGIT_THRESHOLDS = (-1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 
 
 def _osv_paths(ids: set[str]) -> dict[str, Path]:
@@ -85,7 +86,10 @@ def score() -> None:
         if len(idx) < 8:
             return int(len(idx)), 0
         p1, p2 = a[0][idx[:, 0]].cpu().numpy(), b[0][idx[:, 1]].cpu().numpy()
-        _, mask = cv2.findFundamentalMat(p1, p2, cv2.USAC_MAGSAC, 1.0, 0.999, 10000)
+        try:
+            _, mask = cv2.findFundamentalMat(p1, p2, cv2.USAC_MAGSAC, 1.0, 0.999, 10000)
+        except cv2.error:  # degenerate match sets
+            return int(len(idx)), 0
         return int(len(idx)), int(mask.sum()) if mask is not None else 0
 
     done = {p["image_id"]: p for p in json.loads(SCORES.read_text(encoding="utf-8"))} if SCORES.exists() else {}
@@ -120,13 +124,24 @@ def _bootstrap(x: np.ndarray, reps: int = 2000) -> tuple[float, float, float]:
     return float(x.mean()), float(np.quantile(means, 0.025)), float(np.quantile(means, 0.975))
 
 
-def report() -> None:
+def report(verifier: str = "inliers") -> None:
+    """verifier: 'inliers' (keypoint matching) or a comparator name whose multi_exemplar scores for tag maptop100_dev exist (logit of P(same place); vote
+    weights are the probabilities). Gallery photos without a score (OSV for the comparator) never count."""
+
     photos = json.loads(PAIRS.read_text(encoding="utf-8"))
-    scores = {p["image_id"]: p for p in json.loads(SCORES.read_text(encoding="utf-8"))}
+    if verifier == "inliers":
+        scores = {p["image_id"]: p["inliers"] for p in json.loads(SCORES.read_text(encoding="utf-8"))}
+        thresholds, weight = THRESHOLDS, lambda v: v
+    else:
+        from .multi_exemplar import _scores_path
+
+        scored = json.loads(_scores_path(verifier, "maptop100_dev").read_text(encoding="utf-8"))
+        scores = {p["image_id"]: [float(np.log(x[0] / (1 - x[0]))) if x and x[0] is not None and 0 < x[0] < 1 else None for x in p["p_same"]] for p in scored}
+        thresholds, weight = LOGIT_THRESHOLDS, lambda v: 1 / (1 + np.exp(-v))
     photos = [p for p in photos if p["image_id"] in scores]
     km = [np.asarray([g["km"] for g in p["gallery"]]) for p in photos]
     sim = [np.asarray([g["sim"] for g in p["gallery"]]) for p in photos]
-    inl = [np.asarray([x if x is not None else -1 for x in scores[p["image_id"]]["inliers"]], float) for p in photos]
+    inl = [np.asarray([x if x is not None else -1e9 for x in scores[p["image_id"]]], float) for p in photos]
     top1 = np.asarray([p["top1_km"] for p in photos])
 
     def auc(values: list[np.ndarray], sel: np.ndarray) -> float:
@@ -134,32 +149,62 @@ def report() -> None:
         for v, d, s in zip(values, km, sel):
             if not s:
                 continue
-            a, b = v[d < 1], v[(d >= 1) & (d < 25)]
+            ok = v > -1e8
+            a, b = v[ok & (d < 1)], v[ok & (d >= 1) & (d < 25)]
             if len(a) and len(b):
                 wins += (a[:, None] > b[None]).sum() + 0.5 * (a[:, None] == b[None]).sum(); pairs += len(a) * len(b)
         return wins / max(pairs, 1)
 
     for label, sel in (("top-1 < 25 km", top1 < 25), ("near-misses", top1 >= 1)):
-        print(f"{label} (n={int(sel.sum())}): within-photo AUC, gallery photo < 1 km vs 1-25 km from the truth: inliers {auc(inl, sel):.3f}, SigLIP2 similarity {auc(sim, sel):.3f}")
-        print(f"  a gallery photo < 1 km among the 100: {np.mean([(d < 1).any() for d, s in zip(km, sel) if s]):.1%}; the max-inlier photo is < 1 km: "
+        print(f"{label} (n={int(sel.sum())}): within-photo AUC, gallery photo < 1 km vs 1-25 km from the truth: {verifier} {auc(inl, sel):.3f}, SigLIP2 similarity {auc(sim, sel):.3f}")
+        print(f"  a gallery photo < 1 km among the 100: {np.mean([(d < 1).any() for d, s in zip(km, sel) if s]):.1%}; the top-{verifier} photo is < 1 km: "
               f"{np.mean([d[np.argmax(v)] < 1 for d, v, s in zip(km, inl, sel) if s]):.1%}; the most similar photo is < 1 km: {np.mean([d[0] < 1 for d, s in zip(km, sel) if s]):.1%}")
     base = top1 < 1
     print(f"\nrule: move to the max-inlier gallery photo if it has >= T inliers, else keep the top-1 (n={len(photos)} photos with top-1 < 25 km; top-1 < 1 km {base.mean():.1%})")
-    for t in THRESHOLDS:
-        best = [int(np.argmax(v)) for v in inl]
+    for t in thresholds:
+        best =[int(np.argmax(v)) for v in inl]
         move = np.asarray([v[b] >= t for v, b in zip(inl, best)])
         chosen = np.where(move, [d[b] for d, b in zip(km, best)], top1)
         c = _bootstrap((chosen < 1).astype(float) - base)
-        print(f"  T={t:3d}: moves {move.mean():5.1%}, < 1 km {(chosen < 1).mean():.1%}, change {100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}] "
+        print(f"  T={t:4}: moves {move.mean():5.1%}, < 1 km {(chosen < 1).mean():.1%}, change {100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}] "
               f"(= {100 * c[0] * len(photos) / 1000:+.1f} over all 1,000 dev photos); fixes {int(((chosen < 1) & ~base).sum())}, breaks {int((~(chosen < 1) & base).sum())}; "
               f"moved-to photo < 1 km in {np.mean(chosen[move] < 1) if move.any() else 0:.0%} of moves")
+    # consensus: a single gallery photo's GPS is noisy (the same landmark is often tagged km away), so strongly matched photos vote for the places within
+    # VOTE_KM of them, weighted by inliers; the top-1 is a candidate too, and it is kept on ties or when nothing matches strongly
+    print(f"\nrule: consensus of photos with >= T inliers (votes within {VOTE_KM} km, weighted by inliers); keep the top-1 unless another place gets more votes")
+    for t in thresholds:
+        chosen, moved = top1.copy(), np.zeros(len(photos), bool)
+        for i, (p, v) in enumerate(zip(photos, inl)):
+            strong = v >= t
+            if not strong.any():
+                continue
+            locs = np.asarray([g["latlon"] for g in p["gallery"]])[strong]
+            cands = np.concatenate((np.asarray(p["top"])[None], locs))
+            votes = (_km(cands, locs) < VOTE_KM) @ weight(v[strong])
+            best = int(np.argmax(votes))
+            if votes[best] > votes[0]:
+                chosen[i], moved[i] = _km(np.asarray(p["truth"])[None], cands[best][None])[0, 0], True
+        c = _bootstrap((chosen < 1).astype(float) - base)
+        print(f"  T={t:4}: moves {moved.mean():5.1%}, < 1 km {(chosen < 1).mean():.1%}, change {100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}] "
+              f"(= {100 * c[0] * len(photos) / 1000:+.1f} over all 1,000 dev photos); fixes {int(((chosen < 1) & ~base).sum())}, breaks {int((~(chosen < 1) & base).sum())}")
+
+
+VOTE_KM = 1.0
+
+
+def _km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    a, b = np.radians(a), np.radians(b)
+    xa = np.stack((np.cos(a[:, 0]) * np.cos(a[:, 1]), np.cos(a[:, 0]) * np.sin(a[:, 1]), np.sin(a[:, 0])), -1)
+    xb = np.stack((np.cos(b[:, 0]) * np.cos(b[:, 1]), np.cos(b[:, 0]) * np.sin(b[:, 1]), np.sin(b[:, 0])), -1)
+    return 6371.0088 * np.arccos(np.clip(xa @ xb.T, -1, 1))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("node", choices=("score", "report"))
+    parser.add_argument("--verifier", default="inliers", help="inliers, or a comparator name scored on tag maptop100_dev")
     args = parser.parse_args(argv)
-    score() if args.node == "score" else report()
+    score() if args.node == "score" else report(args.verifier)
     return 0
 
 

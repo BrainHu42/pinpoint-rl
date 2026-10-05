@@ -645,6 +645,19 @@ baseline for new evidence (10, 13).
     - Chosen variant scored once: dev +0.8 [+0.0, +1.7], benchmarks +0.7 [+0.2, +1.2] (fixes 63 of 812, breaks 36 of 634). The gate trades fixes for breaks
       about 1:1 (benchmarks, + logit: gate 0 fixes 77 / breaks 48, gate 2 fixes 68 / breaks 39).
 
+47. **Map search: searching reaches the truth, but neither SigLIP2 nor keypoint matching can tell it apart (2026-10-05; `map_search.py`, `geo_match.py`).**
+    Pivot (user's decision): an agent that moves over the map instead of choosing from a fixed list. Cheapest tests first, on the 1,000 MP16 dev photos.
+    - Hand-written zoom search with SigLIP2 only (top 3 seeds, 25 -> 5 -> 1.5 km, ~18k gallery photos scored per query, 0.6 s / photo on CPU): visited points
+      within 1 km of the truth: top 24 spots 28.6% vs the fixed local list 26.2% and the reranker pool 30.5%; best-spot picks lose to the top-1 (-0.8 to -1.1).
+    - Reach with a verifier budget (`truth-rank`): for near-misses (n = 183), the first gallery photo within 1 km of the truth among all photos within 25 km
+      of the top-1 (median 13k), by SigLIP2 rank: top 30 56.8% (= the fixed list's 55.7%), top 100 69.9%, top 300 82.0%, any 94.5%. So a verifier that checks
+      100-300 photos per query could reach 14-26 pts more near-misses (~+3 to +5 pts of the dev 1 km ceiling) — if it can pick them out.
+    - Keypoint verification (DISK + LightGlue + MAGSAC F-matrix inliers, pretrained, query vs each of the top 100; 342 dev photos with top-1 < 25 km, 34k
+      pairs, 12 pairs/s): within-photo AUC (photo < 1 km vs 1-25 km from the truth) 0.54 (SigLIP2 0.58 within the same top 100). Best rule (inlier-weighted
+      consensus of photos with >= 120 inliers, else keep the top-1): +1.5 [-0.3, +3.2] on the 342 = +0.5 on dev. Moving to the single best-matched photo loses.
+    - Why: matching finds *what* is shown, the label is *where the camera stood*. Strong matches are landmarks (a Prague church interior, the Alhambra at
+      night; 180-580 inliers) photographed from spots 1-10 km apart or with noisy GPS; non-landmark photos sit at a 20-50 inlier noise floor.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

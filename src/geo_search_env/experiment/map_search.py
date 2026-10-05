@@ -239,12 +239,24 @@ def match_pairs(limit: int | None = None) -> None:
     print(f"{len(out)} photos, {sum(len(p['gallery']) for p in out)} pairs")
 
 
+def comparator_pairs(limit: int | None = None) -> None:
+    """The match-pairs gallery photos as comparator exemplars (multi_exemplar judge format, tag maptop100_dev; one exemplar per gallery photo, OSV photos
+    left empty since the judge reads MP16 images only)."""
+
+    from .multi_exemplar import _pairs_path
+
+    photos = json.loads((ROOT / "map_search_match_pairs_dev.json").read_text(encoding="utf-8"))
+    out = [{"image_id": p["image_id"], "path": None, "exemplars": [[g["id"]] if g["source"] == "mp16" else [] for g in p["gallery"]]} for p in photos]
+    _pairs_path("maptop100_dev").write_text(json.dumps(out) + "\n", encoding="utf-8")
+    print(f"{len(out)} photos, {sum(len(x) for p in out for x in p['exemplars'])} pairs")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("probe", "truth-rank", "match-pairs"))
+    parser.add_argument("node", choices=("probe", "truth-rank", "match-pairs", "comparator-pairs"))
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
-    {"probe": probe, "truth-rank": truth_rank, "match-pairs": match_pairs}[args.node](args.limit)
+    {"probe": probe, "truth-rank": truth_rank, "match-pairs": match_pairs, "comparator-pairs": comparator_pairs}[args.node](args.limit)
     return 0
 
 
