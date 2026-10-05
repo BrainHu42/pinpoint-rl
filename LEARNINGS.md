@@ -23,8 +23,8 @@ The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a 
 put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
 lever; we are testing it on the 4B first and scaling up only on a promising signal.
 Every lever tried lands between -0.5 and +1 point. Wikimedia (lesson 42): reranker top-1 25.0% within 25 km, top-8 oracle 38.9%, comparator +0.4 to +0.8 (balanced subset): no wikimedia-specific gain.
-Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-44): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
-reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks.
+Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-45): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
+reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks, and 4x the band data (lesson 45) gives the same (+0.9).
 
 **One line per lesson.**
 - 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
@@ -608,6 +608,15 @@ baseline for new evidence (10, 13).
     - Reading: the visual judge adds ~+0.3 over the features alone, and more fixes come with more breaks. The incumbent top-1 is already right for 61% of
       what the candidates can reach (15.9% of 26.2% on dev), so a flip needs a very reliable margin; an AUC of 0.8 within a photo is not that.
     - 58,017 held-out train + 13,562 dev + 51,686 benchmark candidate scorings took 31 min in one server session.
+
+45. **4x more near-band data (`comparator-d`) does not move the near-band signal (2026-10-05; `scripts/comparator_d.sh`).** Continued from `comparator-c` on
+    219,000 rows (every local candidate of every non-held-out train photo, `near_miss.py near-pairs-full`; one pass, 6.9 h). Same held-out photos, scoring and
+    combiner as lesson 44.
+    - Within-photo AUC (< 1 km vs 1-25 km), c -> d: dev 0.795 -> 0.805, benchmarks 0.782 -> 0.777, held-out train 0.806 -> 0.803.
+    - Combiner with comparator-d, change in top-1 < 1 km vs the reranker top-1: dev +1.1 [+0.1, +2.2]; benchmarks +0.9 [+0.3, +1.4] (17.1% -> 17.9%; fixes 78
+      of 812 near-misses, breaks 46 of 634 exact), vs +0.8 with comparator-c. < 25 km unchanged.
+    - Reading: the single-exemplar visual judge has saturated near AUC 0.8 for this band; more of the same pairs is not the lever. Lesson 26's "loss still falling"
+      hope is now tested twice (b: 3x rows, +0.3; d: 4x rows, +0.1).
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
