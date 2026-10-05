@@ -35,6 +35,8 @@ NEG_PER_POSITIVE_PHOTO = 3
 PAIRS = ROOT / "comparator" / "pairs_train.jsonl"
 PAIRS_ALL = ROOT / "comparator" / "pairs_train_all.jsonl"  # every top-8 candidate with its distance (comparator_data.py all)
 PAIRS_MULTI = ROOT / "comparator" / "pairs_train_multi.jsonl"  # up to 4 exemplars per labelled candidate (comparator_data.py multi)
+PAIRS_NEAR = ROOT / "comparator" / "pairs_train_near.jsonl"  # near-band rows (near_miss.py near-pairs)
+PAIRS_NEAR_FULL = ROOT / "comparator" / "pairs_train_near_full.jsonl"  # every local candidate as a row (near_miss.py near-pairs-full)
 HARD_RANKED = 2  # multi mode: best-ranked negatives kept with all their exemplars
 
 
@@ -65,6 +67,11 @@ def _multi_rows(seed: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
 
 
 def load_rows(samples: int | None, seed: int = 0, mode: str = "same", label_km: tuple[float, float] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if mode in ("near", "near-full"):  # rows already selected by near_miss.near_pairs (positives < 1 km, negatives 1-5 / 5-25 / >= 25 km from the truth); 3% of photos held out
+        rows = [json.loads(line) for line in (PAIRS_NEAR_FULL if mode == "near-full" else PAIRS_NEAR).read_text(encoding="utf-8").splitlines()]
+        order = np.random.default_rng(seed).permutation(len(rows))
+        rows = [rows[i] for i in order]
+        return [r for r in rows if r["photo"] % 33 != 0][: samples or None], [r for r in rows if r["photo"] % 33 == 0]
     if mode == "multi":
         train, held = _multi_rows(seed)
         order = np.random.default_rng(seed).permutation(len(train))
@@ -215,7 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=40_000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--mode", choices=("same", "pairwise", "multi"), default="same")
+    parser.add_argument("--mode", choices=("same", "pairwise", "multi", "near", "near-full"), default="same")
     parser.add_argument("--init-adapter", help="start from this LoRA adapter instead of a fresh one")
     parser.add_argument("--label-km", type=float, nargs=2, metavar=("POSITIVE", "NEGATIVE"), help="pointwise labels from pairs_train_all.jsonl: positive below the first distance, negative from the second")
     parser.add_argument("--accumulation", type=int, default=2)

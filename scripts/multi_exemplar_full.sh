@@ -24,8 +24,10 @@ for attempt in $(seq 1 40); do
   sleep 30
 done
 [ -n "$server" ] || { echo "giving up: no server"; exit 1; }
-echo "$(date +%T) full-judge $run $tag"
-.venv/bin/python -m geo_search_env.experiment.multi_exemplar full-judge --name $run --tag $tag 2>&1
+for t in ${TAGS:-$tag}; do  # TAGS: several photo sets scored in one server session
+  echo "$(date +%T) full-judge $run $t"
+  .venv/bin/python -m geo_search_env.experiment.multi_exemplar full-judge --name $run --tag $t 2>&1
+done
 kill $server; wait $server 2>/dev/null || true
 server=""
 [ -n "${NO_REPORT:-}" ] || echo "$(date +%T) full-report"
