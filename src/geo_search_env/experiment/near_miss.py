@@ -274,11 +274,92 @@ def local_rerank() -> None:
     (ROOT / "near_miss_local_rerank.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
+def exemplar_pairs(tag: str = "dev") -> None:
+    """One exemplar (a gallery photo within 1 km of the candidate, not by the query's photographer, most similar to the query) per local candidate of every
+    photo of `tag`, in the pairs format that `multi_exemplar judge` reads (tag `nearmiss_<tag>`)."""
+
+    import math
+
+    from scipy.spatial import cKDTree
+
+    from .multi_exemplar import _exemplars, _pairs_path
+    from .strategy_search import EARTH_KM as R, _xyz, load_world
+
+    local = _local_set(tag)
+    photos, _, _ = _top1_photos(tag) if tag != "train" else (None, None, None)
+    world = load_world(mp16_queries=[{"row": e["row"], "image_id": e["image_id"]} for e in photos]) if tag == "dev" else load_world()
+    ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    tree = cKDTree(_xyz(world.mp16["latlon"]))
+    chord = 2 * math.sin(1.0 / R / 2)
+    out = []
+    for m, e in enumerate(photos):
+        pos = m if tag == "dev" else e["index"]
+        q = world.query_embeddings[pos] / np.linalg.norm(world.query_embeddings[pos])
+        author = int(world.query_author[pos])
+        found = [_exemplars(world, tree, ids, chord, q, author, c)[:1] if local["dist"][m, k] < 9e4 else [] for k, c in enumerate(local["coords"][m])]
+        out.append({"image_id": e["image_id"], "path": e.get("path"), "exemplars": found})
+    _pairs_path(f"nearmiss_{tag}").write_text(json.dumps(out) + "\n", encoding="utf-8")
+    counts = [len(x) for p in out for x in p["exemplars"]]
+    print(f"{len(out)} photos, {sum(c > 0 for c in counts)} local candidates with an exemplar of {int((local['dist'] < 9e4).sum())}")
+
+
+def exemplar_report(name: str, tag: str = "dev") -> None:
+    """How well a comparator's score on the local candidates' exemplars separates a candidate within 1 km of the truth from one 1-25 km away (all within the
+    photo), whether its top local candidate beats the top-1, and a cross-validated listwise combiner with the 12 local features."""
+
+    from .multi_exemplar import _logit, _scores_path
+    from .stage1_eval import _bootstrap
+
+    local = _local_set(tag)
+    scored = json.loads(_scores_path(name, f"nearmiss_{tag}").read_text(encoding="utf-8"))
+    d, feats = local["dist"], local["feats"]
+    valid = d < 9e4
+    logit = np.zeros(d.shape)
+    has = np.zeros(d.shape, bool)
+    for m, p in enumerate(scored):
+        for k, xs in enumerate(p["p_same"]):
+            if xs and xs[0] is not None:
+                logit[m, k], has[m, k] = _logit(np.asarray([xs[0]]))[0], True
+    pos, neg = (d < 1.0) & valid & has, (d >= 1.0) & (d < RADIUS_KM) & valid & has
+    wins = ties = pairs = 0
+    for m in range(len(d)):
+        a, b = logit[m][pos[m]], logit[m][neg[m]]
+        if len(a) and len(b):
+            wins += int((a[:, None] > b[None, :]).sum()); ties += int((a[:, None] == b[None, :]).sum()); pairs += len(a) * len(b)
+    print(f"{name} on {tag}: {int(has.sum())} scored candidates; within-photo AUC (< 1 km vs 1-25 km), {pairs} pairs: {(wins + 0.5 * ties) / max(pairs, 1):.3f}")
+    base = d[:, 0]
+    near_miss, exact = (base < RADIUS_KM) & (base >= 1), base < 1
+    pick = np.argmax(np.where(valid & has, logit, -np.inf), axis=1)
+    chosen = d[np.arange(len(d)), pick]
+    print(f"  comparator's own top local candidate: < 1 km {(chosen < 1).mean():.1%} vs top-1 {(base < 1).mean():.1%}; fixes {int((near_miss & (chosen < 1)).sum())} of "
+          f"{int(near_miss.sum())} near-misses, breaks {int((exact & (chosen >= 1)).sum())} of {int(exact.sum())} exact")
+    # cross-validated listwise combiner over the local features + the comparator logit (5 folds, 3 seeds)
+    F = np.concatenate((feats, logit[..., None].astype(np.float32), (logit - np.where(valid & has, logit, -np.inf).max(1, keepdims=True))[..., None].astype(np.float32)), axis=-1)
+    folds = np.array_split(np.random.default_rng(0).permutation(len(d)), 5)
+    for label, cols in (("local features", list(range(feats.shape[-1]))), ("local features + comparator", list(range(F.shape[-1])))):
+        hit = np.zeros(len(d))
+        for seed in range(3):
+            for f in folds:
+                train = np.setdiff1d(np.arange(len(d)), f)
+                score = _fit_listwise(F[train][..., cols], d[train], valid[train], seed)
+                p = np.argmax(score(F[f][..., cols], valid[f]), axis=1)
+                hit[f] += (d[f, p] < 1) / 3
+        ci = _bootstrap(hit - (base < 1))
+        print(f"  CV combiner, {label:28s}: < 1 km {hit.mean():.1%} vs top-1 {(base < 1).mean():.1%}, change {100 * ci[0]:+.1f} [{100 * ci[1]:+.1f}, {100 * ci[2]:+.1f}]")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("ceiling", "rules", "local-rerank"))
+    parser.add_argument("node", choices=("ceiling", "rules", "local-rerank", "exemplar-pairs", "exemplar-report"))
+    parser.add_argument("--tag", default="dev")
+    parser.add_argument("--name", default="comparator-b")
     args = parser.parse_args(argv)
-    {"ceiling": ceiling, "rules": rules, "local-rerank": local_rerank}[args.node]()
+    if args.node == "exemplar-pairs":
+        exemplar_pairs(args.tag)
+    elif args.node == "exemplar-report":
+        exemplar_report(args.name, args.tag)
+    else:
+        {"ceiling": ceiling, "rules": rules, "local-rerank": local_rerank}[args.node]()
     return 0
 
 

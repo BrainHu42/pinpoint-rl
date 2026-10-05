@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Score up to 4 exemplars per top-8 candidate of every photo of a set with a merged comparator, then report with everything fitted on MP16 dev.
-# Usage: RUN=comparator-b [TAG=wikimedia_balanced] bash scripts/multi_exemplar_full.sh   (needs `multi_exemplar full-pairs --tag $TAG` and the dev / val scores of the same run; stops its server by PID)
+# Usage: RUN=comparator-b [TAG=wikimedia_balanced] [NO_REPORT=1] bash scripts/multi_exemplar_full.sh   (needs `multi_exemplar full-pairs --tag $TAG` and the dev / val scores of the same run; stops its server by PID)
 # The GPU is shared: wait for it to be idle, and if another job grabs memory while our server loads (the server then dies at startup), wait and try again.
 set -euo pipefail
 cd "$(dirname "$0")/.."  # repo root
@@ -28,6 +28,6 @@ echo "$(date +%T) full-judge $run $tag"
 .venv/bin/python -m geo_search_env.experiment.multi_exemplar full-judge --name $run --tag $tag 2>&1
 kill $server; wait $server 2>/dev/null || true
 server=""
-echo "$(date +%T) full-report"
-.venv/bin/python -m geo_search_env.experiment.multi_exemplar full-report --name $run --tag $tag 2>&1
+[ -n "${NO_REPORT:-}" ] || echo "$(date +%T) full-report"
+[ -n "${NO_REPORT:-}" ] || .venv/bin/python -m geo_search_env.experiment.multi_exemplar full-report --name $run --tag $tag 2>&1
 echo "$(date +%T) done"

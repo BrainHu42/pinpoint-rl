@@ -579,6 +579,11 @@ baseline for new evidence (10, 13).
       26.2% (dev): ~13 pts of headroom at 1 km, of which features take ~6%.
     - So the 1 km headroom (13 pts) is as large as the 25 km choosing headroom, and similarity / density features can't separate the exact spot from its
       neighbours in the same city. Whether a visual judge trained for the 1-25 km band can is the open question (the comparators so far saw negatives >= 10 km).
+    - Visual judge, not trained for the band (`comparator-b` as is, one exemplar per local candidate: a gallery photo within 1 km of the candidate, most similar to
+      the query, not by the query's photographer; 13,562 of 14,422 dev candidates had one, 14 min; `near_miss.py exemplar-pairs / exemplar-report`, dev only):
+      within-photo AUC for a candidate < 1 km vs 1-25 km from the truth 0.735 (5,989 pairs). Its own top local candidate is worse than the top-1 (< 1 km 10.1% vs
+      15.9%; fixes 16 of 183 near-misses, breaks 75 of 159 exact). Cross-validated combiner (5 folds, 3 seeds, only 1,000 photos to train on): local features
+      alone -0.0 [-0.8, +0.8], + comparator +0.3 [-0.6, +1.1]. So there is a visual signal at this scale before any training for it; its size is unknown.
     - Trap: indexing an NpzFile (`saved["coords"][i]`) inside a loop re-reads the array every time; with 34,530 iterations it used 47 GB of the machine's
       60 GB before I stopped it by PID. Load each array once.
 
