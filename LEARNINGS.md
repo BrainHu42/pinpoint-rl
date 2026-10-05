@@ -565,6 +565,23 @@ baseline for new evidence (10, 13).
     - Ops note: the shared GPU was taken by another project's back-to-back jobs for ~5 h; the script now retries the vLLM start (a job that grabs memory while
       our server loads kills it) instead of failing.
 
+43. **Near-miss photos (top-1 within 25 km, not within 1 km) are the largest target, and feature-only local refinement gets almost none of it
+    (2026-10-04; `near_miss.py ceiling / rules / local-rerank`).** On the 3,713 benchmark photos the reranker top-1 is within 1 km for 17.1% and within
+    25 km for 38.9%, so 21.9% (812 photos) are near-misses; another 61.1% are beyond 25 km.
+    - Ceiling: for 93.3% of near-misses the gallery has a photo within 1 km of the truth, and for 73.3% one is already among the cached top neighbours
+      (raw MP16 + OSV, 2,000); for 47.4% among Pinpoint's top-500 GPS rows. Over all photos 56% have one in the cached neighbours.
+    - Model-free local rules (replace the top-1 by the most similar neighbour within 25 km of it, or by the mode of a similarity-weighted kernel density over
+      those neighbours, settings picked on dev): < 1 km 17.7% vs 17.1% at best (T 0.03, h 1 km); fixes 100 of 812 near-misses, breaks 78 of 634 exact ones.
+    - Trained local re-ranker (candidates = the top-1 plus 1 km clusters of the neighbours within 25 km, mean 14 per photo; 12 features: neighbour counts and
+      similarity-weighted support within 0.5 / 1 / 3 km, best-similarity gap, rank of the first neighbour within 1 km, distance to the top-1, OSV share, GPS-row
+      support; listwise softmax, reward 1 for < 1 km and 0.25 for < 5 km; 34,530 bucket-99 train photos; 3 seeds): < 1 km on the benchmarks 17.1% -> 17.8%,
+      +0.8 [+0.3, +1.2] (fixes 52 of 812 near-misses, breaks 24 of 634 exact); dev +0.1 [-0.7, +0.9]. The oracle over its candidates is 30.1% (benchmarks) /
+      26.2% (dev): ~13 pts of headroom at 1 km, of which features take ~6%.
+    - So the 1 km headroom (13 pts) is as large as the 25 km choosing headroom, and similarity / density features can't separate the exact spot from its
+      neighbours in the same city. Whether a visual judge trained for the 1-25 km band can is the open question (the comparators so far saw negatives >= 10 km).
+    - Trap: indexing an NpzFile (`saved["coords"][i]`) inside a loop re-reads the array every time; with 34,530 iterations it used 47 GB of the machine's
+      60 GB before I stopped it by PID. Load each array once.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
