@@ -23,6 +23,8 @@ The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a 
 put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
 lever; we are testing it on the 4B first and scaling up only on a promising signal.
 Every lever tried lands between -0.5 and +1 point. Wikimedia (lesson 42): reranker top-1 25.0% within 25 km, top-8 oracle 38.9%, comparator +0.4 to +0.8 (balanced subset): no wikimedia-specific gain.
+Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-44): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
+reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks.
 
 **One line per lesson.**
 - 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
@@ -586,6 +588,26 @@ baseline for new evidence (10, 13).
       alone -0.0 [-0.8, +0.8], + comparator +0.3 [-0.6, +1.1]. So there is a visual signal at this scale before any training for it; its size is unknown.
     - Trap: indexing an NpzFile (`saved["coords"][i]`) inside a loop re-reads the array every time; with 34,530 iterations it used 47 GB of the machine's
       60 GB before I stopped it by PID. Load each array once.
+
+44. **A comparator trained for the near band (`comparator-c`) raises the visual signal a lot but moves 1 km accuracy by < 1 point (2026-10-05;
+    `near_miss.py near-pairs / final-report`, `scripts/comparator_c.sh`).** Continued from `comparator-b` on 54,712 rows (20,092 positive; 7,760 bucket-99 train
+    photos that have a local candidate within 1 km of the truth; positives = candidates < 1 km from the truth with up to 2 exemplars, negatives = 4 at 1-5 km,
+    1 at 5-25 km, 1 at >= 25 km and the top-1 when wrong, 1 exemplar each; batch 16, lr 1e-4, one pass, 1.7 h at 8.9 pairs/s). 4,317 train photos (k % 8 == 1)
+    were kept out of its training and fit the combiner. Held-out train-photo pairs: accuracy 71.0%, AUC 0.760 (a harder mix than lesson 40's).
+    - Within-photo AUC (a candidate < 1 km from the truth vs one 1-25 km away): `comparator-b` 0.735 on dev -> `comparator-c` 0.795 dev / 0.782 benchmarks /
+      0.806 held-out train photos.
+    - Listwise combiner (12 local features, with / without the comparator's logit, logit gap and has-exemplar flag; trained on the 4,317 held-out train photos,
+      3 seeds; one exemplar per candidate; scored once on dev and the 3,713 benchmark photos), change in top-1 < 1 km vs the reranker top-1:
+
+      | features | dev (n = 1,000) | benchmarks (n = 3,713) | near-misses fixed / exact broken (benchmarks) |
+      |---|---|---|---|
+      | local features | +0.4 [-0.3, +1.1] | +0.5 [+0.1, +1.0] | 45 of 812 / 25 of 634 |
+      | + comparator-c | +0.4 [-0.5, +1.2] | +0.8 [+0.2, +1.3] (17.1% -> 17.9%) | 70 of 812 / 40 of 634 |
+
+      < 25 km moves by -0.2 to +0.1. The go bar (+2 at 1 km on the benchmarks) was not met.
+    - Reading: the visual judge adds ~+0.3 over the features alone, and more fixes come with more breaks. The incumbent top-1 is already right for 61% of
+      what the candidates can reach (15.9% of 26.2% on dev), so a flip needs a very reliable margin; an AUC of 0.8 within a photo is not that.
+    - 58,017 held-out train + 13,562 dev + 51,686 benchmark candidate scorings took 31 min in one server session.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
