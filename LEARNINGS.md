@@ -23,8 +23,9 @@ The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a 
 put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
 lever; we are testing it on the 4B first and scaling up only on a promising signal.
 Every lever tried lands between -0.5 and +1 point. Wikimedia (lesson 42): reranker top-1 25.0% within 25 km, top-8 oracle 38.9%, comparator +0.4 to +0.8 (balanced subset): no wikimedia-specific gain.
-Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-45): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
-reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks, and 4x the band data (lesson 45) gives the same (+0.9).
+Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-46): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
+reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks, 4x the band data (lesson 45) gives the same (+0.9), and better
+combiners (incumbent-relative features, a switching margin; lesson 46) give the same (+0.7). The single-exemplar visual signal is the limit, not data or calibration.
 
 **One line per lesson.**
 - 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
@@ -45,6 +46,25 @@ reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the 
 - 38: a geo-aware adapter on SigLIP2 adds ~+1 pt candidate recall over the region prior; Pinpoint's own retriever has worse top-10 recall than raw + prior.
 - 39-41: several exemplars per candidate help ~+0.3-0.6 without retraining; comparator-b (3x pairs) adds ~+0.3 more; full benchmark test +0.9 (the rule dev
   picks is null, +0.4; the post-hoc best-of-4 rule +1.7 is a hypothesis, not a result).
+- 42: wikimedia is harder (top-1 25.0% < 25 km) with the same choosing headroom; the comparator gives +0.4 to +0.8 there, nothing wikimedia-specific.
+- 43: near-misses are the largest 1 km target; 93% have a gallery photo within 1 km of the truth, 73% among cached neighbours, 59% among our local candidates.
+- 44-45: a near-band comparator (c: 55k rows, d: 219k rows) lifts within-photo AUC 0.735 -> ~0.80 but top-1 < 1 km only +0.8 / +0.9; 4x data adds nothing.
+- 46: combiner variants (relative-to-top-1 features, switching margin) chosen by CV on held-out train photos: +0.7; fixes and breaks move together.
+
+**Still-promising directions (2026-10-05, ranked).**
+1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the
+   query and 2-4 exemplars per local candidate. Near-binary when the same structure is visible and silent otherwise, which is what flipping near-misses without
+   breaking exact photos needs (today ~8 fixes per 5 breaks). Go test, a few hours on dev: within-photo AUC on the subset where it fires, and the 1 km gain of
+   the lesson-46 combiner with inlier features; go if > +2 at 1 km on the benchmarks. Weak on nature / indoor / no-overlap photos.
+2. **Candidate recall in the near band** (pairs with 1). Search the whole gallery within 25 km of the top-1, not the top-300 neighbours: the ceiling goes from
+   59% to up to 93% of near-misses. Only worth it with a precise scorer, since a noisy one breaks more as candidates grow.
+3. **RL over tools** (the project's framing, still untested for stage 2): a policy that decides which candidates to verify (comparator, matcher, search) under a
+   budget and when to keep the top-1. Do it after 1 gives a signal stronger than AUC 0.8; RL cannot create a signal the tools don't have.
+4. **Scale the comparator** (9B / 27B LoRA) only if 1-3 show the 4B pipeline is the bottleneck.
+Pending when this was written: 4-exemplar scoring of the local candidates with comparator-d (`scripts/near_multi_exemplar.sh`, log
+`artifacts/query_evidence/logs/near_multi_exemplar.log`, results `artifacts/query_evidence/near_miss_combiners_comparator-d.json`), queued behind other GPU jobs.
+Expected +1.0 to +1.4 at 1 km; below +1.3 closes the comparator line.
+Not promising (tested): more comparator data, combiner tweaks, zero-shot choosers up to 27B, new text / attribute evidence (stage 1), deeper pools.
 
 **Traps worth remembering.** Choose scorers on dev, not by looking at val or the benchmarks (41). A judge's Yes/No logit level can drift in training; always
 check the failed-score count and restrict output to the answer tokens (40). Compare against the reranker top-1, not current greedy; the pool oracle is the
@@ -617,6 +637,13 @@ baseline for new evidence (10, 13).
       of 812 near-misses, breaks 46 of 634 exact), vs +0.8 with comparator-c. < 25 km unchanged.
     - Reading: the single-exemplar visual judge has saturated near AUC 0.8 for this band; more of the same pairs is not the lever. Lesson 26's "loss still falling"
       hope is now tested twice (b: 3x rows, +0.3; d: 4x rows, +0.1).
+
+46. **Better combiners don't help either: the signal is the limit (2026-10-05; `near_miss.py combiners`).** With comparator-d's one-exemplar scores, variants
+    chosen by 5-fold CV on the 4,317 held-out train photos only: local features; + the logit; + incumbent- and photo-relative views (logit minus the top-1's,
+    minus the photo's best, softmax and rank within the photo); each with a margin gate (switch away from the top-1 only if the score margin exceeds 0-3).
+    - CV change at 1 km: local +0.2, + logit +0.4 (gate 2.0: +0.5), + relative +0.5 (gate 0.25, chosen).
+    - Chosen variant scored once: dev +0.8 [+0.0, +1.7], benchmarks +0.7 [+0.2, +1.2] (fixes 63 of 812, breaks 36 of 634). The gate trades fixes for breaks
+      about 1:1 (benchmarks, + logit: gate 0 fixes 77 / breaks 48, gate 2 fixes 68 / breaks 39).
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
