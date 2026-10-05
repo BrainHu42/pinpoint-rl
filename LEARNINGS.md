@@ -658,6 +658,12 @@ baseline for new evidence (10, 13).
     - Why: matching finds *what* is shown, the label is *where the camera stood*. Strong matches are landmarks (a Prague church interior, the Alhambra at
       night; 180-580 inliers) photographed from spots 1-10 km apart or with noisy GPS; non-landmark photos sit at a 20-50 inlier noise floor.
 
+48. **Up to 4 exemplars per local candidate (comparator-d) lifts the AUC but not the top-1 (2026-10-05; `scripts/near_multi_exemplar.sh`, `near_miss.py
+    combiners`).** 3.5 exemplars per candidate, 427k comparisons. Within-photo AUC (< 1 km vs 1-25 km), first exemplar -> mean of all: dev 0.805 -> 0.841,
+    benchmarks 0.777 -> 0.842, held-out train 0.803 -> 0.855. CV on held-out train picks "4 exemplars + relative, gate 3" (+0.95 CV): dev -0.2 [-1.3, +0.9],
+    benchmarks +0.9 [+0.3, +1.4]. The plain 4-exemplar combiner (not chosen, CV +0.83) gives benchmarks +1.3 [+0.7, +1.8], dev +0.8. Below the +1.3 bar set
+    beforehand: the comparator-over-the-fixed-list line is closed. An AUC of 0.84 within the photo still flips about 2 near-misses per exact photo broken.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
