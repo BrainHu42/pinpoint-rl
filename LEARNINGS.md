@@ -53,6 +53,7 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 47-49 (map search pivot): searching within 25 km of the top-1 reaches 70-82% of near-misses within 100-300 photos (fixed list 56%), but SigLIP2 (AUC
   0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
   look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. Directions 1-3 below are tested and closed for now.
+- 51: concept-query similarity around each candidate is real alone but adds +0.3 / +0.0 to the reranker (lesson 15's open variant).
 
 **Still-promising directions (2026-10-05, ranked).**
 1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the
@@ -694,6 +695,17 @@ baseline for new evidence (10, 13).
       true one, the base 4B ranks the right country first 48.9% (popularity-corrected 43.5%) vs the reranker top-1 67.5%. The scoring works; the base model
       knows too little (as in lesson 37). The knowledge-trained 4B has to beat this control.
 
+51. **Concept queries as similarity scores around each candidate don't help either (2026-10-02, full eval halves; code and outputs
+    not kept).** Fills in lesson 15's untested "similarity scores". Base 4B wrote 3 visual-clue queries, 3 place queries and a caption per
+    photo (22.6k requests, 0 failures). Each candidate was scored by the queries' best SigLIP2 match among its nearest 400 MP16 + 400 OSV
+    photos (within 1 / 5 / 25 km), asking "does this place have stadiums with fountains?" instead of searching for the place.
+    - Alone the score picks about as well as photo-to-photo matching (top-1 <= 1 / 25 km: visual 9.5 / 27.1, whole image 10.2 / 26.8,
+      another photo's queries 4.1 / 25.1), so the signal is real.
+    - As reranker features it is redundant: +0.3 / +0.0 (CI -0.6 to +0.6 at 25 km; 3-seed ensembles); visual + image +0.4 / -0.1.
+    - As new candidates (6 hits per photo) over the shown-candidate oracle 33.6 / 58.9: visual 33.9 / 59.5, caption 33.9 / 59.6, place
+      queries 34.6 / 60.3, 6 extra whole-image hits 34.7 / 60.9 (consistent with lesson 13).
+    - Query quality wasn't the problem: visual queries are concrete (6.6 words, 14% use sign text, 11% generic).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
@@ -713,7 +725,11 @@ baseline for new evidence (10, 13).
   only 4.5 s. Prompt length and duplicated prompt compute are the cost, not generation.
 - TRL colocated vLLM needs `mm_processor_kwargs={"max_pixels": 786432}` patched in (`grpo_train.py`), or image-token
   counts disagree with the trainer. Generating 64 answers at once with HF generate OOMs in the prefill.
-- `np.load` NpzFile re-reads an array on every key access: wrap in `dict(...)`.
+- `np.load` NpzFile re-reads an array on every key access: wrap in `dict(...)` (`strategy_search coarse` hung 45+ min
+  without it; 3.5 min with it).
+- vLLM 0.30's Triton build needs Python 3.12 headers; without `python3.12-dev`, `uv python install 3.12` and set
+  `C_INCLUDE_PATH` to its `include/python3.12`. When sharing the GPU at ~0.3 utilization, lower `--max-num-seqs`
+  (Mamba cache blocks limit it), and retry if a neighbour's memory changes during profiling.
 - vLLM eval servers: `--gpu-memory-utilization 0.7` so a small InnerSight job doesn't block startup.
 - Temperature: T=0.7 for SFT-model sampling; resolution caps below 786k px change nothing within noise.
 
