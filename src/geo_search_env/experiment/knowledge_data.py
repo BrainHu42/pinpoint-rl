@@ -1,6 +1,6 @@
 # Knowledge SFT data: MP16 photos from Pinpoint's training buckets (0-98) -> "country > region > city > neighbourhood" (Overture labels, place_labels.py),
 # in the format sft_train.py reads ({image_id, split, prompt, target}). The prompt and answer format are those name_score.py scores.
-# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_data select [--photos 200000]   (CPU, needs artifacts/place_labels/mp16.parquet)
+# Usage: PYTHONPATH=src ~/.venvs/sft/bin/python -m geo_search_env.experiment.knowledge_data select [--photos 200000]   (CPU, pyarrow; needs artifacts/place_labels/mp16.parquet)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_data overlay                       (base VLM served at :8765; ~30 min)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_data dataset
 

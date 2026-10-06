@@ -13,7 +13,7 @@ base=/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55
 mkdir -p artifacts/query_evidence/logs
 until grep -q "mp16 4122118/4122118" artifacts/place_labels/label_all.log 2>/dev/null; do sleep 60; done
 echo "$(date +%T) select"
-.venv/bin/python -m geo_search_env.experiment.knowledge_data select --photos $photos 2>&1 || exit 1
+~/.venvs/sft/bin/python -m geo_search_env.experiment.knowledge_data select --photos $photos 2>&1 || exit 1
 
 echo "$(date +%T) overlay filter (base VLM)"
 server=""
