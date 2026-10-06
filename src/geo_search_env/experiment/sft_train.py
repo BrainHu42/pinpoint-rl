@@ -55,10 +55,11 @@ def load_rows(split: str, limit: int | None = None, seed: int = 0, data: Path = 
 class Collator:
     """Chat-template rendering, image loading and answer-only labels for a batch of SFT rows."""
 
-    def __init__(self, processor) -> None:
+    def __init__(self, processor, pad_to: int | None = None) -> None:
         from PIL import Image
 
         self.processor = processor
+        self.pad_to = pad_to  # fixed sequence length, so a compiled model sees one shape
         self.image_open = Image.open
         self.images: MP16Images | None = None  # opened lazily, once per dataloader worker
         self.think_end = processor.tokenizer.convert_tokens_to_ids("</think>")
@@ -78,6 +79,11 @@ class Collator:
             texts.append(self.processor.apply_chat_template(messages, tokenize=False, enable_thinking=False))
             images.append(self.image_open(io.BytesIO(self.images.read(row["image_id"]))).convert("RGB"))
         batch = self.processor(text=texts, images=images, return_tensors="pt", padding=True)
+        extra = (self.pad_to or 0) - batch["input_ids"].shape[1]
+        if extra > 0:  # right-pad to the fixed length; a longer batch keeps its own length (one more compiled shape)
+            fill = {"input_ids": self.processor.tokenizer.pad_token_id, "attention_mask": 0, "mm_token_type_ids": 0}
+            for key, value in fill.items():
+                batch[key] = torch.nn.functional.pad(batch[key], (0, extra), value=value)
         labels = torch.full_like(batch["input_ids"], -100)
         for i, ids in enumerate(batch["input_ids"].tolist()):
             # The answer follows the empty think block "</think>\n\n" and ends with <|im_end|> (kept, so the model stops).
@@ -90,22 +96,31 @@ class Collator:
 
 def train(
     examples: int, run: str, *, data: Path = DATA, lr: float = 1e-4, batch: int = 8, accumulation: int = 4, rank: int = 32, seed: int = 0,
-    checkpointing: bool = True, max_steps: int = -1, max_pixels: int = MAX_PIXELS,
+    checkpointing: bool = True, max_steps: int = -1, max_pixels: int = MAX_PIXELS, dropout: float = 0.05, compile: bool = False,
+    pad_to: int | None = None,
 ) -> None:
     import torch
     from datasets import Dataset
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForImageTextToText, AutoProcessor
+    from transformers import TrainerCallback
     from trl import SFTConfig, SFTTrainer
+
+    class PrintLogs(TrainerCallback):
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            print(json.dumps({"step": state.global_step, **(logs or {})}), flush=True)
 
     out = RUNS / run
     processor = AutoProcessor.from_pretrained(BASE_MODEL, max_pixels=max_pixels)  # serve with the same --mm-processor-kwargs max_pixels
     model = AutoModelForImageTextToText.from_pretrained(BASE_MODEL, dtype=torch.bfloat16)
     model = get_peft_model(model, LoraConfig(
-        r=rank, lora_alpha=2 * rank, lora_dropout=0.05,
+        r=rank, lora_alpha=2 * rank, lora_dropout=dropout,
         target_modules=r".*language_model.*\.(" + "|".join(LORA_TARGETS) + ")$",  # not lm_head: chunked CE reads its weight directly
     ))
     model.print_trainable_parameters()
+    if compile:
+        # In place (keeps state-dict keys). Only the language model: the vision tower sees a different patch count per batch.
+        model.base_model.model.model.language_model.compile()
     train_rows, eval_rows = load_rows("train", examples, seed, data), load_rows("val", EVAL_LOSS_EXAMPLES, seed, data)
     steps = len(train_rows) // (batch * accumulation)
     config = SFTConfig(
@@ -134,8 +149,9 @@ def train(
         max_length=None,
     )
     trainer = SFTTrainer(
-        model=model, args=config, processing_class=processor, data_collator=Collator(processor),
+        model=model, args=config, processing_class=processor, data_collator=Collator(processor, pad_to),
         train_dataset=Dataset.from_list(train_rows), eval_dataset=Dataset.from_list(eval_rows),
+        callbacks=[PrintLogs()],  # the progress bar hides log entries in a log file; print them so loss can be watched mid-run
     )
     print(f"loss_type={trainer.args.loss_type} steps={steps} train={len(train_rows)} eval={len(eval_rows)}", flush=True)
     trainer.train()
@@ -222,6 +238,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-checkpointing", action="store_true", help="disable gradient checkpointing")
     parser.add_argument("--max-steps", type=int, default=-1, help="stop early (speed tests)")
     parser.add_argument("--max-pixels", type=int, default=MAX_PIXELS, help="image size cap in training (serve with the same max_pixels)")
+    parser.add_argument("--dropout", type=float, default=0.05, help="LoRA dropout")
+    parser.add_argument("--compile", action="store_true", help="torch.compile the language model (use with --pad-to)")
+    parser.add_argument("--pad-to", type=int, help="pad every sequence to this length")
     parser.add_argument("--model", help="served model name (val_eval)")
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     parser.add_argument("--temperature", type=float, default=TEMPERATURE, help="sampling temperature (val_eval)")
@@ -229,7 +248,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.node == "train":
         train(
             args.examples, args.run, data=args.data, lr=args.lr, batch=args.batch, accumulation=args.accumulation,
-            checkpointing=not args.no_checkpointing, max_steps=args.max_steps, max_pixels=args.max_pixels,
+            checkpointing=not args.no_checkpointing, max_steps=args.max_steps, max_pixels=args.max_pixels, dropout=args.dropout,
+            compile=args.compile, pad_to=args.pad_to,
         )
     elif args.node == "merge":
         merge(args.run)

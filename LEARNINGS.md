@@ -98,6 +98,13 @@ baseline for new evidence (10, 13).
 - vLLM 0.30's Triton build needs Python 3.12 headers; without `python3.12-dev`, `uv python install 3.12` and set
   `C_INCLUDE_PATH` to its `include/python3.12`. When sharing the GPU at ~0.3 utilization, lower `--max-num-seqs`
   (Mamba cache blocks limit it), and retry if a neighbour's memory changes during profiling.
+- This machine has 30 GB RAM and no swap. `MP16Images` used to unpickle the 4.1M-entry tar index (~5.4 GB per process);
+  four dataloader workers ran the machine out of memory and it had to be rebooted (2026-10-06). It now memory-maps a
+  compact index (`metadata/tar_index_compact`, ~150 MB shared). Run long jobs in a capped cgroup
+  (`systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0`, as `scripts/knowledge_run.sh` does).
+- Knowledge SFT on the L40S: ~20 photos/s at batch 8 x 2 with LoRA dropout 0, the language model `torch.compile`d and
+  sequences padded to 240 (`--compile --pad-to 240`); 15.5 photos/s without. vLLM here needs uv's Python 3.12 headers
+  on `C_INCLUDE_PATH` and `VLLM_USE_FLASHINFER_SAMPLER=0` (no CUDA toolkit for its JIT).
 - Temperature: T=0.7 for SFT-model sampling; resolution caps below 786k px change nothing within noise.
 
 ## Dead ends (don't redo)

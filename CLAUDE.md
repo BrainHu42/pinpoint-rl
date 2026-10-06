@@ -28,7 +28,9 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest). Exception (user's decision,
   2026-10-05): the knowledge SFT teaches place names from buckets 0-98; anything that learns to choose between
   candidates stays on bucket 99.
-- Filter images with GPS coordinates burned into the frame.
+- Filter images with GPS coordinates burned into the frame (except the 250k-photo knowledge SFT data, where they are rare; user, 2026-10-06).
+- RAM is 30 GB with no swap: run long jobs in a memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=24G
+  -p MemorySwapMax=0`); an uncapped job crashed the machine once.
 - The GPU (L40S, 46 GB) is ours alone. Stop our own processes by PID (`pkill -f` patterns have matched our own shell).
 - Skip the Gemini contamination test.
 - Confirm plans with the user before long runs; report results concisely with numbers. Use the full eval halves for

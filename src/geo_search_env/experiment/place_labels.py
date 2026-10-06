@@ -1,7 +1,7 @@
-# Fine-grained place labels for MP16 photos from Overture Maps divisions (release 2026-09-23.1; /data/pinpoint/overture/divisions, downloaded with
+# Fine-grained place labels for MP16 photos from Overture Maps divisions (release 2026-09-23.1; data/pinpoint/overture/divisions, downloaded with
 # `aws s3 cp --no-sign-request --recursive s3://overturemaps-us-west-2/release/2026-09-23.1/theme=divisions/ .`): for each photo, the smallest land polygon of
 # each subtype (country, region, county, locality, macrohood, neighborhood, microhood) that contains its coordinates.
-# Usage: PYTHONPATH=src ~/.venvs/overture/bin/python -m geo_search_env.experiment.place_labels pilot [--sample 200000]   (CPU; ~/.venvs/overture = duckdb, shapely, pyarrow)
+# Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.place_labels pilot [--sample 200000]   (CPU; .venvs/overture = duckdb, shapely, pyarrow)
 
 """pilot: label a random sample of MP16 photos and report coverage, area per level, and label agreement between near-duplicate photos by different
         photographers (cosine >= DUP_SIM in SigLIP2 space, within 2 km), the label noise from GPS error and camera position."""
@@ -16,8 +16,10 @@ from typing import Sequence
 
 import numpy as np
 
-DIVISIONS = Path("/data/pinpoint/overture/divisions/type=division_area")
-MP16_EMBED = Path("/data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384")
+from ..paths import DATA_ROOT, MP16_ROOT
+
+DIVISIONS = DATA_ROOT / "overture/divisions/type=division_area"
+MP16_EMBED = DATA_ROOT / "mp16-embed/siglip2-giant-opt-patch16-384"
 OUT = Path("artifacts/place_labels")
 LEVELS = ("country", "region", "county", "locality", "macrohood", "neighborhood", "microhood")
 DUP_SIM = 0.95
@@ -170,7 +172,7 @@ def agreement(rows: np.ndarray, labels: dict, latlon: np.ndarray) -> None:
     from scipy.spatial import cKDTree
 
     authors = {}
-    with open("/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv", encoding="utf-8", newline="") as f:
+    with open(MP16_ROOT / "metadata/MP16_Pro_filtered.csv", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
             authors[r["IMG_ID"]] = r["AUTHOR"]
     ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()

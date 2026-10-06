@@ -63,12 +63,32 @@ OVERLAY_SPOT_CHECK = 60  # highest-scoring images saved for a manual look when c
 OVERLAY_THRESHOLD = 0.64
 
 
+COMPACT_INDEX = MP16_ROOT / "metadata" / "tar_index_compact"  # sorted ids (S-bytes), data offsets, sizes as .npy
+
+
+def _compact_index() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The tar index as three memory-mapped arrays. The pickled TarInfo dict takes ~5.4 GB per process (each dataloader
+    worker loaded its own copy and ran the machine out of memory); the arrays take ~200 MB, shared through the page cache."""
+
+    if not (COMPACT_INDEX / "sizes.npy").exists():
+        with (MP16_ROOT / "metadata" / "tar_index.pkl").open("rb") as stream:
+            index = pickle.load(stream)
+        ids = np.asarray(sorted(index), dtype="S")
+        offsets = np.fromiter((index[i.decode()].offset_data for i in ids), dtype=np.int64, count=len(ids))
+        sizes = np.fromiter((index[i.decode()].size for i in ids), dtype=np.int64, count=len(ids))
+        del index
+        COMPACT_INDEX.mkdir(exist_ok=True)
+        for name, array in (("ids", ids), ("offsets", offsets), ("sizes", sizes)):
+            np.save(COMPACT_INDEX / f"{name}.tmp.npy", array)
+            (COMPACT_INDEX / f"{name}.tmp.npy").rename(COMPACT_INDEX / f"{name}.npy")
+    return tuple(np.load(COMPACT_INDEX / f"{name}.npy", mmap_mode="r") for name in ("ids", "offsets", "sizes"))
+
+
 class MP16Images:
     """Thread-safe JPEG bytes by image id from the MP16-Pro tar shards (each thread seeks its own file handles)."""
 
     def __init__(self) -> None:
-        with (MP16_ROOT / "metadata" / "tar_index.pkl").open("rb") as stream:
-            self.index = pickle.load(stream)
+        self.ids, self.offsets, self.sizes = _compact_index()
         self.parts = sorted(MP16_ROOT.glob("mp-16-images[0-9][0-9]"))
         self.chunk = self.parts[0].stat().st_size
         self.local = threading.local()
@@ -76,7 +96,21 @@ class MP16Images:
     def read(self, image_id: str) -> bytes | None:
         if not hasattr(self.local, "handles"):
             self.local.handles = [part.open("rb") for part in self.parts]
-        return _read_mp16_image(image_id, self.index, self.local.handles, self.chunk)
+        key = image_id.encode()
+        i = int(np.searchsorted(self.ids, key))
+        if i == len(self.ids) or self.ids[i] != key:
+            return None
+        part, local = divmod(int(self.offsets[i]), self.chunk)
+        size = int(self.sizes[i])
+        handles = self.local.handles
+        if part >= len(handles):
+            return None
+        handles[part].seek(local)
+        if local + size <= self.chunk:
+            return handles[part].read(size)
+        first = handles[part].read(self.chunk - local)
+        handles[part + 1].seek(0)
+        return first + handles[part + 1].read(size - len(first))
 
 
 def _md5_bucket(text: str, buckets: int) -> int:
