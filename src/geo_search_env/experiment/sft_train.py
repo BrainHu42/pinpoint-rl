@@ -89,7 +89,7 @@ class Collator:
 
 def train(
     examples: int, run: str, *, data: Path = DATA, lr: float = 1e-4, batch: int = 8, accumulation: int = 4, rank: int = 32, seed: int = 0,
-    checkpointing: bool = True, max_steps: int = -1,
+    checkpointing: bool = True, max_steps: int = -1, max_pixels: int = MAX_PIXELS,
 ) -> None:
     import torch
     from datasets import Dataset
@@ -98,7 +98,7 @@ def train(
     from trl import SFTConfig, SFTTrainer
 
     out = RUNS / run
-    processor = AutoProcessor.from_pretrained(BASE_MODEL, max_pixels=MAX_PIXELS)
+    processor = AutoProcessor.from_pretrained(BASE_MODEL, max_pixels=max_pixels)  # serve with the same --mm-processor-kwargs max_pixels
     model = AutoModelForImageTextToText.from_pretrained(BASE_MODEL, dtype=torch.bfloat16)
     model = get_peft_model(model, LoraConfig(
         r=rank, lora_alpha=2 * rank, lora_dropout=0.05,
@@ -220,6 +220,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--accumulation", type=int, default=4)
     parser.add_argument("--no-checkpointing", action="store_true", help="disable gradient checkpointing")
     parser.add_argument("--max-steps", type=int, default=-1, help="stop early (speed tests)")
+    parser.add_argument("--max-pixels", type=int, default=MAX_PIXELS, help="image size cap in training (serve with the same max_pixels)")
     parser.add_argument("--model", help="served model name (val_eval)")
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     parser.add_argument("--temperature", type=float, default=TEMPERATURE, help="sampling temperature (val_eval)")
@@ -227,7 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.node == "train":
         train(
             args.examples, args.run, data=args.data, lr=args.lr, batch=args.batch, accumulation=args.accumulation,
-            checkpointing=not args.no_checkpointing, max_steps=args.max_steps,
+            checkpointing=not args.no_checkpointing, max_steps=args.max_steps, max_pixels=args.max_pixels,
         )
     elif args.node == "merge":
         merge(args.run)

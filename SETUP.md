@@ -37,13 +37,19 @@ constants listed here.
 | `/data/pinpoint/geonames` | GeoNames dump | `llm_advantage.py`, `evidence_test.py` |
 | `/data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
 | `$PINPOINT_ROOT` | Pinpoint checkpoint + retrieval index | `models/pinpoint.py` |
-| `~/.venvs/{vllm,sft,grpo}` | serving and training environments | `scripts/*.sh` |
+| `/data/pinpoint/wikimedia` | third test set (images, embeddings) | `experiment/wikimedia_eval.py` |
+| `/data/pinpoint/overture` | Overture places (`places.sqlite`) and division polygons | `overture_text.py`, `place_labels.py` |
+| `/data/pinpoint/wikipedia` | offline geotagged Wikipedia (SQLite BM25 + dense) | `wiki_backend.py` |
+| `/data/pinpoint/geo` | WorldClim + ETOPO rasters | `candidate_attributes.py` |
+| `~/.venvs/{vllm,sft,grpo,geo,overture,match}` | serving, training and standalone tool environments (`envs/*.txt`) | `scripts/*.sh`, module usage lines |
 
 Copy `.env.example` to `.env`, fill it in, and load it with `set -a; . ./.env; set +a` before running anything.
 
 ## 3. Python environments
 
-Four environments, because training, serving and analysis pin different torch versions.
+Four main environments, because training, serving and analysis pin different torch versions, plus three small tool
+environments (`~/.venvs/geo`: rasterio; `~/.venvs/overture`: duckdb + shapely; `~/.venvs/match`: kornia / LightGlue).
+`envs/<name>.txt` lists the exact packages each one had on the development machine (`uv pip install -r envs/<name>.txt`).
 
 ```bash
 # (a) Repo env: analysis, retrieval caches, dataset building, evaluation clients. Python 3.11, torch 2.14 (CUDA 13).
