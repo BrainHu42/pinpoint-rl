@@ -1,4 +1,4 @@
-# Can the base 4B model write search queries that fetch useful evidence? Fixed loop, no training (QUERY_EVIDENCE_PLAN.md).
+# Can the base 4B model write search queries that fetch useful evidence? Fixed loop, no training (archive/QUERY_EVIDENCE_PLAN.md).
 # Usage: .venv/bin/python -m geo_search_env.experiment.query_evidence {select,generate,retrieve,answer,report} --tag dev --n 1000
 #        (generate and answer need vLLM on :8765, retrieve needs the GPU; scripts/query_evidence.sh runs them all)
 

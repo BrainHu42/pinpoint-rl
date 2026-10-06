@@ -20,7 +20,7 @@ for pair in qwen3.5-4b:$(ls -d /data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/*
   kill $server; wait $server 2>/dev/null || true
 done
 echo "$(date +%T) qwen3.6-27b (llama.cpp)"
-bash /home/brian/.claude/jobs/1d1d34f6/tmp/serve27b.sh > artifacts/query_evidence/logs/llama_scaling.log 2>&1 &
+bash scripts/serve27b.sh > artifacts/query_evidence/logs/llama_scaling.log 2>&1 &
 server=$!
 until curl -sf 127.0.0.1:8766/health >/dev/null; do kill -0 $server || exit 1; sleep 3; done
 for tag in dev val; do echo "$(date +%T) qwen3.6-27b $tag"; run run --name qwen3.6-27b --tag $tag --server http://127.0.0.1:8766 --max-tokens 900; done

@@ -17,7 +17,7 @@ for pair in qwen3.5-4b:$(ls -d /data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/*
 done
 names="qwen3.5-4b qwen3.5-4b-wiki qwen3.5-9b qwen3.5-9b-wiki"
 if [ "${WITH_27B:-0}" = 1 ]; then
-  bash /home/brian/.claude/jobs/1d1d34f6/tmp/serve27b.sh > artifacts/query_evidence/logs/llama_wiki.log 2>&1 &
+  bash scripts/serve27b.sh > artifacts/query_evidence/logs/llama_wiki.log 2>&1 &
   server=$!
   until curl -sf 127.0.0.1:8766/health >/dev/null; do kill -0 $server || exit 1; sleep 3; done
   for tag in dev val; do echo "$(date +%T) qwen3.6-27b wiki $tag"; run run --name qwen3.6-27b-wiki --tag $tag --server http://127.0.0.1:8766 --max-tokens 900 --wiki; done

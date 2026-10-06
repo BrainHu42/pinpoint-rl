@@ -45,7 +45,7 @@ images for a 4B model (see the small-VLM-prompts memory).
     reranker) do not beat it (LEARNINGS 25-28).
   - Since then (2026-10-05, LEARNINGS 38-46): more exemplars, 3-4x more comparator pairs, a near-miss (1-25 km) comparator and better combiners all stay
     at +0.7 to +0.9 (25 km overall, or 1 km on near-misses). Next directions, ranked, are in the LEARNINGS summary: geometric verification (LightGlue
-    inliers) as a tool, near-band candidate recall, then RL over tools. The query design is in `QUERY_EVIDENCE_PLAN.md` (superseded).
+    inliers) as a tool, near-band candidate recall, then RL over tools. The query design is in `archive/QUERY_EVIDENCE_PLAN.md` (superseded).
 - Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the shown-candidate oracle), not against current greedy.
@@ -112,4 +112,4 @@ images for a 4B model (see the small-VLM-prompts memory).
   (all 3,795 eval-half), `train` (MP16 train) under `artifacts/query_evidence/`.
 - Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
   experiments); `artifacts/` is not tracked.
-- Full setup from scratch: `SETUP.md`.
+- Full setup from scratch: `SETUP.md`; moving to another machine: `SETUP.md` §0 (`scripts/transfer.sh`, frozen env package lists in `envs/`).
