@@ -36,7 +36,7 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
   vs the shown-candidate oracle), not against current greedy, which the existing selection gap would pass trivially.
 
 ## Rules
-- Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`). Wikimedia isn't in
+- Final test set: **im2gps3k, yfcc4k and wikimedia** (`data/pinpoint/wikimedia`). Wikimedia isn't in
   `data/benchmarks.py` or the retrieval caches yet; add it (same-photographer exclusion, no training on it) before
   final numbers. Results so far cover only im2gps3k and yfcc4k.
 - Exclude same-photographer gallery images (yfcc4k shares photographers with MP16). Never train on the benchmarks.
@@ -52,20 +52,20 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 ## Environment
 - Repo env: `.venv` (uv; extras `retrieval`, `feasibility`, `real`). Run code as
   `.venv/bin/python -m geo_search_env.experiment.<module>`.
-- Training envs: `~/.venvs/sft` (torch 2.14, transformers 5.17, peft, trl 1.14, fla) for SFT; `~/.venvs/grpo` = copy
+- Training envs: `.venvs/sft` (torch 2.14, transformers 5.17, peft, trl 1.14, fla) for SFT; `.venvs/grpo` = copy
   of the vLLM env + trl/peft/accelerate/datasets/fla (TRL colocated vLLM rollouts; put its `bin` on PATH).
-- Rollouts/eval: vLLM 0.30 at `/home/brian/.venvs/vllm` (put its `bin` on PATH for ninja). Weights:
-  `/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Serve bf16,
+- Rollouts/eval: vLLM 0.30 at `.venvs/vllm` (put its `bin` on PATH for ninja). Weights:
+  `data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Serve bf16,
   `enable_thinking: False`, `n=8` per request, `max_pixels` 786432, **no MTP**. Scripts: `scripts/`
   (`eval_run.sh`, `full_eval.sh`, `evidence_test.sh`).
 - Data:
-  - MP16 embeddings: `/data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`.
-  - MP16 metadata: `/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv`.
+  - MP16 embeddings: `data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`.
+  - MP16 metadata: `data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv`.
   - MP16 images: tar shards read through `tar_index.pkl` (`sft_data.MP16Images`).
-  - OSV-5M train embeddings: `/data/pinpoint/osv5m-embed/`.
-  - Benchmarks: `/data/pinpoint/{im2gps3k,yfcc4k}`. GeoNames: `/data/pinpoint/geonames/allCountries.txt`.
+  - OSV-5M train embeddings: `data/pinpoint/osv5m-embed/`.
+  - Benchmarks: `data/pinpoint/{im2gps3k,yfcc4k}`. GeoNames: `data/pinpoint/geonames/allCountries.txt`.
 - OpenRouter key: `OPENROUTER_API_KEY` in `.env` (credits ran out on 2026-09-29).
-- Pinpoint baseline code: `/home/brian/workspace/pinpoint-submission/submission`.
+- Pinpoint baseline code: `data/pinpoint/pinpoint-submission`.
 
 ## Code map (`src/geo_search_env/`)
 - `data/benchmarks.py`: benchmark loader and metrics.
@@ -79,6 +79,6 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `experiment/embed_cache.py`: builds the SigLIP2 gallery and benchmark embedding caches (`--compare` checks one).
 - `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
 - `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
-  `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
+  `landmarks` builds `data/pinpoint/geonames/landmarks.npz` (~1 min).
 - Caches: `artifacts/strategy_search/` (benchmarks) and `artifacts/sft/` (MP16 pool); `artifacts/` is not tracked.
 - Full setup from scratch: `SETUP.md`.

@@ -70,6 +70,19 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
     21 pts. The right comparison was what new queries add beyond the shown-candidate oracle (< 2 pts). Also use the
     full eval halves for decisions; 300-subset differences flipped sign several times.
 
+11. **Model-written text queries add nothing, whether to find candidates or to check them (Stage 0 of
+    query evidence plan, 2026-10-02, full eval halves; code and outputs not kept).** Base 4B wrote 3 visual-clue
+    queries, 3 place-hypothesis queries and a caption per photo (22.6k requests, 0 failures, none truncated).
+    - Finding candidates: 6 hits per photo raise the shown-candidate oracle 33.6 / 58.9 → visual 33.9 / 59.5,
+      caption 33.9 / 59.6, place queries 34.6 / 60.3; 6 extra whole-image hits do better (34.7 / 60.9).
+    - Checking candidates: each candidate scored by the queries' best SigLIP2 match among its nearest 400 MP16 + 400
+      OSV photos (≤ 1 / 5 / 25 km). The signal is real but redundant: alone it picks about as well as photo-to-photo
+      matching (≤ 1 km: visual 9.5 / 27.1, image 10.2 / 26.8, another photo's queries 4.1 / 25.1), but as reranker
+      features it adds +0.3 / +0.0 (CI −0.6 to +0.6 at 25 km; 3-seed ensembles); visual + image +0.4 / −0.1.
+    - Query quality wasn't the problem: visual queries are concrete (6.6 words, 14% use sign text, 11% generic).
+      Place queries name a place 43% of the time and repeat within a photo 11% of the time.
+    - Rebuilt caches on this machine reproduce the documented baselines (reranker 16.8 / 38.5, oracle 33.6 / 58.9).
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
@@ -89,12 +102,17 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
   only 4.5 s. Prompt length and duplicated prompt compute are the cost, not generation.
 - TRL colocated vLLM needs `mm_processor_kwargs={"max_pixels": 786432}` patched in (`grpo_train.py`), or image-token
   counts disagree with the trainer. Generating 64 answers at once with HF generate OOMs in the prefill.
-- `np.load` NpzFile re-reads an array on every key access: wrap in `dict(...)`.
+- `np.load` NpzFile re-reads an array on every key access: wrap in `dict(...)` (`strategy_search coarse` hung 45+ min
+  without it; 3.5 min with it).
+- vLLM 0.30's Triton build needs Python 3.12 headers; without `python3.12-dev`, `uv python install 3.12` and set
+  `C_INCLUDE_PATH` to its `include/python3.12`. When sharing the GPU at ~0.3 utilization, lower `--max-num-seqs`
+  (Mamba cache blocks limit it), and retry if a neighbour's memory changes during profiling.
 - vLLM eval servers: `--gpu-memory-utilization 0.7` so a small InnerSight job doesn't block startup.
 - Temperature: T=0.7 for SFT-model sampling; resolution caps below 786k px change nothing within noise.
 
 ## Dead ends (don't redo)
 - Verifying candidates by image matching (SigLIP, SIFT/RANSAC) or zero-shot VLM judges (Gemma).
+- SigLIP2 text queries written by the 4B model, for finding candidates or scoring their neighbourhoods (lesson 11).
 - A region choice learned from retrieval evidence; VLM-chosen region + region-restricted retrieval top-1.
 - Zero-shot Gemma 4; Qwen3.5 thinking mode; llama.cpp for rollouts.
 - More SFT data or temperature tuning to raise best-of-8 (flat at ~21–23 / 48–55 across all settings).
@@ -104,11 +122,11 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
 - A "LLM picks region → retrieve inside it" pipeline (lesson 5).
 
 ## Kept artifacts
-- `/data/pinpoint/sft/sft-34k-retrieval` (adapter + merged): best SFT model, starting point for the agent.
-- `/data/pinpoint/sft/grpo-kl` (checkpoint-200 + merged): best greedy so far.
+- `data/pinpoint/sft/sft-34k-retrieval` (adapter + merged): best SFT model, starting point for the agent.
+- `data/pinpoint/sft/grpo-kl` (checkpoint-200 + merged): best greedy so far.
 - `artifacts/sft/`: MP16 query pool, neighbour/candidate caches, `sft_retrieval.jsonl` (+ `sft.jsonl`), logs.
 - `artifacts/strategy_search/`: benchmark caches, all result JSONs, Gemini labels for 1,683 eval photos
   (`llm_advantage_labels.json`; OpenRouter credits ran out before the other ~2,100), crop-query search cache
   (`query_headroom_crops.npz`), evidence-test answers (`evidence_test_vlm_*`).
-- `/data/pinpoint/geonames/allCountries.txt` (GeoNames dump; `evidence_test landmarks` rebuilds the landmark index).
-- Environments: `.venv` (analysis), `~/.venvs/sft` (SFT), `~/.venvs/grpo` (GRPO with vLLM), `~/.venvs/vllm` (serving).
+- `data/pinpoint/geonames/allCountries.txt` (GeoNames dump; `evidence_test landmarks` rebuilds the landmark index).
+- Environments: `.venv` (analysis), `.venvs/sft` (SFT), `.venvs/grpo` (GRPO with vLLM), `.venvs/vllm` (serving).

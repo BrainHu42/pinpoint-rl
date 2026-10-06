@@ -22,13 +22,14 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import DATA_ROOT, HF_HOME
 from ..data.benchmarks import compute_metrics, load_benchmark
 from .coarse_filter import UNKNOWN, LabelGrid
 
 
-MP16_EMBED = Path("/data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384")
-MP16_CSV = Path("/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv")
-OSV_EMBED = Path("/data/pinpoint/osv5m-embed/siglip2-giant-opt-patch16-384")
+MP16_EMBED = DATA_ROOT / "mp16-embed/siglip2-giant-opt-patch16-384"
+MP16_CSV = HF_HOME / "datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv"
+OSV_EMBED = DATA_ROOT / "osv5m-embed/siglip2-giant-opt-patch16-384"
 BENCHMARK_NAMES = ("im2gps3k", "yfcc4k")
 NEIGHBORS = 1_000
 GPS_NEIGHBORS = 500
@@ -176,11 +177,28 @@ def neighbor_cache(world, *, unfiltered_pinpoint: bool = False, chunk: int = 65_
     manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
     count, dim = manifest["shapes"]["gps_embeddings"]
     gps = np.memmap(index_dir / manifest["files"]["gps_embeddings"], dtype=np.float16, mode="r", shape=(count, dim))
+    # Everything downstream indexes MP16 by our embedding-cache row. A version-6 index (model.zip) covers a subset of
+    # MP16 in Pinpoint's own cache order, so map its rows through the MP16 CSV row into ours.
+    csv_rows = world.baseline.mp16_csv_rows
+    if csv_rows is None:
+        gps_rows = np.arange(count)
+        if count != len(world.mp16["author"]):
+            raise ValueError(f"Pinpoint index has {count} rows, MP16 embedding cache {len(world.mp16['author'])}")
+    else:
+        ours = np.full(max(int(csv_rows.max()), int(world.mp16["row_index"].max())) + 1, -1, dtype=np.int64)
+        ours[world.mp16["row_index"]] = np.arange(len(world.mp16["row_index"]))
+        gps_rows = ours[csv_rows]
+        if (gps_rows < 0).any():
+            raise ValueError(f"{int((gps_rows < 0).sum())} Pinpoint index photos are missing from the MP16 embedding cache")
+    gps_latlon = np.fromfile(index_dir / manifest["files"]["latlon_deg"], dtype=np.float32).reshape(count, 2)
+    if not np.allclose(gps_latlon[::997], world.mp16["latlon"][gps_rows[::997]], atol=1e-4):
+        raise ValueError("Pinpoint index rows do not line up with the MP16 embedding cache")
+    gps_author = world.mp16["author"][gps_rows]
 
     results: dict[str, np.ndarray] = {}
     for name, array, queries, top_k, normalize, gallery_author in (
         ("mp16_raw", world.mp16["embeddings"], raw, NEIGHBORS, True, world.mp16["author"]),
-        ("mp16_gps", gps, projected, GPS_NEIGHBORS, False, world.mp16["author"]),
+        ("mp16_gps", gps, projected, GPS_NEIGHBORS, False, gps_author),
         ("osv_raw", world.osv["embeddings"], raw, NEIGHBORS, True, world.osv["author"]),
     ):
         print(f"gallery {name}", flush=True)
@@ -188,7 +206,10 @@ def neighbor_cache(world, *, unfiltered_pinpoint: bool = False, chunk: int = 65_
     if unfiltered_pinpoint:
         # Unfiltered Pinpoint top-1, to compare against the submission's reported benchmark.
         no_author = np.full(len(world.query_author), -3, dtype=np.int64)
-        results["mp16_gps_unfiltered_idx"], results["mp16_gps_unfiltered_sim"] = _stream_topk(gps, projected, no_author, world.mp16["author"], 1, normalize=False)
+        results["mp16_gps_unfiltered_idx"], results["mp16_gps_unfiltered_sim"] = _stream_topk(gps, projected, no_author, gps_author, 1, normalize=False)
+    for key in ("mp16_gps_idx", "mp16_gps_unfiltered_idx"):
+        if key in results:
+            results[key] = gps_rows[results[key]].astype(np.int32)
     return results
 
 

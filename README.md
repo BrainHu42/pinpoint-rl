@@ -18,7 +18,9 @@ excluded; wikimedia is the planned third test set.
 - `src/geo_search_env/models/pinpoint.py`: frozen Pinpoint retrieval baseline.
 - `scripts/`: end-to-end evaluation scripts (serve a model with vLLM, evaluate, stop the server).
 - `tests/`: pytest suite; `fixtures/`: synthetic test fixtures.
-- `archive/`: superseded plans.
+- `data/` (git-ignored): datasets, model weights, gallery embeddings and Hugging Face caches.
+- `.venvs/` (git-ignored): SFT, GRPO and vLLM environments.
+- `worktrees/` (git-ignored): additional research checkouts.
 - `artifacts/` (git-ignored): caches, datasets, logs and result JSONs, all rebuilt by the modules (see `SETUP.md`).
 
 ## Conventions

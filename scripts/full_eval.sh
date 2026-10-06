@@ -7,9 +7,12 @@ prompt=$2
 temp=${3:-0.7}
 cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1
+export HF_HOME="$PWD/data/hf"
+export HF_HUB_CACHE="$HF_HOME/hub"
+export PINPOINT_ROOT="$PWD/data/pinpoint/pinpoint-submission"
 mkdir -p artifacts/sft/logs
 until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 5; done
-PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve /data/pinpoint/sft/$run/merged --served-model-name vlm $run --port 8765 --host 127.0.0.1 \
+PATH=$PWD/.venvs/vllm/bin:$PATH vllm serve "$PWD/data/pinpoint/sft/$run/merged" --served-model-name vlm $run --port 8765 --host 127.0.0.1 \
   --dtype bfloat16 --gpu-memory-utilization ${VLLM_MEM:-0.7} --max-model-len 4096 --max-num-seqs 128 --limit-mm-per-prompt '{"image":1}' \
   --mm-processor-kwargs '{"max_pixels": 786432}' > artifacts/sft/logs/vllm_full_$run.log 2>&1 &
 server=$!

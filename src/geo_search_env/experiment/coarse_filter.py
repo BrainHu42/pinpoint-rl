@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME
 from ..core.contracts import Coordinate
 from ..core.geography import distance_m
 from ..models.pinpoint import PinpointRetrievalBaseline
@@ -30,7 +31,7 @@ from .candidate_locations import (
 from .feasibility import OSVTestReferenceDataset
 
 
-OSV_ROOT = Path("/data/hf/datasets/osv5m")
+OSV_ROOT = HF_HOME / "datasets/osv5m"
 RANDOM_QUERY_COUNT = 500
 BUDGETS = (1, 10, 25, 50)
 THRESHOLDS_M = (1_000.0, 25_000.0, 200_000.0)
