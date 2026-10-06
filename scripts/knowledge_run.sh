@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Knowledge SFT check: wait for the MP16 place labels, select PHOTOS photos (knowledge_data select), filter burned-in GPS with the base VLM, write the data,
-# LoRA-train the 4B on photo -> "country > region > city > neighbourhood" at 448x448, merge, then score dev candidate names with the trained model and with
-# the base model at the same image size (name_score.py; the go / no-go numbers).
-# Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/query_evidence/logs/knowledge_run.log 2>&1 &   (~5 h: ~4 h training at ~8 photos/s)
+# LoRA-train the 4B on photo -> "country > region > city > neighbourhood" at 448x448, merge, then score dev / val candidate names with the trained model
+# (name_score.py; compare with the base model at the same size, NAME=base448, scored separately).
+# Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/query_evidence/logs/knowledge_run.log 2>&1 &   (~5 h: ~3.8 h training at ~11 photos/s, needs ~27 GB)
 set -uo pipefail
 cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1 PYTHONPATH=src
 run=${RUN:-knowledge-a}
-photos=${PHOTOS:-120000}
+photos=${PHOTOS:-150000}
 pixels=200704  # 448 x 448, also used to serve the trained model
 base=/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a
 mkdir -p artifacts/query_evidence/logs
@@ -20,7 +20,7 @@ server=""
 trap '[ -z "$server" ] || kill $server 2>/dev/null || true' EXIT
 for attempt in $(seq 1 40); do
   until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 10; done
-  PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve $base --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 --gpu-memory-utilization 0.6 \
+  PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve $base --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 --gpu-memory-utilization 0.85 \
     --max-model-len 4096 --max-num-seqs 64 --limit-mm-per-prompt '{"image":1}' --mm-processor-kwargs '{"max_pixels": 786432}' \
     > artifacts/query_evidence/logs/vllm_knowledge_overlay.log 2>&1 &
   server=$!
@@ -39,10 +39,10 @@ server=""
 
 free_mib() { echo $(( $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits) - $(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits) )); }
 for attempt in 1 2 3 4 5 6; do
-  until [ "$(free_mib)" -gt 14000 ]; do sleep 30; done
+  until [ "$(free_mib)" -gt 28000 ]; do sleep 30; done
   echo "$(date +%T) train attempt $attempt"
   if ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train train --run $run --data artifacts/knowledge/knowledge.jsonl --examples 1000000 \
-      --batch 16 --accumulation 1 --max-pixels $pixels 2>&1; then
+      --batch 8 --accumulation 2 --no-checkpointing --max-pixels $pixels 2>&1; then
     break
   fi
   echo "$(date +%T) training failed, retrying after a wait"
@@ -52,7 +52,5 @@ done
 echo "$(date +%T) merge"
 ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run $run 2>&1
 echo "$(date +%T) score trained model"
-RUN=$run NAME=$run MAX_PIXELS=$pixels TAGS="dev val" bash scripts/name_scores.sh 2>&1
-echo "$(date +%T) score base model at the same image size"
-RUN=base NAME=base448 MAX_PIXELS=$pixels TAGS="dev val" bash scripts/name_scores.sh 2>&1
+GPU_UTIL=0.85 RUN=$run NAME=$run MAX_PIXELS=$pixels TAGS="dev val" bash scripts/name_scores.sh 2>&1
 echo "$(date +%T) all done"

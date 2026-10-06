@@ -15,7 +15,7 @@ server=""
 trap '[ -z "$server" ] || kill $server 2>/dev/null || true' EXIT
 for attempt in $(seq 1 40); do
   until [ "$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits)" -lt 1000 ]; do sleep 10; done
-  PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve $model --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 --gpu-memory-utilization 0.6 \
+  PATH=$HOME/.venvs/vllm/bin:$PATH vllm serve $model --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 --gpu-memory-utilization ${GPU_UTIL:-0.6} \
     --max-model-len 4096 --max-num-seqs 64 --limit-mm-per-prompt '{"image":1}' --mm-processor-kwargs "{\"max_pixels\": $pixels}" \
     > artifacts/query_evidence/logs/vllm_name_scores_$run.log 2>&1 &
   server=$!
