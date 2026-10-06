@@ -678,6 +678,22 @@ baseline for new evidence (10, 13).
     - Consequence for RL map search (the plan's cheapest test, hand-written policy steered by comparator + matcher): not run, since neither signal separates
       the places a policy would have to choose between. Search reach is there (lesson 47: 70-82% of near-misses within 100-300 photos); a signal is not.
 
+50. **Knowledge-grounded choosing, labels and the zero-shot control (2026-10-05; `place_labels.py`, `name_score.py`, `scripts/name_scores.sh`).** Direction
+    (user's decision): teach the 4B place knowledge from geotagged photos (MP16 buckets 0-98 for this stage only; the chooser stays on bucket 99), and use it
+    as a score per candidate name, combined with the rank.
+    - Labels: MP16-Pro's "neighbourhood" field mixes boroughs (Manhattan), the city repeated (Paris | Paris), villages and Japanese city blocks; 126k names,
+      half with < 5 photos. Overture divisions (release 2026-09-23.1, land polygons, point-in-polygon in DuckDB; 300k photos in 7 min): locality 70% of
+      photos (median 83 km^2), neighbourhood 22% (5 km^2), macrohood 17% (5 km^2), microhood 7% (1 km^2); 38% of photos have a label finer than the city.
+    - Label noise: 1,255 near-duplicate pairs by different photographers (SigLIP2 cosine >= 0.95, within 2 km) are a median 198 m apart (p75 722 m, p90
+      1.3 km); their labels agree: locality 95%, neighbourhood 83%, macrohood 78%, microhood 62%. Street labels (streets ~100 m apart) would disagree most
+      of the time from GPS error alone, so they were not built. Targets: country > region > city > neighbourhood (or macrohood).
+    - Scoring: log P(each level of "country > region > city > neighbourhood" | photo, "Where was this photo taken?") from vLLM prompt logprobs, minus the
+      same without the photo (name popularity). Token-to-level assignment by the token's last character (" Maryland" starts in the separator).
+    - Zero-shot control, base Qwen3.5-4B, dev (11,653 photo-name scorings, ~5 min): within-photo AUC (candidate < 25 km vs >= 25 km) 0.50-0.53 for every
+      level and variant; CV combiner rank + name scores -0.7 [-1.3, -0.2] at 25 km. Among the 538 photos whose pool spans >= 2 countries including the
+      true one, the base 4B ranks the right country first 48.9% (popularity-corrected 43.5%) vs the reranker top-1 67.5%. The scoring works; the base model
+      knows too little (as in lesson 37). The knowledge-trained 4B has to beat this control.
+
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

@@ -23,26 +23,71 @@ LEVELS = ("country", "region", "county", "locality", "macrohood", "neighborhood"
 DUP_SIM = 0.95
 
 
+class Labeller:
+    """Overture land polygons loaded once into DuckDB; label() maps points to the smallest containing polygon per level."""
+
+    def __init__(self, threads: int = 16) -> None:
+        import duckdb
+
+        self.con = duckdb.connect()
+        self.con.sql(f"INSTALL spatial; LOAD spatial; SET threads={threads}")
+        self.con.sql(f"""CREATE TABLE polys AS SELECT subtype, coalesce(names.common['en'], names."primary") AS name, geometry AS geom,
+                         ST_Area_Spheroid(ST_FlipCoordinates(geometry)) / 1e6 AS km2
+                         FROM '{DIVISIONS}/*.parquet' WHERE class = 'land' AND subtype IN {LEVELS}""")
+
+    def label(self, latlon: np.ndarray) -> dict[str, list]:
+        """Per level: (name, area in km^2) of the smallest containing land polygon, or (None, nan)."""
+
+        import pyarrow as pa
+
+        self.con.register("pts_arrow", pa.table({"i": np.arange(len(latlon)), "lat": latlon[:, 0], "lon": latlon[:, 1]}))
+        self.con.sql("CREATE OR REPLACE TABLE pts AS SELECT i, ST_Point(lon, lat) AS geom FROM pts_arrow")
+        rows = self.con.sql("SELECT pts.i, polys.subtype, polys.name, polys.km2 FROM pts JOIN polys ON ST_Contains(polys.geom, pts.geom)").fetchall()
+        self.con.unregister("pts_arrow")
+        out = {lv: [(None, float("nan"))] * len(latlon) for lv in LEVELS}
+        for i, sub, name, km2 in rows:
+            cur = out[sub][i]
+            if cur[0] is None or (km2 is not None and km2 < cur[1]):
+                out[sub][i] = (name, km2)
+        return out
+
+
 def label(latlon: np.ndarray, threads: int = 16) -> dict[str, list]:
-    """Per level: (name, area in km^2) of the smallest containing land polygon, or (None, nan)."""
+    return Labeller(threads).label(latlon)
 
-    import duckdb
+
+def label_all(chunk: int = 500_000) -> None:
+    """Labels for every candidate (and the truth) of the dev / val / full photo sets, then for all MP16 photos (chunked), written under OUT."""
+
     import pyarrow as pa
+    import pyarrow.parquet as pq
 
-    con = duckdb.connect()
-    con.sql(f"INSTALL spatial; LOAD spatial; SET threads={threads}")
-    con.register("pts_arrow", pa.table({"i": np.arange(len(latlon)), "lat": latlon[:, 0], "lon": latlon[:, 1]}))
-    con.sql("CREATE TABLE pts AS SELECT i, ST_Point(lon, lat) AS geom FROM pts_arrow")
-    con.sql(f"""CREATE TABLE polys AS SELECT subtype, coalesce(names.common['en'], names."primary") AS name, geometry AS geom,
-                ST_Area_Spheroid(ST_FlipCoordinates(geometry)) / 1e6 AS km2
-                FROM '{DIVISIONS}/*.parquet' WHERE class = 'land' AND subtype IN {LEVELS}""")
-    rows = con.sql("""SELECT pts.i, polys.subtype, polys.name, polys.km2 FROM pts JOIN polys ON ST_Contains(polys.geom, pts.geom)""").fetchall()
-    out = {lv: [(None, float("nan"))] * len(latlon) for lv in LEVELS}
-    for i, sub, name, km2 in rows:
-        cur = out[sub][i]
-        if cur[0] is None or (km2 is not None and km2 < cur[1]):
-            out[sub][i] = (name, km2)
-    return out
+    labeller = Labeller()
+    OUT.mkdir(parents=True, exist_ok=True)
+    for tag in ("dev", "val", "full"):
+        photos = json.loads((Path("artifacts/query_evidence") / tag / "dev.json").read_text(encoding="utf-8"))
+        pts = np.asarray([c for e in photos for c in e["pool"]] + [e["truth"] for e in photos], dtype=np.float64)
+        lab = labeller.label(pts)
+        names = [{lv: lab[lv][k][0] for lv in LEVELS} for k in range(len(pts))]
+        out, k = [], 0
+        for e in photos:
+            out.append({"image_id": e["image_id"], "pool": names[k : k + len(e["pool"])]})
+            k += len(e["pool"])
+        for e, o in zip(photos, out):
+            o["truth"] = names[k]
+            k += 1
+        (OUT / f"candidates_{tag}.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
+        print(f"{tag}: {len(photos)} photos, {len(pts)} points labelled", flush=True)
+    latlon = np.fromfile(MP16_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(-1, 2).astype(np.float64)
+    writer = None
+    start = time.time()
+    for lo in range(0, len(latlon), chunk):
+        lab = labeller.label(latlon[lo : lo + chunk])
+        table = pa.table({"row": np.arange(lo, lo + len(lab["country"]))} | {lv: [x[0] for x in lab[lv]] for lv in LEVELS})
+        writer = writer or pq.ParquetWriter(OUT / "mp16.parquet", table.schema)
+        writer.write_table(table)
+        print(f"  mp16 {lo + len(lab['country'])}/{len(latlon)} ({time.time() - start:.0f} s)", flush=True)
+    writer.close()
 
 
 def pilot(sample: int) -> None:
@@ -107,10 +152,12 @@ def agreement(rows: np.ndarray, labels: dict, latlon: np.ndarray) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pilot", "agreement"))
+    parser.add_argument("node", choices=("pilot", "agreement", "label-all"))
     parser.add_argument("--sample", type=int, default=200_000)
     args = parser.parse_args(argv)
-    if args.node == "pilot":
+    if args.node == "label-all":
+        label_all()
+    elif args.node == "pilot":
         pilot(args.sample)
     else:  # rerun the agreement check on the saved pilot labels
         saved = json.loads((OUT / "pilot.json").read_text(encoding="utf-8"))
