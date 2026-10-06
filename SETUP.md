@@ -173,7 +173,8 @@ curl -LO https://download.geonames.org/export/dump/countryInfo.txt
 ## 6. Build the caches (in order)
 
 Run from the repo root as `.venv/bin/python -m geo_search_env.experiment.<module> <node>`; the first lines of each
-module document its nodes. Everything is written under `artifacts/`, which is git-ignored.
+module document its nodes. Everything is written under `artifacts/`, which is git-ignored. A snapshot
+(2026-10-06) is on Hugging Face: `hf download kinghorton42/geo-benchmarks --repo-type dataset --include "artifacts/*" --local-dir .`
 
 Benchmark side (`--root artifacts/strategy_search`, the default):
 1. `strategy_search neighbors`: top-1000 MP16/OSV photo matches and top-500 Pinpoint GPS neighbours per benchmark

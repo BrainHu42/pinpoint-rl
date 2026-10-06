@@ -1,8 +1,10 @@
 # Handoff (2026-10-06)
 
 For the next person or agent picking this up. Read this, then `CLAUDE.md` (rules, plan, code map) and the summary at the top of `LEARNINGS.md`
-(numbered lessons 1-50). All work is on branch `worktree-pivot-query-evidence` (draft PR #3); `main` is far behind. `artifacts/` (caches, results)
-is not in git; rebuild it per `SETUP.md` or copy it from the old machine.
+(numbered lessons 1-50). All work is on branch `worktree-pivot-query-evidence` (draft PR #3); `main` is far behind. `artifacts/` (caches, results,
+place labels; 2.6 GB) is not in git: download it from the public dataset repo into the repo root with
+`hf download kinghorton42/geo-benchmarks --repo-type dataset --include "artifacts/*" --local-dir .` (same repo has the benchmark zips and the
+SigLIP2 gallery embeddings). Pruned before upload: the geo-adapter training copy (`geo_embed data` rebuilds it) and the superseded v1 labels.
 
 ## The problem in one paragraph
 
