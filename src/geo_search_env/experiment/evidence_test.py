@@ -28,6 +28,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import DATA_ROOT
 from ..data.benchmarks import compute_metrics
 from .pivot_diagnostics import PROMPT, parse_coordinates
 from .sft_data import MP16Images
@@ -36,7 +37,7 @@ from .verifiers import _place_names, reranker_ranking
 
 
 ROOT = Path("artifacts/strategy_search")
-GEONAMES = Path("/data/pinpoint/geonames")
+GEONAMES = DATA_ROOT / "geonames"
 LANDMARKS = GEONAMES / "landmarks.npz"
 CANDIDATES = 10
 NEAR_KM = 1.0

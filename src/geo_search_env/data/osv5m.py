@@ -10,11 +10,11 @@ from typing import Any
 
 import numpy as np
 
+from ..paths import DATA_ROOT, HF_HOME
 
-DEFAULT_OSV5M_ROOT = Path("/data/hf/datasets/osv5m")
-DEFAULT_OSV5M_EMBEDDING_ROOT = Path(
-    "/data/pinpoint/osv5m-embed/siglip2-giant-opt-patch16-384"
-)
+
+DEFAULT_OSV5M_ROOT = HF_HOME / "datasets/osv5m"
+DEFAULT_OSV5M_EMBEDDING_ROOT = DATA_ROOT / "osv5m-embed/siglip2-giant-opt-patch16-384"
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
 
 

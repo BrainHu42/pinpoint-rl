@@ -730,7 +730,6 @@ baseline for new evidence (10, 13).
 - vLLM 0.30's Triton build needs Python 3.12 headers; without `python3.12-dev`, `uv python install 3.12` and set
   `C_INCLUDE_PATH` to its `include/python3.12`. When sharing the GPU at ~0.3 utilization, lower `--max-num-seqs`
   (Mamba cache blocks limit it), and retry if a neighbour's memory changes during profiling.
-- vLLM eval servers: `--gpu-memory-utilization 0.7` so a small InnerSight job doesn't block startup.
 - Temperature: T=0.7 for SFT-model sampling; resolution caps below 786k px change nothing within noise.
 
 ## Dead ends (don't redo)
@@ -744,13 +743,6 @@ baseline for new evidence (10, 13).
 - A "LLM picks region → retrieve inside it" pipeline (lesson 5).
 
 ## Kept artifacts
-- `/data/pinpoint/sft/sft-34k-retrieval` (adapter): best SFT model, starting point for the agent.
-- `/data/pinpoint/sft/grpo-kl` (checkpoint-200): best greedy so far.
-- Merged weights were deleted to save space (2026-10-02). Rebuild in order: `sft_train merge --run sft-34k-retrieval`,
-  then `grpo_train merge --init sft-34k-retrieval --run grpo-kl --adapter checkpoint-200` (GRPO's base is the SFT merge).
-- `artifacts/sft/`: MP16 query pool, neighbour/candidate caches, `sft_retrieval.jsonl` (+ `sft.jsonl`), logs.
-- `artifacts/strategy_search/`: benchmark caches, all result JSONs, Gemini labels for 1,683 eval photos
-  (`llm_advantage_labels.json`; OpenRouter credits ran out before the other ~2,100), crop-query search cache
-  (`query_headroom_crops.npz`), evidence-test answers (`evidence_test_vlm_*`).
-- `/data/pinpoint/geonames/allCountries.txt` (GeoNames dump; `evidence_test landmarks` rebuilds the landmark index).
-- Environments: `.venv` (analysis), `~/.venvs/sft` (SFT), `~/.venvs/grpo` (GRPO with vLLM), `~/.venvs/vllm` (serving).
+- None of the old machine's models or caches were transferred (2026-10-06). On this machine: `artifacts/strategy_search/`
+  (benchmark caches, rebuilt with the released Pinpoint index; reproduces reranker 16.8 / 38.5, oracle 33.6 / 58.9) and
+  `data/pinpoint/geonames/allCountries.txt`. Everything else is rebuilt per `SETUP.md`.

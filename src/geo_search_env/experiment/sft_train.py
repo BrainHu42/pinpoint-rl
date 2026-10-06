@@ -1,6 +1,6 @@
 # LoRA SFT of Qwen3.5-4B on the MP16 SFT set, LoRA merge for vLLM, and decoding eval on MP16 validation photos.
-# Usage: ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train train --examples 5000 --run sft-5k
-#        ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run sft-5k
+# Usage: .venvs/sft/bin/python -m geo_search_env.experiment.sft_train train --examples 5000 --run sft-5k
+#        .venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run sft-5k
 #        .venv/bin/python -m geo_search_env.experiment.sft_train val_eval --model sft-5k  (vLLM serving the merged model)
 
 """Supervised fine-tuning on `artifacts/sft/sft.jsonl` (built by `sft_data dataset`).
@@ -25,15 +25,16 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import DATA_ROOT, HF_HUB_CACHE
 from ..data.benchmarks import compute_metrics
 from .pivot_diagnostics import THRESHOLDS_KM, parse_coordinates
 from .sft_data import MP16Images
 from .strategy_search import _haversine_km
 
 
-BASE_MODEL = Path("/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a")
+BASE_MODEL = HF_HUB_CACHE / "models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 DATA = Path("artifacts/sft/sft.jsonl")
-RUNS = Path("/data/pinpoint/sft")
+RUNS = DATA_ROOT / "sft"
 MAX_PIXELS = 1024 * 768  # vLLM serves with the same cap (--mm-processor-kwargs '{"max_pixels": 786432}')
 LORA_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj", "in_proj_qkv", "in_proj_z", "in_proj_a", "in_proj_b", "out_proj")
 EVAL_LOSS_EXAMPLES = 500
@@ -212,7 +213,7 @@ def val_eval(model: str, *, data: Path = DATA, server: str = "http://127.0.0.1:8
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("node", choices=("train", "merge", "val_eval"))
-    parser.add_argument("--run", help="run name (checkpoints under /data/pinpoint/sft/<run>)")
+    parser.add_argument("--run", help="run name (checkpoints under data/pinpoint/sft/<run>)")
     parser.add_argument("--examples", type=int, help="training examples (a prefix of one fixed shuffle)")
     parser.add_argument("--data", type=Path, default=DATA, help="SFT jsonl (e.g. artifacts/sft/sft_evidence.jsonl)")
     parser.add_argument("--lr", type=float, default=1e-4)

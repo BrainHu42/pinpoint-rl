@@ -15,3 +15,8 @@ dist/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Consolidated datasets, weights, training environments and research worktrees
+data/
+.venvs/
+worktrees/

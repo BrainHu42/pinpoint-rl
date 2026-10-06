@@ -28,13 +28,14 @@ from typing import Iterator, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME
 from ..data.benchmarks import BENCHMARKS, DATA_ROOT, EMBEDDING_KEY
 from .strategy_search import MP16_CSV, MP16_EMBED, OSV_EMBED
 from .verifiers import MP16_ROOT, _read_mp16_image
 
 
 MODEL = "google/siglip2-giant-opt-patch16-384"
-OSV_ROOT = Path("/data/hf/datasets/osv5m")
+OSV_ROOT = HF_HOME / "datasets/osv5m"
 GALLERY_LAYOUT = {"mp16": (4, 32), "osv5m": (4, 64)}  # (workers, batch size) that produced our caches
 GALLERY_OUT = {"mp16": MP16_EMBED, "osv5m": OSV_EMBED}
 

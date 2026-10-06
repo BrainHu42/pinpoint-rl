@@ -24,6 +24,7 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME
 from ..data.benchmarks import compute_metrics
 from .strategy_search import (
     BENCHMARK_NAMES,
@@ -38,7 +39,7 @@ from .strategy_search import (
 )
 
 
-MP16_ROOT = Path("/data/hf/datasets/MP16-Pro")
+MP16_ROOT = HF_HOME / "datasets/MP16-Pro"
 SUBSET_PER_CELL = 150  # per benchmark x split
 TOP_CANDIDATES = 5
 REFERENCES_PER_CANDIDATE = 3

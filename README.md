@@ -3,7 +3,7 @@
 Research code for training a vision-language model (Qwen3.5-4B, LoRA, thinking off) to geolocate photos with
 supervised fine-tuning and reinforcement learning (GRPO), on top of a retrieval baseline (Pinpoint: SigLIP2 embeddings
 of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves with same-photographer gallery images
-excluded; wikimedia is the planned third test set.
+excluded.
 
 - **`LEARNINGS.md`**: results so far and what they rule out (read first).
 - **`CLAUDE.md`**: current research plan, project rules, environment notes and code map.
@@ -18,12 +18,12 @@ excluded; wikimedia is the planned third test set.
 - `src/geo_search_env/models/pinpoint.py`: frozen Pinpoint retrieval baseline.
 - `scripts/`: end-to-end evaluation scripts (serve a model with vLLM, evaluate, stop the server).
 - `tests/`: pytest suite; `fixtures/`: synthetic test fixtures.
-- `archive/`: superseded plans.
+- `data/` (git-ignored): datasets, model weights, gallery embeddings and Hugging Face caches.
+- `.venvs/` (git-ignored): SFT, GRPO and vLLM environments.
 - `artifacts/` (git-ignored): caches, datasets, logs and result JSONs, all rebuilt by the modules (see `SETUP.md`).
 
 ## Conventions
 
-- The GPU may be shared with other jobs: check `nvidia-smi` before launching, and stop only your own processes (by
-  PID).
-- Never train on the benchmarks, always exclude same-photographer gallery rows, and train only on MP16 bucket 99.
+- Stop only your own processes, by PID.
+- Never train on the benchmarks, always exclude same-photographer gallery rows, and train only on MP16 bucket 99 (knowledge SFT exception in `CLAUDE.md`).
 - No distillation from Gemini: it is a benchmark and a source of evaluation-only labels.

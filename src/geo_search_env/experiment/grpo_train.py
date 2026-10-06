@@ -1,10 +1,10 @@
 # Single-turn GRPO on top of a merged SFT checkpoint, then a LoRA merge for vLLM evaluation.
-# Usage: ~/.venvs/grpo/bin/python -m geo_search_env.experiment.grpo_train train --init sft-34k-retrieval --data artifacts/sft/sft_retrieval.jsonl --run grpo-kl --hours 5
-#        ~/.venvs/grpo/bin/python -m geo_search_env.experiment.grpo_train merge --init sft-34k-retrieval --run grpo-kl
+# Usage: .venvs/grpo/bin/python -m geo_search_env.experiment.grpo_train train --init sft-34k-retrieval --data artifacts/sft/sft_retrieval.jsonl --run grpo-kl --hours 5
+#        .venvs/grpo/bin/python -m geo_search_env.experiment.grpo_train merge --init sft-34k-retrieval --run grpo-kl
 
 """GRPO with TRL on MP16 training photos (the SFT prompts), reward GeoGuessr/5000 + 0.5·[<25 km] + 0.5·[<1 km].
 
-Rollouts use vLLM colocated in the trainer process (env `~/.venvs/grpo`: the vLLM 0.30 env plus trl/peft/fla), sleeping
+Rollouts use vLLM colocated in the trainer process (env `.venvs/grpo`: the vLLM 0.30 env plus trl/peft/fla), sleeping
 while the trainer steps. A fresh LoRA trains on the merged SFT weights and is merged into vLLM's copy after every step;
 `merge` folds it in on disk so `eval_run.sh` can serve the result.
 """

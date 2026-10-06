@@ -29,13 +29,15 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import DATA_ROOT
+
 from .strategy_search import _haversine_km, _xyz, load_world
 from .verifiers import reranker_ranking
 
 
 ROOT = Path("artifacts/strategy_search")
 LABELS = ROOT / "llm_advantage_labels.json"
-GEONAMES = Path("/data/pinpoint/geonames/allCountries.txt")
+GEONAMES = DATA_ROOT / "geonames/allCountries.txt"
 LABEL_MODEL = "google/gemini-3.8-flash"
 LABEL_PROMPT = """Describe what in this photo could identify where it was taken. Reply with only this JSON:
 {"readable_text": true or false (legible text that hints at the location: signs, shop or street names, plates, banners),

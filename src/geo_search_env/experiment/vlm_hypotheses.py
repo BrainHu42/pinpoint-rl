@@ -18,10 +18,12 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME
+
 from .feasibility import OSVTestReferenceDataset
 
 
-OSV_ROOT = Path("/data/hf/datasets/osv5m")
+OSV_ROOT = HF_HOME / "datasets/osv5m"
 PROMPT = """You are an expert GeoGuessr player. Geolocate this {kind}.
 First, briefly transcribe any readable text and list the geographic clues (language/script, driving side, road markings, poles, bollards, vegetation, terrain, architecture).
 Then give 5 distinct hypotheses for where it was taken, each with a probability; probabilities must sum to 1. Spread probability across countries when uncertain.
