@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Knowledge SFT check: wait for the MP16 place labels, select PHOTOS photos (knowledge_data select), filter burned-in GPS with the base VLM, write the data,
 # LoRA-train the 4B on photo -> "country > region > city > neighbourhood" at 448x448, merge, then score dev / val candidate names with the trained model
-# (name_score.py; compare with the base model at the same size, NAME=base448, scored separately).
+# and with the base model at the same image size (name_score.py; the go / no-go numbers).
 # Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/query_evidence/logs/knowledge_run.log 2>&1 &   (~5 h: ~3.8 h training at ~11 photos/s, needs ~27 GB)
 set -uo pipefail
 cd "$(dirname "$0")/.."  # repo root
@@ -53,4 +53,6 @@ echo "$(date +%T) merge"
 ~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run $run 2>&1
 echo "$(date +%T) score trained model"
 GPU_UTIL=0.85 RUN=$run NAME=$run MAX_PIXELS=$pixels TAGS="dev val" bash scripts/name_scores.sh 2>&1
+echo "$(date +%T) score base model at the same image size (the control, on the same candidate names)"
+GPU_UTIL=0.85 RUN=base NAME=base448 MAX_PIXELS=$pixels TAGS="dev val" bash scripts/name_scores.sh 2>&1
 echo "$(date +%T) all done"

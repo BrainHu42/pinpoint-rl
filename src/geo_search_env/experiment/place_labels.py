@@ -31,9 +31,16 @@ class Labeller:
 
         self.con = duckdb.connect()
         self.con.sql(f"INSTALL spatial; LOAD spatial; SET threads={threads}")
-        self.con.sql(f"""CREATE TABLE polys AS SELECT subtype, coalesce(names.common['en'], names."primary") AS name, geometry AS geom,
-                         ST_Area_Spheroid(ST_FlipCoordinates(geometry)) / 1e6 AS km2
-                         FROM '{DIVISIONS}/*.parquet' WHERE class = 'land' AND subtype IN {LEVELS}""")
+        self.con.sql(f"""CREATE TABLE divs AS SELECT id, coalesce(names.common['en'], names."primary") AS en, population AS pop, hierarchies[1] AS chain
+                         FROM '{DIVISIONS.parent}/type=division/*.parquet'""")
+        self.con.sql(f"""CREATE TABLE polys AS SELECT a.subtype, a.division_id, coalesce(a.names.common['en'], a.names."primary") AS name, a.geometry AS geom,
+                         ST_Area_Spheroid(ST_FlipCoordinates(a.geometry)) / 1e6 AS km2, d.pop
+                         FROM '{DIVISIONS}/*.parquet' a LEFT JOIN divs d ON a.division_id = d.id WHERE a.class = 'land' AND a.subtype IN {LEVELS}""")
+        self.en: dict[str, str] = {}
+        self.chain: dict[str, tuple[tuple[str, str], ...]] = {}
+        for did, en, chain in self.con.sql("SELECT id, en, chain FROM divs").fetchall():
+            self.en[did] = en
+            self.chain[did] = tuple((c["subtype"], c["division_id"]) for c in chain or ())
 
     def label(self, latlon: np.ndarray) -> dict[str, list]:
         """Per level: (name, area in km^2) of the smallest containing land polygon, or (None, nan)."""
@@ -52,6 +59,41 @@ class Labeller:
         return out
 
 
+    def canonical(self, latlon: np.ndarray) -> list[dict[str, str | None]]:
+        """One consistent chain per point: {country, region, locality, neighborhood}. The city is the containing locality with the largest population
+        (Chicago, not the overlapping South Chicago township that Overture's own hierarchy names as the Loop's parent; New York, not Manhattan); without
+        one, the locality in the finest polygon's hierarchy. The finest level is the smallest containing neighborhood (else macrohood), kept only if it is
+        smaller than the city's polygon and not the city's name. Region and country come from the city's hierarchy."""
+
+        import pyarrow as pa
+
+        self.con.register("pts_arrow", pa.table({"i": np.arange(len(latlon)), "lat": latlon[:, 0], "lon": latlon[:, 1]}))
+        self.con.sql("CREATE OR REPLACE TABLE pts AS SELECT i, ST_Point(lon, lat) AS geom FROM pts_arrow")
+        rows = self.con.sql("SELECT pts.i, polys.subtype, polys.division_id, polys.km2, polys.pop FROM pts JOIN polys ON ST_Contains(polys.geom, pts.geom)").fetchall()
+        self.con.unregister("pts_arrow")
+        found: list[dict[str, list]] = [{} for _ in range(len(latlon))]
+        for i, sub, did, km2, pop in rows:
+            found[i].setdefault(sub, []).append((km2 if km2 is not None else float("inf"), pop or 0, did))
+        out = []
+        for f in found:
+            fine_km2, _, fine = min(f.get("neighborhood") or f.get("macrohood") or [(0.0, 0, None)])
+            loc_km2, loc = float("inf"), None
+            if f.get("locality"):
+                loc_km2, _, loc = max(f["locality"], key=lambda x: (x[1], x[0]))  # largest population, then largest area
+            elif fine:
+                loc = dict(self.chain.get(fine, ())).get("locality")
+            if fine and (fine_km2 >= loc_km2 or self.en.get(fine) == self.en.get(loc) or not any(ch.isalpha() for ch in self.en.get(fine) or "")):
+                fine = None
+            up = {**dict(self.chain.get(fine, ())), **dict(self.chain.get(loc, ()))}
+            region = up.get("region") or (min(f["region"])[2] if f.get("region") else None)
+            country = up.get("country") or (min(f["country"])[2] if f.get("country") else None)
+            out.append({"country": self.en.get(country), "region": self.en.get(region), "locality": self.en.get(loc), "neighborhood": self.en.get(fine)})
+        return out
+
+
+CANONICAL = ("country", "region", "locality", "neighborhood")
+
+
 def label(latlon: np.ndarray, threads: int = 16) -> dict[str, list]:
     return Labeller(threads).label(latlon)
 
@@ -67,8 +109,7 @@ def label_all(chunk: int = 500_000) -> None:
     for tag in ("dev", "val", "full"):
         photos = json.loads((Path("artifacts/query_evidence") / tag / "dev.json").read_text(encoding="utf-8"))
         pts = np.asarray([c for e in photos for c in e["pool"]] + [e["truth"] for e in photos], dtype=np.float64)
-        lab = labeller.label(pts)
-        names = [{lv: lab[lv][k][0] for lv in LEVELS} for k in range(len(pts))]
+        names = labeller.canonical(pts)
         out, k = [], 0
         for e in photos:
             out.append({"image_id": e["image_id"], "pool": names[k : k + len(e["pool"])]})
@@ -82,11 +123,11 @@ def label_all(chunk: int = 500_000) -> None:
     writer = None
     start = time.time()
     for lo in range(0, len(latlon), chunk):
-        lab = labeller.label(latlon[lo : lo + chunk])
-        table = pa.table({"row": np.arange(lo, lo + len(lab["country"]))} | {lv: [x[0] for x in lab[lv]] for lv in LEVELS})
+        lab = labeller.canonical(latlon[lo : lo + chunk])
+        table = pa.table({"row": np.arange(lo, lo + len(lab))} | {lv: pa.array([x[lv] for x in lab], pa.string()) for lv in CANONICAL})
         writer = writer or pq.ParquetWriter(OUT / "mp16.parquet", table.schema)
         writer.write_table(table)
-        print(f"  mp16 {lo + len(lab['country'])}/{len(latlon)} ({time.time() - start:.0f} s)", flush=True)
+        print(f"  mp16 {lo + len(lab)}/{len(latlon)} ({time.time() - start:.0f} s)", flush=True)
     writer.close()
 
 

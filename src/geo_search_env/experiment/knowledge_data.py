@@ -23,6 +23,7 @@ from typing import Sequence
 import numpy as np
 
 from .name_score import PROMPT, SEP, name_parts
+from .place_labels import CANONICAL
 from .query_evidence import ROOT
 from .strategy_search import MP16_EMBED
 
@@ -79,7 +80,7 @@ def select(photos: int, seed: int = 0) -> None:
     chosen = np.sort(np.asarray(chosen))
     out = []
     for r in chosen:
-        lab = {lv: (None if v != v else v) for lv, v in labels.iloc[r][["country", "region", "locality", "macrohood", "neighborhood"]].items()}
+        lab = {lv: (None if v != v else v) for lv, v in labels.iloc[r][list(CANONICAL)].items()}
         out.append({"row": int(r), "image_id": ids[r], "target": SEP.join(name_parts(lab))})
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "selected.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
