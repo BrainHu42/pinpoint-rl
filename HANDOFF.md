@@ -72,7 +72,8 @@ of SFT doesn't teach the 4B usable place knowledge.
 3. If it fails: the 4B choosing line is largely exhausted (LEARNINGS directions 1-3 are tested and closed). Bring the options to the user rather
    than starting new small experiments; candidates are a bigger model's knowledge (9B / 27B LoRA, the 5090 can only QLoRA the 27B slowly), or
    revisiting the framing. Don't redo anything in LEARNINGS "Dead ends" / "Not promising".
-4. Still owed before final numbers: wikimedia in `data/benchmarks.py` (it has its own `wikimedia_eval.py` pipeline and was evaluated in lesson 42).
+4. Final numbers: whatever method wins, on all benchmark eval-half photos and wikimedia (loaded by `data/benchmarks.py`, candidates from
+   `wikimedia_eval.py`; so far only the baseline, oracle and comparator were run on it, lesson 42).
 
 ## Practical notes
 

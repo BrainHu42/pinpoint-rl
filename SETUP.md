@@ -168,7 +168,8 @@ curl -LO https://download.geonames.org/export/dump/countryInfo.txt
 
 ### Optional
 - `/data/pinpoint/yfcc26k`: reserve training data (no photo overlap with MP16 or the benchmarks; lat/lon only).
-- `/data/pinpoint/wikimedia`: planned third test set; not yet wired into `data/benchmarks.py`.
+- `/data/pinpoint/wikimedia`: third test set (`wikimedia/test.csv`, `images/`, `image_embeddings/`; author column `artist`), loaded by
+  `data/benchmarks.py`; candidates and the baseline report come from `experiment/wikimedia_eval.py`.
 
 ## 6. Build the caches (in order)
 

@@ -1,4 +1,4 @@
-# Learnings so far (Sep 2026)
+# Learnings so far (Sep - Oct 2026)
 
 What the base-model diagnostic, SFT, single-turn GRPO and the follow-up headroom checks established, and what they
 rule out. The current plan lives in CLAUDE.md ("Research plan"). Numbers are % of
@@ -8,7 +8,7 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
 
 ## Summary (read this first; details in "Main lessons" below, numbered)
 
-**Where we are (2026-10-04).** Against Pinpoint's reranker top-1, the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
+**Where we are (2026-10-06; next step in `HANDOFF.md`).** Against Pinpoint's reranker top-1, the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
 from a fine-tuned 4B comparator (query photo + exemplar photo of a candidate -> same place?) combined with the reranker's rank (lessons 24, 29, 40, 41).
 On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing fitted on them:
 
@@ -53,8 +53,11 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 47-49 (map search pivot): searching within 25 km of the top-1 reaches 70-82% of near-misses within 100-300 photos (fixed list 56%), but SigLIP2 (AUC
   0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
   look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. Directions 1-3 below are tested and closed for now.
+- 50 (open): knowledge SFT, teaching the 4B to name a photo's place and scoring each candidate's name. Base-4B control is at chance (AUC 0.50-0.53,
+  -0.7 at 25 km); labels and 250k training photos are built, training has not run yet.
 
-**Still-promising directions (2026-10-05, ranked).**
+**Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
+signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
 1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the
    query and 2-4 exemplars per local candidate. Near-binary when the same structure is visible and silent otherwise, which is what flipping near-misses without
    breaking exact photos needs (today ~8 fixes per 5 breaks). Go test, a few hours on dev: within-photo AUC on the subset where it fires, and the 1 km gain of
@@ -64,9 +67,7 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 3. **RL over tools** (the project's framing, still untested for stage 2): a policy that decides which candidates to verify (comparator, matcher, search) under a
    budget and when to keep the top-1. Do it after 1 gives a signal stronger than AUC 0.8; RL cannot create a signal the tools don't have.
 4. **Scale the comparator** (9B / 27B LoRA) only if 1-3 show the 4B pipeline is the bottleneck.
-Pending when this was written: 4-exemplar scoring of the local candidates with comparator-d (`scripts/near_multi_exemplar.sh`, log
-`artifacts/query_evidence/logs/near_multi_exemplar.log`, results `artifacts/query_evidence/near_miss_combiners_comparator-d.json`), queued behind other GPU jobs.
-Expected +1.0 to +1.4 at 1 km; below +1.3 closes the comparator line.
+The 4-exemplar near-band test that was pending here ran (lesson 48): +0.9 at 1 km, below its +1.3 bar, so the comparator-over-the-fixed-list line is closed.
 Not promising (tested): more comparator data, combiner tweaks, zero-shot choosers up to 27B, new text / attribute evidence (stage 1), deeper pools.
 
 **Traps worth remembering.** Choose scorers on dev, not by looking at val or the benchmarks (41). A judge's Yes/No logit level can drift in training; always
@@ -693,6 +694,14 @@ baseline for new evidence (10, 13).
       level and variant; CV combiner rank + name scores -0.7 [-1.3, -0.2] at 25 km. Among the 538 photos whose pool spans >= 2 countries including the
       true one, the base 4B ranks the right country first 48.9% (popularity-corrected 43.5%) vs the reranker top-1 67.5%. The scoring works; the base model
       knows too little (as in lesson 37). The knowledge-trained 4B has to beat this control.
+    - Label fix (2026-10-05, before any training): where city-level areas overlap (Chicago and its townships, New York and its boroughs) the first labeller
+      took the smallest; now the city is the most populous containing locality, and the finer level is kept only if smaller than the city with a different
+      name. All 4.1M MP16 photos relabelled (`place_labels.py label-all`, DuckDB, ~1 h on CPU; `artifacts/place_labels/mp16.parquet`): 23% reach
+      neighbourhood, 46% stop at city, 27% at region, 3% unlabelled. The zero-shot numbers above used the first labels; `scripts/knowledge_run.sh` re-scores
+      the base model at 448 px on the new ones (first labels at 448 px: -0.6 dev / -0.4 val).
+    - Training data (`knowledge_data select`): 250k photos from 36,753 cities in 191 countries (of 3.58M eligible: bucket < 99, photographers of dev, the
+      benchmarks and wikimedia blocked, near-duplicates of any evaluated photo removed, at most 400 per city). Training (LoRA, 448x448, batch 8 x 2 without
+      gradient checkpointing, 10.9 photos/s and ~27 GB on the 5090) has not run: the overnight run of 2026-10-05 failed at selection (`.venv` has no pyarrow).
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
@@ -728,8 +737,10 @@ baseline for new evidence (10, 13).
 - A "LLM picks region → retrieve inside it" pipeline (lesson 5).
 
 ## Kept artifacts
-- `/data/pinpoint/sft/sft-34k-retrieval` (adapter): best SFT model, starting point for the agent.
-- `/data/pinpoint/sft/grpo-kl` (checkpoint-200): best greedy so far.
+- `/data/pinpoint/sft/comparator-b` (adapter): the best chooser signal (lesson 41); `comparator-d`: near-band comparator (45). Also kept: comparator-a,
+  comparator-c, comparator-25km, pairwise-a. Merge any of them with `sft_train merge --run <run>`.
+- `/data/pinpoint/sft/sft-34k-retrieval` (adapter): best SFT chooser (reranker parity).
+- `/data/pinpoint/sft/grpo-kl` (checkpoint-200): best greedy of the GRPO runs.
 - Merged weights were deleted to save space (2026-10-02). Rebuild in order: `sft_train merge --run sft-34k-retrieval`,
   then `grpo_train merge --init sft-34k-retrieval --run grpo-kl --adapter checkpoint-200` (GRPO's base is the SFT merge).
 - `artifacts/sft/`: MP16 query pool, neighbour/candidate caches, `sft_retrieval.jsonl` (+ `sft.jsonl`), logs.
@@ -737,4 +748,7 @@ baseline for new evidence (10, 13).
   (`llm_advantage_labels.json`; OpenRouter credits ran out before the other ~2,100), crop-query search cache
   (`query_headroom_crops.npz`), evidence-test answers (`evidence_test_vlm_*`).
 - `/data/pinpoint/geonames/allCountries.txt` (GeoNames dump; `evidence_test landmarks` rebuilds the landmark index).
-- Environments: `.venv` (analysis), `~/.venvs/sft` (SFT), `~/.venvs/grpo` (GRPO with vLLM), `~/.venvs/vllm` (serving).
+- `artifacts/place_labels/mp16.parquet`: place labels of all MP16 photos (lesson 50); `artifacts/knowledge/selected.json`: knowledge training photos.
+- Snapshot of `artifacts/` (2026-10-06, 2.6 GB): Hugging Face `kinghorton42/geo-benchmarks`, folder `artifacts/`.
+- Environments: `.venv` (analysis), `~/.venvs/sft` (SFT), `~/.venvs/grpo` (GRPO with vLLM), `~/.venvs/vllm` (serving), `geo`, `overture`, `match`
+  (tools); package lists in `envs/`.
