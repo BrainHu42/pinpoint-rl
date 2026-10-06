@@ -5,7 +5,7 @@ supervised fine-tuning and reinforcement learning (GRPO), on top of a retrieval 
 of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves with same-photographer gallery images
 excluded.
 
-- **`LEARNINGS.md`**: results so far and what they rule out (read first).
+- **`LEARNINGS.md`**: results so far and what they rule out (read first); details per lesson in `LESSONS.md`.
 - **`CLAUDE.md`**: current research plan, project rules, environment notes and code map.
 - **`SETUP.md`**: complete setup guide (hardware, environments, models, datasets, cache build order, commands).
 

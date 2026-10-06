@@ -2,7 +2,7 @@
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
 inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read its summary before proposing
-experiments).**
+experiments); full numbered lessons in `LESSONS.md`.**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -58,5 +58,5 @@ experiments).**
 - `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
 - Knowledge SFT: `place_labels.py` (Overture division labels), `knowledge_data.py` (training photos), `name_score.py`
   (candidate name scoring + combiner). Photo sets: `query_evidence.py select` (tags `dev`, `val`, `full`).
-- Earlier lines (comparator, near-miss, stage-1 evidence, map search): modules named in their LEARNINGS lessons.
+- Earlier lines (comparator, near-miss, stage-1 evidence, map search): modules named in their lessons (`LESSONS.md`).
 - Caches: `artifacts/` (not tracked). Setup from scratch: `SETUP.md`.
