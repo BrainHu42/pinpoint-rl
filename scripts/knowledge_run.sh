@@ -2,12 +2,12 @@
 # Knowledge SFT check: wait for the MP16 place labels, select PHOTOS photos (knowledge_data select), filter burned-in GPS with the base VLM, write the data,
 # LoRA-train the 4B on photo -> "country > region > city > neighbourhood" at 448x448, merge, then score dev / val candidate names with the trained model
 # and with the base model at the same image size (name_score.py; the go / no-go numbers).
-# Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/query_evidence/logs/knowledge_run.log 2>&1 &   (~5 h: ~3.8 h training at ~11 photos/s, needs ~27 GB)
+# Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/query_evidence/logs/knowledge_run.log 2>&1 &   (~7.5 h: ~6.4 h training at ~11 photos/s, needs ~27 GB)
 set -uo pipefail
 cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1 PYTHONPATH=src
 run=${RUN:-knowledge-a}
-photos=${PHOTOS:-150000}
+photos=${PHOTOS:-250000}
 pixels=200704  # 448 x 448, also used to serve the trained model
 base=/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a
 mkdir -p artifacts/query_evidence/logs

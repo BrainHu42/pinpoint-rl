@@ -26,21 +26,20 @@ DUP_SIM = 0.95
 class Labeller:
     """Overture land polygons loaded once into DuckDB; label() maps points to the smallest containing polygon per level."""
 
-    def __init__(self, threads: int = 16) -> None:
+    def __init__(self, threads: int = 32) -> None:
         import duckdb
 
         self.con = duckdb.connect()
         self.con.sql(f"INSTALL spatial; LOAD spatial; SET threads={threads}")
-        self.con.sql(f"""CREATE TABLE divs AS SELECT id, coalesce(names.common['en'], names."primary") AS en, population AS pop, hierarchies[1] AS chain
+        # per division: English name, population, and the region / country / locality of its own hierarchy (the last such entry: the nearest)
+        self.con.sql(f"""CREATE TABLE divs AS SELECT id, coalesce(names.common['en'], names."primary") AS en, population AS pop,
+                         list_filter(hierarchies[1], x -> x.subtype = 'region')[-1].division_id AS region_id,
+                         list_filter(hierarchies[1], x -> x.subtype = 'country')[-1].division_id AS country_id,
+                         list_filter(hierarchies[1], x -> x.subtype = 'locality')[-1].division_id AS locality_id
                          FROM '{DIVISIONS.parent}/type=division/*.parquet'""")
         self.con.sql(f"""CREATE TABLE polys AS SELECT a.subtype, a.division_id, coalesce(a.names.common['en'], a.names."primary") AS name, a.geometry AS geom,
-                         ST_Area_Spheroid(ST_FlipCoordinates(a.geometry)) / 1e6 AS km2, d.pop
+                         coalesce(ST_Area_Spheroid(ST_FlipCoordinates(a.geometry)) / 1e6, 'inf'::DOUBLE) AS km2, coalesce(d.pop, 0) AS pop
                          FROM '{DIVISIONS}/*.parquet' a LEFT JOIN divs d ON a.division_id = d.id WHERE a.class = 'land' AND a.subtype IN {LEVELS}""")
-        self.en: dict[str, str] = {}
-        self.chain: dict[str, tuple[tuple[str, str], ...]] = {}
-        for did, en, chain in self.con.sql("SELECT id, en, chain FROM divs").fetchall():
-            self.en[did] = en
-            self.chain[did] = tuple((c["subtype"], c["division_id"]) for c in chain or ())
 
     def label(self, latlon: np.ndarray) -> dict[str, list]:
         """Per level: (name, area in km^2) of the smallest containing land polygon, or (None, nan)."""
@@ -69,26 +68,30 @@ class Labeller:
 
         self.con.register("pts_arrow", pa.table({"i": np.arange(len(latlon)), "lat": latlon[:, 0], "lon": latlon[:, 1]}))
         self.con.sql("CREATE OR REPLACE TABLE pts AS SELECT i, ST_Point(lon, lat) AS geom FROM pts_arrow")
-        rows = self.con.sql("SELECT pts.i, polys.subtype, polys.division_id, polys.km2, polys.pop FROM pts JOIN polys ON ST_Contains(polys.geom, pts.geom)").fetchall()
+        # all of the selection runs inside DuckDB (all threads); the keys order neighborhoods before macrohoods, and cities by population, then area
+        rows = self.con.sql("""
+            WITH m AS (SELECT pts.i, p.subtype, p.division_id AS did, p.km2, p.pop FROM pts JOIN polys p ON ST_Contains(p.geom, pts.geom)),
+            loc AS (SELECT i, arg_max(did, pop * 1e7 + least(km2, 1e6)) AS loc, max_by(km2, pop * 1e7 + least(km2, 1e6)) AS loc_km2
+                    FROM m WHERE subtype = 'locality' GROUP BY i),
+            fine AS (SELECT i, arg_min(did, (subtype <> 'neighborhood')::INT * 1e12 + km2) AS fine,
+                            min_by(km2, (subtype <> 'neighborhood')::INT * 1e12 + km2) AS fine_km2
+                     FROM m WHERE subtype IN ('neighborhood', 'macrohood') GROUP BY i),
+            reg AS (SELECT i, arg_min(did, km2) AS reg FROM m WHERE subtype = 'region' GROUP BY i),
+            ctry AS (SELECT i, arg_min(did, km2) AS ctry FROM m WHERE subtype = 'country' GROUP BY i),
+            b AS (SELECT pts.i, coalesce(loc.loc, fd.locality_id) AS city, coalesce(loc.loc_km2, 'inf'::DOUBLE) AS city_km2, fine.fine, fine.fine_km2,
+                         fd.en AS fine_en, fd.region_id AS fine_region, fd.country_id AS fine_country, reg.reg, ctry.ctry
+                  FROM pts LEFT JOIN loc USING (i) LEFT JOIN fine USING (i) LEFT JOIN reg USING (i) LEFT JOIN ctry USING (i)
+                  LEFT JOIN divs fd ON fd.id = fine.fine),
+            k AS (SELECT b.*, cd.en AS city_en, cd.region_id AS city_region, cd.country_id AS city_country,
+                         b.fine IS NOT NULL AND b.fine_km2 < b.city_km2 AND b.fine_en IS DISTINCT FROM cd.en AND regexp_matches(coalesce(b.fine_en, ''), '\\pL')
+                         AS keep_fine
+                  FROM b LEFT JOIN divs cd ON cd.id = b.city)
+            SELECT k.i, co.en, re.en, k.city_en, CASE WHEN k.keep_fine THEN k.fine_en END
+            FROM k LEFT JOIN divs re ON re.id = coalesce(k.city_region, CASE WHEN k.keep_fine THEN k.fine_region END, k.reg)
+                   LEFT JOIN divs co ON co.id = coalesce(k.city_country, CASE WHEN k.keep_fine THEN k.fine_country END, k.ctry)
+            ORDER BY k.i""").fetchall()
         self.con.unregister("pts_arrow")
-        found: list[dict[str, list]] = [{} for _ in range(len(latlon))]
-        for i, sub, did, km2, pop in rows:
-            found[i].setdefault(sub, []).append((km2 if km2 is not None else float("inf"), pop or 0, did))
-        out = []
-        for f in found:
-            fine_km2, _, fine = min(f.get("neighborhood") or f.get("macrohood") or [(0.0, 0, None)])
-            loc_km2, loc = float("inf"), None
-            if f.get("locality"):
-                loc_km2, _, loc = max(f["locality"], key=lambda x: (x[1], x[0]))  # largest population, then largest area
-            elif fine:
-                loc = dict(self.chain.get(fine, ())).get("locality")
-            if fine and (fine_km2 >= loc_km2 or self.en.get(fine) == self.en.get(loc) or not any(ch.isalpha() for ch in self.en.get(fine) or "")):
-                fine = None
-            up = {**dict(self.chain.get(fine, ())), **dict(self.chain.get(loc, ()))}
-            region = up.get("region") or (min(f["region"])[2] if f.get("region") else None)
-            country = up.get("country") or (min(f["country"])[2] if f.get("country") else None)
-            out.append({"country": self.en.get(country), "region": self.en.get(region), "locality": self.en.get(loc), "neighborhood": self.en.get(fine)})
-        return out
+        return [{"country": c, "region": r, "locality": l, "neighborhood": n} for _, c, r, l, n in rows]
 
 
 CANONICAL = ("country", "region", "locality", "neighborhood")
@@ -98,7 +101,7 @@ def label(latlon: np.ndarray, threads: int = 16) -> dict[str, list]:
     return Labeller(threads).label(latlon)
 
 
-def label_all(chunk: int = 500_000) -> None:
+def label_all(chunk: int = 1_000_000) -> None:
     """Labels for every candidate (and the truth) of the dev / val / full photo sets, then for all MP16 photos (chunked), written under OUT."""
 
     import pyarrow as pa
