@@ -15,9 +15,9 @@ experiments).**
   1 / 25 km) but every chooser, evidence source and comparator lands at -0.5 to +1.3 pts over the reranker top-1
   (17.1 / 38.9), mostly because it re-encodes what visual retrieval already knows.
 - **Main question: can a model learn geographic knowledge that visual similarity doesn't already capture?**
-- Next: knowledge SFT (LEARNINGS 50; `place_labels.py`, `knowledge_data.py`, `name_score.py`, `scripts/knowledge_run.sh`),
-  redesigned around places held out of training, so a gain can't come from labelled look-alikes. Plan to be written
-  and confirmed with the user before porting or running.
+- Next: **`KNOWLEDGE_PLAN.md`** (agreed 2026-10-06): knowledge SFT warm start (photo -> "country > region > city"),
+  then GRPO on photo + retrieval candidates from the knowledge model vs from the base 4B; measured by fixes on the
+  benchmark photos where the reranker is wrong. Real geolocation only; no artificial held-out tasks.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
