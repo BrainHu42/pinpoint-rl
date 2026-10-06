@@ -3,38 +3,6 @@
 How to rebuild the environments, models, datasets and caches for this repo from scratch, written so a person or a
 coding agent can follow it end to end. See `README.md` for what the project is and `LEARNINGS.md` for results.
 
-## 0. Moving an existing setup to another machine
-
-Faster than rebuilding: keep the same absolute paths (`/data/...`, the repo path, `$PINPOINT_ROOT`) on the new
-machine, so module constants, cached manifests and the Pinpoint index's `checkpoint_path` stay valid.
-
-```bash
-# On the new machine: code (all work is on this branch, ahead of main)
-git clone <remote> /home/brian/workspace/pinpoint-rl && cd /home/brian/workspace/pinpoint-rl
-git checkout worktree-pivot-query-evidence
-
-# On the old machine: data, weights, SFT adapters, artifacts/ and .env (~510 GB; rsync over ssh, re-run to resume)
-bash scripts/transfer.sh user@newhost --dry-run    # check the file list first
-bash scripts/transfer.sh user@newhost              # OPTIONAL=1: 9B / 27B weights; MERGED=1: merged SFT models
-
-# On the new machine: environments from the frozen package lists in envs/ (exact versions of the old machine)
-uv sync --all-extras                               # repo env (.venv), from uv.lock
-for e in sft geo overture match; do uv venv ~/.venvs/$e --python 3.11; uv pip install --python ~/.venvs/$e/bin/python -r envs/$e.txt; done
-for e in vllm grpo; do uv venv ~/.venvs/$e --python 3.12; uv pip install --python ~/.venvs/$e/bin/python -r envs/$e.txt; done
-~/.venvs/sft/bin/python -m pytest -q               # 31 tests, CPU only
-```
-
-- The envs pin CUDA 13 wheels (built for an RTX 5090, driver 595). On another GPU generation or driver, install the
-  matching torch / vLLM build first, then the rest of the list.
-- Merged SFT models are not copied by default (8.5 GB each): re-create one with
-  `~/.venvs/sft/bin/python -m geo_search_env.experiment.sft_train merge --run <run>` (e.g. `comparator-a`).
-- The 27B runs (`knowledge_scaling.sh`, `knowledge_wiki.sh`) serve a GGUF with llama.cpp (`scripts/serve27b.sh`): build
-  llama.cpp with CUDA and set `LLAMA_CPP` to its `build/bin`.
-- With more GPU memory, raise `--gpu-memory-utilization`, batch sizes and `PHOTOS` in the `scripts/*.sh` you run; the
-  current values are sized for a shared 32 GB card.
-- Pending run: `scripts/knowledge_run.sh` (knowledge SFT go / no-go, see `LEARNINGS.md` 50) has not run yet; the
-  place labels it needs are in `artifacts/place_labels/mp16.parquet`.
-
 ## 1. Hardware and disk
 
 - One NVIDIA GPU with ≥ 32 GB (developed on an RTX 5090, driver 595, CUDA 13 wheels). SFT peaks at ~17–27 GB,
@@ -79,7 +47,9 @@ Copy `.env.example` to `.env`, fill it in, and load it with `set -a; . ./.env; s
 
 ## 3. Python environments
 
-Four environments, because training, serving and analysis pin different torch versions.
+Four main environments, because training, serving and analysis pin different torch versions, plus three small tool
+environments (`~/.venvs/geo`: rasterio; `~/.venvs/overture`: duckdb + shapely; `~/.venvs/match`: kornia / LightGlue).
+`envs/<name>.txt` lists the exact packages each one had on the development machine (`uv pip install -r envs/<name>.txt`).
 
 ```bash
 # (a) Repo env: analysis, retrieval caches, dataset building, evaluation clients. Python 3.11, torch 2.14 (CUDA 13).

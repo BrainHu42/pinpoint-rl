@@ -1,7 +1,7 @@
 # pinpoint-rl
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
-inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read it before proposing experiments).**
+inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read it before proposing experiments).** **Current state and the next step: `HANDOFF.md`.**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -43,9 +43,9 @@ images for a 4B model (see the small-VLM-prompts memory).
     photos (im2gps3k +1.4, yfcc4k +0.3), combiner weight fitted on MP16 dev only (LEARNINGS 22-26, 29). Pairwise and 25 km
     variants, zero-shot judges, Wikipedia text per candidate, and bigger zero-shot choosers (4B / 9B / 27B, all below the
     reranker) do not beat it (LEARNINGS 25-28).
-  - Since then (2026-10-05, LEARNINGS 38-46): more exemplars, 3-4x more comparator pairs, a near-miss (1-25 km) comparator and better combiners all stay
-    at +0.7 to +0.9 (25 km overall, or 1 km on near-misses). Next directions, ranked, are in the LEARNINGS summary: geometric verification (LightGlue
-    inliers) as a tool, near-band candidate recall, then RL over tools. The query design is in `archive/QUERY_EVIDENCE_PLAN.md` (superseded).
+  - Since then (2026-10-05, LEARNINGS 38-50): more exemplars, 3-4x more comparator pairs, a near-miss (1-25 km) comparator, better combiners,
+    keypoint matching and map search all stay at +0.7 to +1.3 or below. The open experiment is knowledge SFT (LEARNINGS 50; see `HANDOFF.md`).
+    The query design is in `archive/QUERY_EVIDENCE_PLAN.md` (superseded).
 - Supersedes the earlier plan (per-candidate evidence SFT: exemplar photos + GeoNames landmarks), which was never run.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the shown-candidate oracle), not against current greedy.
@@ -55,7 +55,8 @@ images for a 4B model (see the small-VLM-prompts memory).
   `data/benchmarks.py` or the retrieval caches yet; add it (same-photographer exclusion, no training on it) before
   final numbers. Results so far cover only im2gps3k and yfcc4k.
 - Exclude same-photographer gallery images (yfcc4k shares photographers with MP16). Never train on the benchmarks.
-- Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest).
+- Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest). Exception (user's decision, 2026-10-05): the
+  knowledge SFT (LEARNINGS 50) teaches place names from buckets 0-98; anything that learns to choose between candidates stays on bucket 99.
 - Other projects (InnerSight, gems) also use the GPU; never touch their processes.
 - Filter images with GPS coordinates burned into the frame.
 - The GPU (RTX 5090, 32 GB) is shared with InnerSight jobs: check `nvidia-smi` first and never kill other
@@ -112,4 +113,4 @@ images for a 4B model (see the small-VLM-prompts memory).
   (all 3,795 eval-half), `train` (MP16 train) under `artifacts/query_evidence/`.
 - Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
   experiments); `artifacts/` is not tracked.
-- Full setup from scratch: `SETUP.md`; moving to another machine: `SETUP.md` §0 (`scripts/transfer.sh`, frozen env package lists in `envs/`).
+- Full setup from scratch: `SETUP.md` (exact env package lists in `envs/`). Handoff state and next steps: `HANDOFF.md`.
