@@ -765,6 +765,12 @@ baseline for new evidence (10, 13).
       Shanghai). Agrees with lesson 35: little of the gap to the 12-candidate oracle is recoverable by inspection.
     - So the visible wins are landmarks and text, ~6% of misses (~3% of all photos at 25 km), half outside the candidate list. A gain there needs a
       recognizer or a text reader that can propose new places, not a better chooser.
+    - Expert-with-tools estimate (same 140, second pass, labels already known so optimistic; methods: web search of visible text, landmark and object
+      identification, terrain / peak and coastline matching on satellite or 3D maps, skyline matching, Street View, regional knowledge; reverse image search
+      of the photo itself excluded as leakage): better than the reranker on ~30 (13 high + 17 medium confidence; +3 low), im2gps3k 17, yfcc4k 13; 26 of them
+      within 25 km, 4 only country-level. Methods: landmark / object ~9, text search ~8, terrain matching ~7, skyline ~4, regional knowledge ~2. 17 of the 30
+      had a right answer among the 12 candidates, so verification against candidates (terrain, skyline, a found landmark) could fix about half; the rest need
+      new places. Unaided, by eye: 8. Roughly 10 pts at 25 km over all photos (~12 im2gps3k, ~8 yfcc4k) is the expert ceiling on these error types.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
