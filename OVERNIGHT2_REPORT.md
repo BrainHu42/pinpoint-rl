@@ -25,6 +25,8 @@ The reason: most photos retrieval fails on carry no place-identifying clue that 
 | All tools together | -0.1 | 24 / 26 |
 
 - **Text ceiling:** read text names a place in the true region specifically on only 4 / 102 dev and 7 / 106 val fixable photos.
+- **Better reading doesn't help:** 9B text from 4 image crops per photo raises text coverage on fixable photos 43% -> 63-73%, but rank + text stays
+  +0.4 [-0.0, +0.8] (14 / 6): the extra text isn't geographic.
 - **Capacity:** right region on fixable photos is 4B 13.9%, 9B 16.8% (+2.9 [-1.9, +7.7]). For the 4B, 448 -> 786k px gives +3.9 [+1.0, +7.8] on dev
   fixable photos; 1.6M px adds nothing.
 - **Agreement:** switching only when 4B and 9B agree halves the breaks but also halves the fixes (best +0.4 [-0.1, +0.9]).
@@ -38,5 +40,5 @@ The reason: most photos retrieval fails on carry no place-identifying clue that 
 
 ## Recommended next steps
 1. Landmark matching as a tool: the comparator (lessons 24-41) restricted to photos with a detected landmark, scored on the dev fixable set.
-2. Better text reading on crops plus POI search with fuzzy names (the audit's misread "Tepper"), measured on dev fixable photos.
+2. POI search with fuzzy names (the audit's misread "Tepper"); crops alone were tried and add nothing.
 3. Keep "rank + text" as the first agent tool. It's the one confirmed positive: `geo_tools transfer --fit dev val --tag full --name 9b --group text`.

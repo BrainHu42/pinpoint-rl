@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AGENT_DIRECTION.md observe step: serve a VLM (default the base Qwen3.5-4B at full resolution) and extract structured clues for every photo of
 # the given sets (observe.py extract), then the reports for the MP16 sets.
-# Usage: [MODEL=<dir>] [NAME=base] [TAGS="dev val full"] [MAX_PIXELS=786432] setsid nohup bash scripts/observe.sh > artifacts/agent/logs/observe.log 2>&1 &
+# Usage: [NODE=extract|crops] [BASE=9b] [MODEL=<dir>] [NAME=base] [TAGS="dev val full"] [MAX_PIXELS=786432] setsid nohup bash scripts/observe.sh > artifacts/agent/logs/observe.log 2>&1 &
 set -uo pipefail
 if [ -z "${IN_SCOPE:-}" ]; then  # memory-capped cgroup (30 GB RAM, no swap)
   exec systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 env IN_SCOPE=1 bash "$0" "$@"
@@ -23,7 +23,7 @@ until curl -sf 127.0.0.1:8765/health >/dev/null; do kill -0 $server 2>/dev/null 
 
 for tag in ${TAGS:-dev val full}; do
   echo "$(date +%T) extract $tag"
-  .venv/bin/python -m geo_search_env.experiment.observe extract --tag $tag --name $name 2>&1
+  .venv/bin/python -m geo_search_env.experiment.observe ${NODE:-extract} --tag $tag --name $name --base ${BASE:-9b} 2>&1
 done
 kill $server; wait $server 2>/dev/null; server=""
 for tag in ${TAGS:-dev val full}; do

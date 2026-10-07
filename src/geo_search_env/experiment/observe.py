@@ -127,6 +127,59 @@ def extract(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers:
     print(f"{tag}: {len(answers)} answers, {sum(a is None for a in answers)} failed, {sum(parse(a) is None for a in answers)} unparsed -> {path}")
 
 
+CROP_PROMPT = ('Read all text visible in this image crop (signs, shop names, plates, posters). Answer with JSON only: {"text": ["verbatim text", ...]}, '
+               'at most 10 items, no repeats; {"text": []} if there is none.')
+
+
+def crops(tag: str, base: str, out: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
+    """Text from 4 overlapping tiles per photo (each 60% of the width and height), merged into the `base` clues -> observe_{tag}_{out}.json."""
+
+    import io
+
+    from PIL import Image
+
+    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    clues = json.loads((OUT / f"observe_{tag}_{base}.json").read_text(encoding="utf-8"))
+    images = MP16Images()
+
+    def tiles(e: dict) -> list[str]:
+        im = Image.open(io.BytesIO(_read(e, images))).convert("RGB")
+        w, h = im.size
+        out = []
+        for x0, y0 in ((0, 0), (0.4, 0), (0, 0.4), (0.4, 0.4)):
+            buf = io.BytesIO()
+            im.crop((int(x0 * w), int(y0 * h), int((x0 + 0.6) * w), int((y0 + 0.6) * h))).save(buf, "JPEG", quality=92)
+            out.append(base64.b64encode(buf.getvalue()).decode())
+        return out
+
+    def run(job: tuple[int, str]) -> str | None:
+        body = {"model": "vlm", "temperature": 0.0, "max_tokens": 200, "repetition_penalty": 1.05, "chat_template_kwargs": {"enable_thinking": False},
+                "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + job[1]}},
+                                                          {"type": "text", "text": CROP_PROMPT}]}]}
+        request = urllib.request.Request(f"{server}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=900) as response:
+                return json.loads(response.read())["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+
+    jobs = [(i, t) for i, e in enumerate(photos) for t in tiles(e)]
+    with ThreadPoolExecutor(workers) as pool:
+        answers = list(pool.map(run, jobs))
+    extra: dict[int, list[str]] = {}
+    for (i, _), a in zip(jobs, answers):
+        extra.setdefault(i, []).extend((parse(a) or {}).get("text") or [])
+    merged = {}
+    for i, e in enumerate(photos):
+        c = clues[e["image_id"]]
+        parsed = dict(c["parsed"] or {})
+        parsed["text"] = list(dict.fromkeys((parsed.get("text") or []) + extra.get(i, [])))
+        merged[e["image_id"]] = {"raw": c["raw"], "parsed": parsed}
+    (OUT / f"observe_{tag}_{out}.json").write_text(json.dumps(merged) + "\n", encoding="utf-8")
+    added = sum(len(set(extra.get(i, [])) - set((clues[e["image_id"]]["parsed"] or {}).get("text") or [])) > 0 for i, e in enumerate(photos))
+    print(f"{tag}: {len(jobs)} crops, {sum(a is None for a in answers)} failed; new text on {added} photos -> {OUT / f'observe_{tag}_{out}.json'}")
+
+
 def report(tag: str, name: str) -> None:
     obs = json.loads((OUT / f"observe_{tag}_{name}.json").read_text(encoding="utf-8"))
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
@@ -148,12 +201,18 @@ def report(tag: str, name: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("extract", "report"))
+    parser.add_argument("node", choices=("extract", "crops", "report"))
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--name", default="base")
+    parser.add_argument("--base", default="9b", help="crops: the clues the crop text is merged into")
     parser.add_argument("--server", default="http://127.0.0.1:8765")
     args = parser.parse_args(argv)
-    extract(args.tag, args.name, args.server) if args.node == "extract" else report(args.tag, args.name)
+    if args.node == "extract":
+        extract(args.tag, args.name, args.server)
+    elif args.node == "crops":
+        crops(args.tag, args.base, args.name, args.server)
+    else:
+        report(args.tag, args.name)
     return 0
 
 

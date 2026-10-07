@@ -654,6 +654,8 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
       country rules and the VLM's country guess 0.0 even with the 9B's fuller language / driving-side fields; all tools -0.1 (overfits).
     - Ceiling: read text names a place in the true region specifically (<= 5 regions) on 4 / 102 dev and 7 / 106 val fixable photos.
     - Extraction: greedy JSON from the 4B looped on long text lists (8.8% unparsed); text last + capped + repetition penalty 1.05 -> 0%.
+    - Crops: 9B text from 4 overlapping tiles per photo lifts text coverage on fixable photos 43% -> 63-73% but rank + text stays +0.4 [-0.0, +0.8]
+      (14 / 6): reading quality isn't the limit, the text isn't geographic.
 
 55. **Capacity and resolution barely move region knowledge on hard photos (2026-10-07; `agent_capacity.py`, `scripts/capacity.sh`).** Right region
     (country > region) on dev + val fixable photos: Qwen3.5-4B 13.9%, Qwen3.5-9B 16.8% (+2.9 [-1.9, +7.7]); city 6.3 vs 10.7 (+4.4 [+0.6, +8.8]).
