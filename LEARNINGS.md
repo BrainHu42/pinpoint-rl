@@ -66,7 +66,7 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 51: Pinpoint's attention reranker is the baseline from 2026-10-07, run unfiltered like prior work (29.5 / 47.4 / 61.9); with the photographer filter
   it ties our one-step reranker (+0.9 at 1 km, -0.9 at 25 km). The filter moves yfcc4k by 18 pts at 1 km and nothing else.
 - 52: by eye, of 40 random attention-reranker misses (> 25 km), a person places 3 within 25 km (two landmarks retrieval never proposed, one ranked 3rd);
-  most misses have no place signal (yfcc4k: 13 of 20). Picking from the 12 candidates by eye would fix 1 of the 11 with a right candidate.
+  the rest split between region-level signal only (16) and no place signal (18; yfcc4k 11 of 20). Picking from the 12 candidates by eye would fix 1 of the 11 with a right candidate.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -749,9 +749,10 @@ baseline for new evidence (10, 13).
     - Within 25 km by eye, reranker wrong: 3 of 40, all im2gps3k: Qingdao TV tower (top-1 458 km, no right candidate), the Parthenon-frieze copy in Athens'
       Acropoli metro station (right answer ranked 3rd, top-1 Lisbon), Duxbury's Powder Point Bridge (no right candidate). yfcc4k: 0 of 20.
     - Right country where the reranker had the wrong continent: 1 (a Thai temple "hell garden" statue, top-1 Arkansas).
-    - Same region as the reranker, 25-200 km off for both: ~11 (Valais, Great Salt Lake, Souss, Finland, Outer Hebrides, Hakuba, Korea, Aichi, England x3).
+    - Region-level signal only, usually the reranker's region too: 16 (Valais, Colorado moose, Great Salt Lake, Caribbean reef, Souss argan trees,
+      Finland, Ukraine, Outer Hebrides, Hakuba, Korea, Aichi, Steamboat Springs, Holland, England x3).
       A person gets the region; the exact place would need a landmark.
-    - No place signal: ~20 (pets, portraits, interiors, close-ups, a tripod shadow, gravestones, generic woods and streams); 13 of the 20 yfcc4k misses.
+    - No place signal: 18 (pets, portraits, interiors, close-ups, a tripod shadow, gravestones, generic woods, streams and bridges); 11 of the 20 yfcc4k misses.
     - Misleading or possibly mislabelled: a German "Achtung Weihnachten!" shop window labelled Shanghai (reranker and the reader both said Berlin); Chicago-
       looking towers labelled San Francisco (both said Chicago).
     - Of the 11 misses with a right candidate among the 12, the reader would pick it for 1 (Athens); the rest are look-alike neighbours (Bristol vs
