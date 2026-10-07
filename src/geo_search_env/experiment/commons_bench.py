@@ -1,13 +1,16 @@
 # A new geolocation benchmark from recent Wikimedia Commons photos (the "plain" design): photos taken after the models' training cut-off, with
 # device GPS in their EXIF that agrees with the page coordinate.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench scan       (network, CPU; metadata only -> candidates.jsonl)
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench download   (network; 1024 px thumbnails of candidates.jsonl)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench select     (CPU; a capped, spread, region-balanced pick -> selected.jsonl)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench download   (network; 1024 px thumbnails of selected.jsonl)
 
 """scan:     walks Commons uploads in time windows spread over [--start, --end) (upload time), skips bot accounts and non-JPEGs, and keeps photos whose
           EXIF has GPS and a capture time (GPS date stamp if present, else DateTimeOriginal) on or after --taken-after, a camera model, a long side
           >= 1024 px, and, when the page has a camera coordinate, EXIF GPS within 50 m of it. Mapillary imports are dropped. Appends to candidates.jsonl
           (resumable: finished windows are recorded in scan_windows.txt).
-download: fetches the 1024 px thumbnail of every candidate (or of --input) into images/<page id>.jpg, skipping files already present."""
+select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
+          uploader, --min-gap-km between any two, no country above --max-country-share of the target.
+download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present."""
 
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 OUT = Path("/data/pinpoint/commons26")
+GEONAMES = Path("/data/pinpoint/geonames/allCountries.txt")
 API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "commons-recent-gps-photos/0.6 (research script; contact: kinghorton42@gmail.com)"
 MAX_GPS_GAP_M = 50.0
@@ -162,6 +166,73 @@ def scan(start: datetime, end: datetime, windows: int, per_window: int, taken_af
             print(f"window {w + 1}/{windows} {key}: {len(uploads)} uploads, {len(titles)} non-bot JPEGs, {len(records)} kept (total {len(seen)})", flush=True)
 
 
+def _places() -> tuple[Any, Any]:
+    """GeoNames populated places (>= 1,000 people) as unit vectors and their country codes, cached in OUT/places.tsv."""
+    import numpy as np
+
+    path = OUT / "places.tsv"
+    if not path.exists():
+        with GEONAMES.open(encoding="utf-8") as src, path.open("w", encoding="utf-8") as dst:
+            for line in src:
+                f = line.split("\t")
+                if f[6] == "P" and f[14].isdigit() and int(f[14]) >= 1000:
+                    dst.write(f"{f[4]}\t{f[5]}\t{f[8]}\n")
+    rows = [line.rstrip("\n").split("\t") for line in path.open(encoding="utf-8")]
+    return _unit(np.array([[float(r[0]), float(r[1])] for r in rows])), np.array([r[2] for r in rows])
+
+
+def _unit(latlon: Any) -> Any:
+    import numpy as np
+
+    lat, lon = np.radians(latlon[:, 0]), np.radians(latlon[:, 1])
+    return np.c_[np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]
+
+
+def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, seed: int) -> None:
+    """Greedy pick over continents in turn: at most `per_uploader` photos per uploader, `min_gap_km` between any two, no country above the share."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    records = [json.loads(line) for line in (OUT / "candidates.jsonl").open()]
+    latlon = np.array([[r["lat"], r["lon"]] for r in records])
+    vectors, codes = _places()
+    countries = codes[cKDTree(vectors).query(_unit(latlon))[1]]
+    continent = {f[0]: f[8] for line in GEONAMES.with_name("countryInfo.txt").open(encoding="utf-8")
+                 if not line.startswith("#") and len(f := line.rstrip("\n").split("\t")) > 8}
+    by_region: dict[str, list[int]] = {}
+    for i in np.random.default_rng(seed).permutation(len(records)):
+        by_region.setdefault(continent.get(countries[i], "??"), []).append(int(i))
+    picked: list[int] = []
+    uploads: dict[str, int] = {}
+    per_country: dict[str, int] = {}
+    tree_points: list[Any] = []
+    gap = min_gap_km / 6371.0
+    while len(picked) < target and any(by_region.values()):
+        for region in sorted(by_region):
+            queue = by_region[region]
+            while queue:
+                i = queue.pop()
+                r, c = records[i], countries[i]
+                if uploads.get(r["uploader"], 0) >= per_uploader or per_country.get(c, 0) >= max(1, max_country_share * target):
+                    continue
+                v = _unit(latlon[i:i + 1])[0]
+                if tree_points and np.min(np.linalg.norm(np.array(tree_points) - v, axis=1)) < gap:
+                    continue
+                picked.append(i)
+                tree_points.append(v)
+                uploads[r["uploader"]] = uploads.get(r["uploader"], 0) + 1
+                per_country[c] = per_country.get(c, 0) + 1
+                break
+            if len(picked) >= target:
+                break
+    with (OUT / "selected.jsonl").open("w", encoding="utf-8") as f:
+        f.writelines(json.dumps({**records[i], "country": str(countries[i]), "continent": continent.get(countries[i], "??")}) + "\n" for i in picked)
+    regions = {k: sum(continent.get(countries[i], "??") == k for i in picked) for k in sorted(by_region)}
+    top = sorted(per_country.items(), key=lambda kv: -kv[1])[:10]
+    print(f"{len(records)} candidates from {len({r['uploader'] for r in records})} uploaders -> {len(picked)} selected from {len(uploads)} uploaders, "
+          f"{len(per_country)} countries\n by continent {regions}\n top countries {top}")
+
+
 def _fetch(record: dict[str, Any], folder: Path) -> str:
     path = folder / f"{record['page_id']}.jpg"
     if path.exists():
@@ -191,19 +262,26 @@ def download(input_path: Path, workers: int) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("node", choices=("scan", "download"))
+    parser.add_argument("node", choices=("scan", "select", "download"))
     parser.add_argument("--start", default="2026-07-01", help="scan: oldest upload time")
     parser.add_argument("--end", default=None, help="scan: newest upload time (default now)")
     parser.add_argument("--taken-after", default="2026-07-01", help="scan: earliest capture date")
     parser.add_argument("--windows", type=int, default=100)
     parser.add_argument("--per-window", type=int, default=1000, help="scan: uploads read per window")
     parser.add_argument("--workers", type=int, default=2)
-    parser.add_argument("--input", type=Path, default=OUT / "candidates.jsonl", help="download: records to fetch")
+    parser.add_argument("--target", type=int, default=600, help="select: photos to pick")
+    parser.add_argument("--per-uploader", type=int, default=2)
+    parser.add_argument("--min-gap-km", type=float, default=2.0)
+    parser.add_argument("--max-country-share", type=float, default=0.15)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--input", type=Path, default=OUT / "selected.jsonl", help="download: records to fetch")
     args = parser.parse_args(argv)
     if args.node == "scan":
         utc = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
         end = utc(args.end) if args.end else datetime.now(timezone.utc) - timedelta(hours=1)
         scan(utc(args.start), end, args.windows, args.per_window, utc(args.taken_after), args.workers)
+    elif args.node == "select":
+        select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.seed)
     else:
         download(args.input, args.workers)
     return 0
