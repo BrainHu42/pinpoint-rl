@@ -70,6 +70,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   on MP16 dev only (+0.1 on photos never used; the first +0.4 was fitted on the 'val' benchmark photos); POI names +0.2, features / rules / country guess ~0; text names the true region on ~5% of fixable photos.
 - 56 (old pool): 9B vs 4B right region on fixable photos 16.8 vs 13.9% (n.s.); resolution helps up to 786k px; model agreement trades fixes for breaks.
 - 57 (old pool): by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
+- 58: landmark / object identification by VLM object box + SigLIP2 crop search over MP16 + keypoint / RANSAC verification: best +0.0 on dev3k;
+  verification prefers wrong hits (right wins 12% with RANSAC inliers). Needs real recognition, not crop retrieval.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

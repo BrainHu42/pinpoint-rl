@@ -684,3 +684,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     people, food, sky, generic nature); a readable business / organisation name ~15% (POI search; the 9B misread one); a recognisable landmark 12%
     (landmark matching); country-level cultural objects 12% (e.g. Strandkorb beach chairs). GeoNames suits places, not the business names hard photos
     show; Overture places covers more but not all (2,907 vs 1,946 of the read n-grams matched).
+
+58. **Landmark / object identification by crop search over MP16 doesn't work (2026-10-07; dev3k with Pinpoint's pool; `observe.py objects`,
+    `landmark_id.py`).** Motivation: by the user's own analysis ~6% of Pinpoint's >= 25 km mistakes are fixable by landmark / object identification
+    (Qingdao TV tower, Athens metro frieze, Duxbury bridge). The 9B *names* a landmark correctly (city within 25 km) on only 0.6% of dev3k mistakes,
+    so recognition, not the idea, is the gap.
+    - Tool: the 9B boxes the most distinctive object (2,557 / 3,000 photos; often generic: "rainbow", "brown insect"); the crop is searched with
+      SigLIP2 against all 4.1M MP16 photos (same-photographer rows excluded); hits verified by SuperPoint + LightGlue.
+    - Crop search alone: top-1 hit < 25 km on 14.3% of searched photos vs Pinpoint 34.5% on the same photos. On Pinpoint's mistakes a hit within
+      25 km of the truth is among the top-1 / 5 / 20 for 2.4 / 7.2 / 17.1%, but mostly nearby photos, not the same object.
+    - Verification can't pick them: raw LightGlue matches, right vs best wrong hit median 8 vs 10 (right wins 39%); RANSAC (MAGSAC) inliers 11 vs 21
+      (right wins 12%). Switch rules over thresholds and hit agreement: best +0.0 at 25 km, looser ones negative (e.g. -1.1, 13 fixes / 47 breaks).
+    - Reading: strong geometric matches come from the same *kind* of thing elsewhere (repetitive facades, chain signage). Identifying the user's
+      examples needs real recognition (a much stronger model, or a curated landmark collection), not crop retrieval in MP16.
