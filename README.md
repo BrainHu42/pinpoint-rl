@@ -18,7 +18,9 @@ excluded.
 - `src/geo_search_env/data/benchmarks.py`: benchmark loader and metrics.
 - `src/geo_search_env/models/pinpoint.py`: frozen Pinpoint retrieval baseline.
 - `scripts/`: end-to-end evaluation scripts (serve a model with vLLM, evaluate, stop the server).
-- `tests/`: pytest suite; `fixtures/`: synthetic test fixtures.
+- `tests/`: pytest suite.
+- Code of superseded directions (comparator, near-miss, map search, stage-1 evidence, the Mapillary environment) was removed;
+  it is at git tag `pre-cleanup-2026-10-07`.
 - `data/` (git-ignored): datasets, model weights, gallery embeddings and Hugging Face caches.
 - `.venvs/` (git-ignored): SFT, GRPO and vLLM environments.
 - `artifacts/` (git-ignored): caches, datasets, logs and result JSONs, all rebuilt by the modules (see `SETUP.md`).

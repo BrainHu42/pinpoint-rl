@@ -2,6 +2,7 @@
 
 The numbered lessons behind `LEARNINGS.md`'s summary, with full numbers. Conventions (metrics, eval sets, standard
 errors) are at the top of `LEARNINGS.md`. Add new lessons here and a one-line entry to the summary there.
+Modules and scripts named in lessons 1-51 that are no longer in the tree are at git tag `pre-cleanup-2026-10-07`.
 
 1. **Selection among one-shot retrieval results is saturated.** SFT and GRPO both land at reranker parity, while the
    right answer is in the shown list for 33 / 59%. The model and the reranker agree on >90% of photos; disagreements

@@ -65,5 +65,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   (candidate name scoring + combiner). Photo sets: `query_evidence.py select` (tags `dev`, `val`, `full`).
 - Knowledge diagnostics (lessons 52-53): `knowledge_check.py` (answers, report, rule), `knowledge_oracle.py` (perfect-knowledge
   ceiling per level, fixable photos), `knowledge_coverage.py` (accuracy by training coverage).
-- Earlier lines (comparator, near-miss, stage-1 evidence, map search): modules named in their lessons (`LESSONS.md`).
+- Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment): removed 2026-10-07; their
+  modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. Kept helpers they shared:
+  `evidence_test`, `exemplar_judge`, `multi_exemplar`, `wiki_backend`, `category_evidence`, `coarse_filter`, `feasibility`.
 - Caches: `artifacts/` (not tracked). Setup from scratch: `SETUP.md`.

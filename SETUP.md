@@ -29,7 +29,7 @@ All project datasets, caches, checkpoints, and training environments live inside
 | `data/hf/datasets/MP16-Pro` | MP16 metadata, tar shards, `tar_index.pkl` | `strategy_search.MP16_CSV`, `verifiers.MP16_ROOT` |
 | `data/pinpoint/{mp16,osv5m}-embed/siglip2-giant-opt-patch16-384` | gallery embeddings | `strategy_search.MP16_EMBED`, `OSV_EMBED` |
 | `data/pinpoint/{im2gps3k,yfcc4k}` | benchmark CSVs, images, embeddings | `data/benchmarks.py` (`DATA_ROOT`) |
-| `data/pinpoint/geonames` | GeoNames dump | `llm_advantage.py`, `evidence_test.py` |
+| `data/pinpoint/geonames` | GeoNames dump (fuzzy geocoding, feature codes) | `evidence_test.py` |
 | `data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
 | `$PINPOINT_ROOT` | Pinpoint checkpoint + retrieval index | `models/pinpoint.py` |
 | `data/pinpoint/overture` | Overture division polygons (knowledge SFT place labels) | `place_labels.py` |
@@ -154,8 +154,8 @@ MP16 training side (`artifacts/sft`):
 4. `sft_data overlay`: burned-in GPS filter (needs base Qwen served, see §7).
 5. `sft_data dataset --variant sft_retrieval`: the SFT dataset.
 
-Analyses: `llm_advantage` (needs `OPENROUTER_API_KEY`), `query_headroom`, `evidence_test landmarks` then
-`evidence_test run`.
+Analyses: `query_headroom`, `evidence_test landmarks` then `evidence_test run`; knowledge diagnostics `knowledge_check`,
+`knowledge_oracle`, `knowledge_coverage` (lessons 52-53).
 
 ## 7. Serving, training and evaluation
 

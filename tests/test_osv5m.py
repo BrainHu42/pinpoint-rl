@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 
-from geo_search_env import OSV5MDataset
+from geo_search_env.data.osv5m import OSV5MDataset
 
 
 class OSV5MDatasetTests(unittest.TestCase):

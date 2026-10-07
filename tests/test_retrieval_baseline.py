@@ -2,7 +2,8 @@ import unittest
 
 import numpy as np
 
-from geo_search_env import Coordinate, PinpointRetrievalBaseline, RetrievalCandidate
+from geo_search_env.core.contracts import Coordinate
+from geo_search_env.models.pinpoint import PinpointRetrievalBaseline, RetrievalCandidate
 
 
 class RetrievalBaselineContractTests(unittest.TestCase):
