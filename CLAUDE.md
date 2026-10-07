@@ -18,6 +18,9 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Next: **`KNOWLEDGE_PLAN.md`** (agreed 2026-10-06): knowledge SFT warm start (photo -> "country > region > city"),
   then GRPO on photo + retrieval candidates from the knowledge model vs from the base 4B; measured by fixes on the
   benchmark photos where the reranker is wrong. Real geolocation only; no artificial held-out tasks.
+- 2026-10-07: step 1 done, GRPO gate failed (lessons 52-53: the SFT's knowledge sits where retrieval already works). **Proposed next
+  (not yet agreed): `AGENT_DIRECTION.md`**, an agent that geolocates like a professional: constraints from text, rules and
+  feature co-occurrence map queries via tools, retrieval as the candidate generator.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 

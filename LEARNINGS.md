@@ -57,6 +57,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 51: concept-query similarity around each candidate is real alone but adds +0.3 / +0.0 to the reranker (lesson 15's open variant).
 - 52: knowledge SFT (250k photos) names the right country / region +7.7 / +4.4 pts more often where the reranker fails, but as a chooser adds
   -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
+- 53: not a coverage gap: at equal training photos per region the model names the region 55% on reranker-right photos, 6% on
+  the fixable ones. Those photos don't look like their region; next is non-appearance clues via tools (`AGENT_DIRECTION.md`).
 
 **Next.** `KNOWLEDGE_PLAN.md` (knowledge SFT warm start, then GRPO). The ranked directions of 2026-10-05 it replaces are at the end of `LESSONS.md`.
 

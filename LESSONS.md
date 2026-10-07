@@ -637,6 +637,13 @@ errors) are at the top of `LEARNINGS.md`. Add new lessons here and a one-line en
       reranker already gets right: its knowledge, like every earlier evidence source (17-19), sits on the photos retrieval already solves.
     - Next lever is far more knowledge per photo at region level, not RL on the current model: a larger model, much more knowledge data, or tools.
 
+53. **The photos retrieval fails on are hard for the VLM too, not under-covered (2026-10-07; `knowledge_coverage.py`).** Region named right
+    (knowledge-a / base 4B) by how many of the 248k SFT training photos share the photo's true region, on the 413 region-fixable photos (lesson 52) vs
+    photos the reranker gets right: 1-50 training photos 0.0 / 5.7 % vs 11.6 / 8.7 %; 50-300 5.6 / 2.8 vs 42.0 / 21.8; 300-1,500 5.9 / 3.9 vs
+    55.4 / 37.6; 1,500+ 20.8 / 17.5 vs 62.0 / 59.2. Median training photos in the true region: fixable 872, reranker-right 1,073. The SFT learned
+    these regions (the reranker-right column gains most), but the fixable photos don't show them; more or harder knowledge data of the same kind
+    is unlikely to help. Next direction: clues that aren't overall appearance, used through tools (`AGENT_DIRECTION.md`).
+
 ## Directions as of 2026-10-05 (superseded by `KNOWLEDGE_PLAN.md`)
 
 1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the
