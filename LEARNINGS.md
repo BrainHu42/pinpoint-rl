@@ -65,8 +65,9 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
   -0.7 at 25 km); labels and 250k training photos are built, training has not run yet.
 - 51: Pinpoint's attention reranker is the baseline from 2026-10-07, run unfiltered like prior work (29.5 / 47.4 / 61.9); with the photographer filter
   it ties our one-step reranker (+0.9 at 1 km, -0.9 at 25 km). The filter moves yfcc4k by 18 pts at 1 km and nothing else.
-- 52: by eye, of 40 random attention-reranker misses (> 25 km), a person places 3 within 25 km (two landmarks retrieval never proposed, one ranked 3rd);
-  the rest split between region-level signal only (16) and no place signal (18; yfcc4k 11 of 20). Picking from the 12 candidates by eye would fix 1 of the 11 with a right candidate.
+- 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
+  readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
+  pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -743,21 +744,27 @@ baseline for new evidence (10, 13).
       and order, built with the filter: on yfcc4k they must be rebuilt unfiltered before comparing with the unfiltered baseline (im2gps3k and wikimedia
       are unaffected).
 
-52. **Where Pinpoint's attention reranker fails, by eye (2026-10-07; one reader, the agent; 20 random > 25 km misses per benchmark, eval half, no filter).**
-    Misses are 756 of 1,480 im2gps3k and 1,197 of 2,233 yfcc4k eval-half photos; a candidate < 25 km is among its 12 for 30% / 33% of them. Each photo was
-    guessed blind, then checked against the label.
-    - Within 25 km by eye, reranker wrong: 3 of 40, all im2gps3k: Qingdao TV tower (top-1 458 km, no right candidate), the Parthenon-frieze copy in Athens'
-      Acropoli metro station (right answer ranked 3rd, top-1 Lisbon), Duxbury's Powder Point Bridge (no right candidate). yfcc4k: 0 of 20.
-    - Right country where the reranker had the wrong continent: 1 (a Thai temple "hell garden" statue, top-1 Arkansas).
-    - Region-level signal only, usually the reranker's region too: 16 (Valais, Colorado moose, Great Salt Lake, Caribbean reef, Souss argan trees,
-      Finland, Ukraine, Outer Hebrides, Hakuba, Korea, Aichi, Steamboat Springs, Holland, England x3).
-      A person gets the region; the exact place would need a landmark.
-    - No place signal: 18 (pets, portraits, interiors, close-ups, a tripod shadow, gravestones, generic woods, streams and bridges); 11 of the 20 yfcc4k misses.
-    - Misleading or possibly mislabelled: a German "Achtung Weihnachten!" shop window labelled Shanghai (reranker and the reader both said Berlin); Chicago-
-      looking towers labelled San Francisco (both said Chicago).
-    - Of the 11 misses with a right candidate among the 12, the reader would pick it for 1 (Athens); the rest are look-alike neighbours (Bristol vs
-      Sheffield, Hakuba vs Gifu, Colorado vs Utah). This agrees with lesson 35: most of the gap to the 12-candidate oracle isn't recoverable by inspection,
-      and the visible wins are landmarks, half of which retrieval never proposes.
+52. **Where Pinpoint's attention reranker fails, by eye (2026-10-07; one reader, the agent; 140 random > 25 km misses, 70 per benchmark, eval half, no
+    filter; two scans of 40 and 100).** Misses are ~750 of 1,480 im2gps3k and ~1,190 of 2,233 yfcc4k eval-half photos; a candidate < 25 km is among its
+    12 for ~31% of them. Each photo was guessed blind (guesses written down), then checked against the label.
+    - Within 25 km by eye, reranker wrong: 8 of 140 (+1 low-confidence: Mendoza's grape-harvest parade). im2gps3k 6 of 70: Qingdao TV tower, Athens'
+      Acropoli metro station (Parthenon-frieze copy), Duxbury's Powder Point Bridge, the Prince Charles Edward cairn at Arnish near Stornoway (a plaque),
+      Mount Kinabalu's summit, a Porsche dealer in Luxembourg (porsche.lu on the car). yfcc4k 2 of 70: Toledo (a "San Silvestre Toledana" race banner),
+      Moab (Colorado River canyon). Right answer among the 12: 4 of 8 (Athens 3rd, Kinabalu 2nd, Toledo 6th, Moab 2nd); never proposed: 4 (Qingdao,
+      Duxbury, Stornoway, Luxembourg). Readable text drives 3 of the 8; SigLIP2 retrieval barely uses it.
+    - Right country where the reranker had the wrong country or continent: 3 (Thai temple statue vs Arkansas, Spanish graffiti vs Valparaiso, Iberian
+      roller hockey vs Switzerland).
+    - Shared errors, where the photo points somewhere else: 5 (a German shop window in Shanghai; Chicago-like towers in San Francisco; Seville-style tiled
+      pergola in Buenos Aires' Rosedal; a Polish Coca-Cola ad at Atlanta's Coca-Cola museum; a French-plated car at a UK show). Plus my own outright misses
+      (a "UNIS" gym I put in Hanoi was in Beijing).
+    - Region only, usually the reranker's region too: ~50 (Valais, Scottish Highlands, Tuscany, Patagonia, Morocco, Japan, Vietnam, Taiwan, California...).
+      Getting the exact place would need a landmark.
+    - No place signal: 73 of 140 (pets, people, interiors, food, sky, close-ups, sports halls, fireworks); yfcc4k 39 of 70, im2gps3k 34 of 70.
+    - Choosing: of 45 misses with a right candidate among the 12, a person would pick it for ~4 (Athens, Kinabalu, Toledo, Moab); ~15 of the 45 have no
+      place signal at all (the right candidate is there by luck), the rest are look-alike neighbours (Saint-Ouen vs Bordeaux, Evolene vs Gampel, Suzhou vs
+      Shanghai). Agrees with lesson 35: little of the gap to the 12-candidate oracle is recoverable by inspection.
+    - So the visible wins are landmarks and text, ~6% of misses (~3% of all photos at 25 km), half outside the candidate list. A gain there needs a
+      recognizer or a text reader that can propose new places, not a better chooser.
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
