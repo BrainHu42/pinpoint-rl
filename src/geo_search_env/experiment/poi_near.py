@@ -20,7 +20,7 @@ from typing import Sequence
 import numpy as np
 
 PLACES = Path("data/pinpoint/overture/places")
-ROOT = Path("artifacts/query_evidence")
+PHOTO_SETS = Path("artifacts/photo_sets")
 OUT = Path("artifacts/agent")
 CELL = 0.02  # degrees; candidates look up their own and the 8 neighbouring cells (>= ~2 km in every direction below 60 degrees latitude)
 MIN_LEN = 4
@@ -47,7 +47,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--clues", default="9b")
     parser.add_argument("--memory", default="10GB")
     args = parser.parse_args(argv)
-    sets = {t: json.loads((ROOT / t / "dev.json").read_text(encoding="utf-8")) for t in args.tags}
+    sets = {t: json.loads((PHOTO_SETS / t / "photos.json").read_text(encoding="utf-8")) for t in args.tags}
     clues = {t: json.loads((OUT / f"observe_{t}_{args.clues}.json").read_text(encoding="utf-8")) for t in args.tags}
     cells = {c for photos in sets.values() for e in photos for lat, lon in e["pool"] for c in _cells(lat, lon)}
     con = duckdb.connect()

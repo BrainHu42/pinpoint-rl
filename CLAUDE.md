@@ -13,15 +13,14 @@ experiments); full numbered lessons in `LESSONS.md`.**
 ## Research plan (2026-10-07)
 - **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
   exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
-  (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; MP16 dev 16.0 / 33.9 (oracle 27.0 / 49.5).
+  (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; dev3k 17.0 / 33.4 (oracle 27.5 / 50.3).
 - Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
   over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
   visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
 - **Direction: `AGENT_DIRECTION.md`** (agreed 2026-10-07): train an agent that geolocates like a professional, using
   constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
   candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
-  where the reranker is wrong but knowing the region would fix it (371 of 3,795 on the eval halves; develop on the
-  MP16 dev equivalent, 347 of 3,836: `knowledge_oracle devall`).
+  where the reranker is wrong but knowing the region would fix it (dev3k: 302 of 3,000, `agent_targets --tags dev3k`).
 - Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
@@ -31,14 +30,15 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 | Split | What | Size |
 |---|---|---|
 | **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 35,359 |
-| **dev** | `dev3k` (`artifacts/query_evidence/dev3k`): choose and tune everything here | 3,000 |
-| **test** | im2gps3k + yfcc4k eval halves (`artifacts/query_evidence/full`): measure once per finished method | 3,795 |
+| **dev** | `dev3k` (photo set `artifacts/photo_sets/dev3k`, Pinpoint's pool): choose and tune everything here | 3,000 |
+| **test** | im2gps3k + yfcc4k eval halves (photo set `full`) | 3,795 |
 - **Leave the test set alone** (user, 2026-10-07): no training, tuning, model runs, feature extraction, diagnostics or measurements on
   it unless the user asks. Everything is chosen and measured on dev.
 - No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
 - Target: improvements of **>= 1 pt** at 25 km over the reranker top-1 (user, 2026-10-07); dev3k (+-0.26 pts SE) resolves that.
-- Retired: the `val` tag (1,000 test photos, never use), the 1,000-photo `dev` and `dev10k` (dev3k is a fixed random subset of dev10k;
-  the other 7,000 went back to train), the knowledge-SFT bucket 0-98 exception.
+- dev3k is rebuilt from `artifacts/agent/dev3k_ids.json` (`agent_targets --make-dev dev3k`, then `place_labels pool-labels --tag dev3k`).
+- Retired: the `val` photo set (1,000 test photos, never use), the photo sets `dev` / `devall` and the old `artifacts/query_evidence/*`
+  sets (old one-step-reranker pools), dev10k, the knowledge-SFT bucket 0-98 exception.
 - Burned-in GPS photos are already filtered out of train and dev. No wikimedia (not on this machine).
 
 ## Rules
@@ -69,7 +69,10 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - `data/benchmarks.py`: benchmark loader and metrics. `paths.py`: storage roots.
 - `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact.
 - `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
-- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (tags `dev`, `devall`, `val`, `full`; `load_photos`).
+- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`).
+- Agent tools (lessons 55-57): `agent_targets.py` (dev set, splits, fixable targets), `observe.py` + `scripts/observe.sh` (VLM clues,
+  landmarks, crops), `geo_tools.py` (GeoNames / Overture tools, CV combiner), `poi_query.py` / `poi_near.py` (Overture places,
+  env `.venvs/overture`), `landmark_match.py` (keypoints, env `.venvs/sft`), `agent_capacity.py`, `agent_vote.py`.
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).

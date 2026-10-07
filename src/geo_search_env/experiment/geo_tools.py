@@ -27,7 +27,7 @@ import numpy as np
 
 from ..paths import DATA_ROOT
 from .observe import OUT, VOCAB
-from .query_evidence import ROOT
+from .photo_sets import load_photos
 
 GEONAMES = DATA_ROOT / "geonames"
 INDEX = OUT / "geonames_index.npz"
@@ -261,7 +261,7 @@ def _hit(name: str, blob: str) -> float:
 
 
 def score(tag: str, name: str) -> None:
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    photos = load_photos(tag)
     obs = json.loads((OUT / f"observe_{tag}_{name}.json").read_text(encoding="utf-8"))
     g = Gazetteer()
     langs, country_names = _countries()
@@ -283,8 +283,9 @@ def score(tag: str, name: str) -> None:
     pois = POIs(name, g)
     lm_path = OUT / f"landmark_{tag}_{name}.json"
     lms = json.loads(lm_path.read_text(encoding="utf-8")) if lm_path.exists() else {}
+    from .agent_targets import load_labels
     from .knowledge_check import _right
-    cand_labels = {p["image_id"]: p["pool"] for p in json.loads((Path("artifacts/place_labels") / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
+    cand_labels = {p["image_id"]: p["pool"] for p in load_labels(tag)}
     for i, e in enumerate(photos):
         lm = lms.get(e["image_id"]) or {}
         lm_w = CONFIDENCE.get(norm(lm.get("confidence") or ""), 0.3)
@@ -366,7 +367,7 @@ def _load(tag: str, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.n
 
     from .strategy_search import _haversine_km
 
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    photos = load_photos(tag)
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
     T = np.load(OUT / f"tools_{tag}_{name}.npz")["F"]
     if T.shape[-1] < len(FEATURES):  # feature files written before later tools were added
@@ -412,7 +413,7 @@ def _auc(F: np.ndarray, D: np.ndarray, V: np.ndarray, j: int, rows: np.ndarray) 
 
 
 def _summary(label: str, hits: dict, base: np.ndarray, fix: np.ndarray) -> str:
-    from .stage1_eval import _bootstrap
+    from .strategy_search import _bootstrap
 
     parts = []
     for km in (1, 25):

@@ -16,9 +16,9 @@ from typing import Sequence
 
 import numpy as np
 
+from .photo_sets import load_photos
 from .sft_data import MP16Images
 
-ROOT = Path("artifacts/query_evidence")
 OUT = Path("artifacts/agent")
 CACHE = Path("artifacts/sft")
 GALLERY = Path("data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384")
@@ -68,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return feats[image_id]
 
     for tag in args.tags:
-        photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+        photos = load_photos(tag)
         lms = json.loads((OUT / f"landmark_{tag}_{args.clues}.json").read_text(encoding="utf-8"))
         C = max(len(e["pool"]) for e in photos)
         F = np.zeros((len(photos), C, 2), np.float32)

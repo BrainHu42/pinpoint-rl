@@ -1,136 +1,72 @@
-# AGENT_DIRECTION.md target photos per photo set: where the reranker top-1 is >= 25 km off, is a pool candidate within 25 km ("choosing"),
-# and would knowing the true region fix it ("fixable": the best-ranked candidate in the truth's (country, region) is < 25 km)?
-# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets [--tags dev val full]
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --select-big dev10k --n 10000   (bigger MP16 development set)
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --subset dev10k dev3k 3000   (fixed random subset, artifacts sliced)
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --splits   (artifacts/agent/splits.json: train / dev / test ids)
-# Note: only `dev` (and sets built here) are MP16; `val` is 1,000 benchmark eval-half photos (query_evidence select --source bench).
+# AGENT_DIRECTION.md target photos per photo set: where Pinpoint's top-1 is >= 25 km off, is a pool candidate within 25 km ("choosing"), and would
+# knowing the true region fix it ("fixable": the best-ranked candidate in the truth's (country, region) is < 25 km)? Also the dev photo set and the splits.
+# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --make-dev dev3k   (photo set from the dev ids, Pinpoint's pool)
+#        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.place_labels pool-labels --tag dev3k   (Overture labels)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --tags dev3k                (targets)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --splits                    (artifacts/agent/splits.json)
 
 """Writes artifacts/agent/targets_{tag}.json: per photo the image id, reranker top-1 km, pool oracle km, choosing / fixable flags and the rank of
 the first candidate in the true region (None if no candidate is there or the truth has no region label). Prints the counts and what a perfect
-region chooser would add."""
+region chooser would add. Photo sets and labels come from photo_sets.py / place_labels.py (artifacts/photo_sets/<tag>/)."""
 
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
 
 from .knowledge_check import _right
-from .query_evidence import ROOT
+from .photo_sets import PHOTO_SETS, load_photos
 from .strategy_search import _haversine_km
 
-LABELS = Path("artifacts/place_labels")
 OUT = Path("artifacts/agent")
+DEV_IDS = OUT / "dev3k_ids.json"  # the 3,000 dev photos (a fixed random subset of MP16 bucket 99; CLAUDE.md "Data")
+
+
+def load_labels(tag: str) -> list[dict[str, Any]]:
+    return json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))
 
 
 def same_region(cand: dict, truth: dict) -> bool:
-    if truth.get("source") == "geonames":  # GeoNames codes ("US", "US.CA"): exact match
-        return bool(truth.get("region")) and cand.get("region") == truth["region"]
     return bool(truth.get("country") and truth.get("region")) and _right(cand.get("country") or "", truth["country"]) and _right(cand.get("region") or "", truth["region"])
 
 
-def select_big(tag: str, n: int) -> None:
-    """A bigger MP16 development set: every eligible held-out `val`-split photo of the SFT pool (so `dev` is included), then held-out `train`-split
-    photos (fixed shuffle) up to `n`; same filters and format as query_evidence.select. The train-split ids used are listed in
-    artifacts/agent/{tag}_train_ids.json so later training on bucket-99 train can exclude them."""
+def make_dev(tag: str = "dev3k") -> None:
+    """The dev photo set: the photos listed in DEV_IDS, with Pinpoint's pool (photo_sets format)."""
 
-    from .query_evidence import CANDIDATES, SFT_ROOT
-    from .sft_data import OVERLAY_THRESHOLD
-    from .strategy_search import MP16_EMBED
-    from .verifiers import _place_names
+    from .photo_sets import _entries, _save
+    from .pinpoint_reference import load_pools
 
-    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
-    scores = json.loads((SFT_ROOT / "overlay_scores.json").read_text(encoding="utf-8"))
-    ok = lambda q: q["group"] == "held_out" and scores.get(q["image_id"]) is not None and scores[q["image_id"]] < OVERLAY_THRESHOLD
-    val = [i for i, q in enumerate(queries) if ok(q) and q["split"] == "val"]
-    train = [i for i, q in enumerate(queries) if ok(q) and q["split"] == "train"]
-    picked = sorted(val + [int(i) for i in np.random.default_rng(1).permutation(train)[: max(0, n - len(val))]])
-    saved = np.load(SFT_ROOT / "candidates.npz")
-    coords, valid, ranking, name_row = saved["coords"], saved["valid"], saved["ranking"], saved["name_row"]
-    latlon = np.fromfile(MP16_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(-1, 2).astype(np.float64)
-    shown = {i: [int(c) for c in ranking[i, :CANDIDATES] if valid[i, c]] for i in picked}
-    names = _place_names({int(name_row[i, c]) for i, cs in shown.items() for c in cs})
-    rows = [{"index": i, "image_id": queries[i]["image_id"], "row": queries[i]["row"], "truth": latlon[queries[i]["row"]].tolist(),
-             "candidates": [[names[int(name_row[i, c])], float(coords[i, c, 0]), float(coords[i, c, 1])] for c in shown[i]],
-             "pool": [[float(coords[i, c, 0]), float(coords[i, c, 1])] for c in ranking[i] if valid[i, c]]} for i in picked]
-    (ROOT / tag).mkdir(parents=True, exist_ok=True)
-    (ROOT / tag / "dev.json").write_text(json.dumps(rows, ensure_ascii=False) + "\n", encoding="utf-8")
-    used_train = sorted(queries[i]["image_id"] for i in picked if queries[i]["split"] == "train")
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / f"{tag}_train_ids.json").write_text(json.dumps(used_train) + "\n", encoding="utf-8")
-    print(f"{tag}: {len(rows)} MP16 photos ({len(val)} val-split, {len(used_train)} train-split) -> {ROOT / tag / 'dev.json'}")
-
-
-def subset(src: str, dst: str, n: int) -> None:
-    """A fixed random subset (seed 0) of photo set `src` as `dst`, with every per-set artifact already computed for `src` sliced to it
-    (photo set, labels, targets, VLM clues / landmark answers, tool feature arrays), so nothing is recomputed."""
-
-    photos = json.loads((ROOT / src / "dev.json").read_text(encoding="utf-8"))
-    keep = np.sort(np.random.default_rng(0).permutation(len(photos))[:n])
-    ids = {photos[i]["image_id"] for i in keep}
-    (ROOT / dst).mkdir(parents=True, exist_ok=True)
-    (ROOT / dst / "dev.json").write_text(json.dumps([photos[i] for i in keep], ensure_ascii=False) + "\n", encoding="utf-8")
-    labels = json.loads((LABELS / f"candidates_{src}.json").read_text(encoding="utf-8"))
-    (LABELS / f"candidates_{dst}.json").write_text(json.dumps([labels[i] for i in keep]) + "\n", encoding="utf-8")
-    done = ["photos", "labels"]
-    for path in sorted(OUT.glob(f"*_{src}*")):
-        name = path.name.replace(f"_{src}", f"_{dst}", 1)
-        if path.suffix == ".json":
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):  # per-photo answers keyed by image id
-                data = {k: v for k, v in data.items() if k in ids}
-            elif data and isinstance(data[0], dict) and "image_id" in data[0]:  # targets
-                data = [data[i] for i in keep]
-            else:  # e.g. the train ids used by select_big: not per-photo
-                continue
-            (OUT / name).write_text(json.dumps(data) + "\n", encoding="utf-8")
-        elif path.suffix == ".npz":  # per-photo feature arrays, rows in photo-set order
-            z = np.load(path)
-            np.savez(OUT / name, **{k: (z[k][keep] if z[k].shape[:1] == (len(photos),) else z[k]) for k in z.files})
-        else:
-            continue
-        done.append(name)
-    print(f"{dst}: {n} of {len(photos)} {src} photos; sliced " + ", ".join(done))
+    pools = load_pools("mp16")
+    queries = pools["queries"]
+    position = {q["image_id"]: i for i, q in enumerate(queries)}
+    picked = sorted(position[i] for i in json.loads(DEV_IDS.read_text(encoding="utf-8")))
+    _save(tag, _entries(pools, picked, lambda i: {"index": i, "image_id": queries[i]["image_id"], "row": queries[i]["row"]}))
+    print(f"{tag}: {len(picked)} MP16 photos with Pinpoint's pool -> {PHOTO_SETS / tag / 'photos.json'}")
 
 
 def write_splits(dev_tag: str = "dev3k") -> None:
-    """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev10k;
-    test = the im2gps3k + yfcc4k eval halves. Image ids -> artifacts/agent/splits.json."""
+    """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev3k;
+    test = the im2gps3k + yfcc4k eval halves (photo set `full`). Image ids -> artifacts/agent/splits.json."""
 
-    from .query_evidence import SFT_ROOT
     from .sft_data import OVERLAY_THRESHOLD
 
-    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
-    scores = json.loads((SFT_ROOT / "overlay_scores.json").read_text(encoding="utf-8"))
-    dev = [e["image_id"] for e in json.loads((ROOT / dev_tag / "dev.json").read_text(encoding="utf-8"))]
+    queries = json.loads(Path("artifacts/sft/queries.json").read_text(encoding="utf-8"))
+    scores = json.loads(Path("artifacts/sft/overlay_scores.json").read_text(encoding="utf-8"))
+    dev = [e["image_id"] for e in load_photos(dev_tag)]
     held = {q["image_id"] for q in queries if q["group"] == "held_out" and scores.get(q["image_id"]) is not None and scores[q["image_id"]] < OVERLAY_THRESHOLD}
     train = sorted(held - set(dev))
-    test = [e["image_id"] for e in json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))]
+    test = [e["image_id"] for e in load_photos("full")]
     (OUT / "splits.json").write_text(json.dumps({"train": train, "dev": sorted(dev), "test": test}) + "\n", encoding="utf-8")
     print(f"splits: train {len(train)}, dev {len(dev)}, test {len(test)} -> {OUT / 'splits.json'}")
 
 
-def geonames_labels(tag: str) -> None:
-    """Place labels from the GeoNames index (country code and "cc.admin1" of the nearest populated place) for the truth and every pool candidate,
-    in the candidates_{tag}.json format, marked source=geonames (Overture divisions aren't on this machine)."""
-
-    from .geo_tools import Gazetteer
-
-    g = Gazetteer()
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
-    lab = lambda lat, lon: dict(zip(("country", "region"), g.region(lat, lon))) | {"source": "geonames"}
-    out = [{"image_id": e["image_id"], "truth": lab(*e["truth"]), "pool": [lab(lat, lon) for lat, lon in e["pool"]]} for e in photos]
-    (LABELS / f"candidates_{tag}.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
-    print(f"{tag}: GeoNames labels for {len(out)} photos -> {LABELS / f'candidates_{tag}.json'}")
-
-
 def targets(tag: str) -> list[dict]:
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
-    labels = {p["image_id"]: p for p in json.loads((LABELS / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
+    photos = load_photos(tag)
+    labels = {p["image_id"]: p for p in load_labels(tag)}
     out = []
     for e in photos:
         lab = labels[e["image_id"]]
@@ -144,23 +80,17 @@ def targets(tag: str) -> list[dict]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tags", nargs="+", default=["dev", "val", "full"])
-    parser.add_argument("--select-big", default=None, help="build this MP16 development set (then GeoNames labels and targets)")
-    parser.add_argument("--n", type=int, default=10_000)
+    parser.add_argument("--tags", nargs="+", default=["dev3k"])
+    parser.add_argument("--make-dev", default=None, help="build this photo set from the dev ids and exit")
     parser.add_argument("--splits", action="store_true", help="write artifacts/agent/splits.json and exit")
-    parser.add_argument("--subset", nargs=3, metavar=("SRC", "DST", "N"), default=None, help="fixed random subset of a photo set, artifacts sliced")
     args = parser.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
-    if args.subset:
-        subset(args.subset[0], args.subset[1], int(args.subset[2]))
+    if args.make_dev:
+        make_dev(args.make_dev)
         return 0
     if args.splits:
         write_splits()
         return 0
-    if args.select_big:
-        select_big(args.select_big, args.n)
-        geonames_labels(args.select_big)
-        args.tags = [args.select_big]
     for tag in args.tags:
         rows = targets(tag)
         (OUT / f"targets_{tag}.json").write_text(json.dumps(rows) + "\n", encoding="utf-8")

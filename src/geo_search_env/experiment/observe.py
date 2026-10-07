@@ -20,7 +20,7 @@ import urllib.request
 from typing import Sequence
 
 from .name_score import _read
-from .query_evidence import ROOT
+from .photo_sets import load_photos
 from .sft_data import MP16Images
 
 OUT = Path("artifacts/agent")
@@ -103,7 +103,7 @@ def parse(answer: str | None) -> dict | None:
 
 
 def extract(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    photos = load_photos(tag)
     images = MP16Images()
     text = prompt()
 
@@ -138,7 +138,7 @@ def crops(tag: str, base: str, out: str, server: str = "http://127.0.0.1:8765", 
 
     from PIL import Image
 
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    photos = load_photos(tag)
     clues = json.loads((OUT / f"observe_{tag}_{base}.json").read_text(encoding="utf-8"))
     images = MP16Images()
 
@@ -189,7 +189,7 @@ LANDMARK_PROMPT = ('Does this photo show a specific, recognisable landmark or na
 def landmarks(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
     """Per photo: the landmark the VLM recognises, with city / region / country -> artifacts/agent/landmark_{tag}_{name}.json."""
 
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    photos = load_photos(tag)
     images = MP16Images()
 
     def run(e: dict) -> dict | None:

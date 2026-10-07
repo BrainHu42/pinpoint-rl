@@ -12,9 +12,9 @@ from typing import Sequence
 
 import numpy as np
 
-from .agent_targets import LABELS, OUT as TARGETS
+from .agent_targets import OUT as TARGETS, load_labels
 from .knowledge_check import OUT, _norm, _right
-from .query_evidence import ROOT
+from .photo_sets import load_photos
 from .strategy_search import _haversine_km
 
 
@@ -31,8 +31,8 @@ def _in(cand: dict, guess: tuple[str, ...]) -> bool:
 def run(models: Sequence[str], tags: Sequence[str], depth: int, need: int, k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     chosen, base, fix, switched = [], [], [], []
     for tag in tags:
-        photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
-        labels = {p["image_id"]: p["pool"] for p in json.loads((LABELS / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
+        photos = load_photos(tag)
+        labels = {p["image_id"]: p["pool"] for p in load_labels(tag)}
         targets = {r["image_id"]: r for r in json.loads((TARGETS / f"targets_{tag}.json").read_text(encoding="utf-8"))}
         answers = [json.loads((OUT / tag / f"check_{m}.json").read_text(encoding="utf-8")) for m in models]
         for e in photos:
@@ -51,11 +51,11 @@ def run(models: Sequence[str], tags: Sequence[str], depth: int, need: int, k: in
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from .stage1_eval import _bootstrap
+    from .strategy_search import _bootstrap
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", nargs="+", required=True)
-    parser.add_argument("--tags", nargs="+", default=["dev", "val"])
+    parser.add_argument("--tags", nargs="+", default=["dev3k"])
     args = parser.parse_args(argv)
     print(f"{'+'.join(args.tags)}; sources {', '.join(args.models)}")
     for depth, k in itertools.product((1, 2), (3, 10)):

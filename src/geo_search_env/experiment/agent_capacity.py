@@ -10,7 +10,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .agent_targets import LABELS, OUT as TARGETS
+from .agent_targets import OUT as TARGETS, load_labels
 from .knowledge_check import LEVELS, OUT, _right
 
 
@@ -19,7 +19,7 @@ def hits(model: str, tags: Sequence[str]) -> tuple[dict[str, np.ndarray], np.nda
     fix, right = [], []
     for tag in tags:
         answers = json.loads((OUT / tag / f"check_{model}.json").read_text(encoding="utf-8"))
-        truth = {p["image_id"]: p["truth"] for p in json.loads((LABELS / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
+        truth = {p["image_id"]: p["truth"] for p in load_labels(tag)}
         for r in json.loads((TARGETS / f"targets_{tag}.json").read_text(encoding="utf-8")):
             parts = [x.strip() for x in (answers.get(r["image_id"]) or "").split(">")]
             t = truth[r["image_id"]]
@@ -31,12 +31,12 @@ def hits(model: str, tags: Sequence[str]) -> tuple[dict[str, np.ndarray], np.nda
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from .stage1_eval import _bootstrap
+    from .strategy_search import _bootstrap
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", nargs="+", required=True)
     parser.add_argument("--ref", default=None)
-    parser.add_argument("--tags", nargs="+", default=["dev", "val"])
+    parser.add_argument("--tags", nargs="+", default=["dev3k"])
     args = parser.parse_args(argv)
     ref = args.ref or args.models[0]
     data = {m: hits(m, args.tags) for m in args.models}
