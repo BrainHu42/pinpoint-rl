@@ -621,6 +621,22 @@ errors) are at the top of `LEARNINGS.md`. Add new lessons here and a one-line en
       queries 34.6 / 60.3, 6 extra whole-image hits 34.7 / 60.9 (consistent with lesson 13).
     - Query quality wasn't the problem: visual queries are concrete (6.6 words, 14% use sign text, 11% generic).
 
+52. **The knowledge SFT adds country / region knowledge, but not where retrieval fails; GRPO not run (2026-10-07; `knowledge_check.py`,
+    `name_score.py --levels 3`, `knowledge_oracle.py`; scripts `knowledge_check.sh`, `knowledge_ceiling.sh`).** `knowledge-a` = Qwen3.5-4B LoRA-SFT on
+    250k MP16 bucket 0-98 photos -> "country > region > city" (1 epoch, 3.5 h, held-out loss 0.99 -> 0.82, still falling), 448 px.
+    - Naming the place (full eval halves, greedy): right country / region / city 61.7 / 31.3 / 16.1 % vs base 4B 54.4 / 24.7 / 15.2; on photos where
+      the reranker top-1 is >= 25 km off 53.2 / 17.6 / 4.1 vs 45.5 / 13.2 / 4.3 (country +7.7 [+6.1, +9.3], region +4.4 [+3.0, +5.7], city -0.1).
+      Only 86.4 % of its answers keep the 3-level format (base 99.6 %).
+    - As a chooser, no training (chosen / fitted on MP16 dev, applied once to the eval halves): "best-ranked top-3 candidate in the named country"
+      -0.2 [-0.5, +0.1] at 25 km (base -0.1); rank + candidate-name log-prob combiner -0.1 [-0.2, +0.0] (base -0.4). Dev within-photo AUC of the name
+      scores: country 0.541 vs base 0.516, region 0.565 vs 0.545, cumulative to city 0.585 vs 0.543. The pre-set GRPO gate (>= +0.5 at 25 km, or
+      AUC +0.03 at country / region) failed, so the GRPO A / B runs were not started.
+    - Why (`knowledge_oracle.py`): knowledge is the right lever but the model lacks it where it matters. Picking the best-ranked candidate in the
+      *true* region would add +10.8 [+9.8, +11.8] at 25 km (fixes 413 of the 792 photos where the top-1 is wrong and a candidate is right, 4 breaks;
+      true city +8.4, true country +3.3). On those 413 photos knowledge-a names the right region 10.9 % (base 9.0 %), vs 52.3 % on photos the
+      reranker already gets right: its knowledge, like every earlier evidence source (17-19), sits on the photos retrieval already solves.
+    - Next lever is far more knowledge per photo at region level, not RL on the current model: a larger model, much more knowledge data, or tools.
+
 ## Directions as of 2026-10-05 (superseded by `KNOWLEDGE_PLAN.md`)
 
 1. **Geometric verification as a tool** (never tried). Keypoint matching + RANSAC inliers (SuperPoint / DISK + LightGlue, pretrained, no training) between the

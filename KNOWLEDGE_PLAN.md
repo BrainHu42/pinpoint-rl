@@ -1,6 +1,7 @@
 # Plan: knowledge warm start, then RL
 
-Status: agreed 2026-10-06, not started.
+Status: agreed 2026-10-06. Step 1 done 2026-10-07 (`knowledge-a`); its knowledge did not turn into better choices (lesson 52), so the
+step-2 GRPO runs were not started (gate in `OVERNIGHT.md`). Results: `artifacts/overnight/REPORT.md`.
 
 **Question.** Can a model learn geographic knowledge that visual similarity doesn't already capture? Measured on
 real geolocation, as success on the photos where visual similarity (the reranker) fails.

@@ -55,6 +55,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
   look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. The old directions 1-3 (end of `LESSONS.md`) are tested and closed.
 - 51: concept-query similarity around each candidate is real alone but adds +0.3 / +0.0 to the reranker (lesson 15's open variant).
+- 52: knowledge SFT (250k photos) names the right country / region +7.7 / +4.4 pts more often where the reranker fails, but as a chooser adds
+  -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
 
 **Next.** `KNOWLEDGE_PLAN.md` (knowledge SFT warm start, then GRPO). The ranked directions of 2026-10-05 it replaces are at the end of `LESSONS.md`.
 
