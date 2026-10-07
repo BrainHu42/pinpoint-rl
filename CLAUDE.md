@@ -10,11 +10,12 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Work toward one research idea with novelty, not small incremental experiments.
 
 ## Research state (2026-10-06; details in `HANDOFF.md`, numbers in `LEARNINGS.md`)
-- **Baseline: Pinpoint's attention reranker top-1** (the submission's full model, same-photographer gallery rows excluded; LEARNINGS 51):
-  17.9 / 38.1 / 55.1% within 1 / 25 / 200 km on the 3,713 benchmark eval-half photos, 8.5 / 24.7 / 57.5 on wikimedia; oracle over its 12
-  candidates 30.6 / 55.9 / 75.8. Results before 2026-10-07 (LEARNINGS 1-50) were measured against our **one-step reranker** (17.0 / 38.9 /
-  56.4; fitted on the benchmark tune halves), which is about equal; its ~17-candidate pool (oracle 34.2 / 60.2 / 80.3) still feeds the
-  choosers and comparator data. Either way the headroom is in **choosing among candidates**.
+- **Baseline: Pinpoint's attention reranker top-1**, the submission's full model run as in prior work, without a photographer filter
+  (LEARNINGS 51): 29.5 / 47.4 / 61.9% within 1 / 25 / 200 km on the 3,713 benchmark eval-half photos (im2gps3k 21.5 / 48.9 / 64.4, yfcc4k
+  34.8 / 46.4 / 60.2), 8.5 / 24.7 / 57.5 on wikimedia; oracle over its 12 candidates 43.7 / 64.2 / 80.6. Results before 2026-10-07
+  (LEARNINGS 1-50) were measured with the filter against our **one-step reranker** (17.0 / 38.9 / 56.4); the attention reranker with the
+  filter ties it (17.9 / 38.1 / 55.1). The one-step ~17-candidate pool (filtered; oracle 34.2 / 60.2 / 80.3) still feeds the choosers and
+  comparator data. Either way the headroom is in **choosing among candidates**.
 - Closed (LEARNINGS 1-49): SFT / single-turn GRPO of the 4B as a chooser (reranker parity); new evidence from search queries,
   Wikipedia, place names, text, attributes ("stage 1", 11-21; old plan in `archive/stage1_plan.md`); zero-shot choosers up to 27B;
   comparator scaling and combiners (best confirmed **+0.9 [+0.3, +1.6] at 25 km**, fine-tuned 4B comparator, 24-29, 39-46);
@@ -30,7 +31,9 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 ## Rules
 - Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`; loaded by `data/benchmarks.py`, candidates from
   `wikimedia_eval.py`). Wikimedia so far: baseline, oracle and the comparator (LEARNINGS 42); never train on it.
-- Exclude same-photographer gallery images (yfcc4k shares photographers with MP16). Never train on the benchmarks.
+- Benchmark evaluation runs **without** the same-photographer gallery filter, as prior work does (user's decision, 2026-10-07), for the
+  baseline and our methods alike. It only matters on yfcc4k (3,111 of 4,536 photos are by MP16 photographers; +18 pts at 1 km), so filtered
+  yfcc4k numbers may be shown as a secondary check. Training data still blocks benchmark photographers. Never train on the benchmarks.
 - Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest). Exception (user's decision, 2026-10-05): the
   knowledge SFT (LEARNINGS 50) teaches place names from buckets 0-98; anything that learns to choose between candidates stays on bucket 99.
 - Other projects (InnerSight, gems) also use the GPU; never touch their processes.
@@ -93,8 +96,8 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
   `name_score.py` (log P(place name | photo) per candidate, combiner report); `knowledge_data.py` (knowledge SFT data:
   `select` with `~/.venvs/sft` for pyarrow, `overlay`, `dataset`); pipeline `scripts/knowledge_run.sh`, scoring `scripts/name_scores.sh`.
 - `experiment/wikimedia_eval.py`: wikimedia candidates and baseline / oracle report.
-- `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, plus a same-photographer filter on its
-  MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, with an optional same-photographer
+  filter on its MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
   `PYTHONPATH=src:<submission>/src`; one photo per call, batching changes bf16 results) -> `artifacts/pinpoint_reranker/`.
   Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`, `text_screen.sh`,
   `photo_attributes.sh`, `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`

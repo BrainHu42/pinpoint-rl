@@ -1,11 +1,12 @@
-# Pinpoint's attention reranker (the submission's full model) on im2gps3k, yfcc4k and wikimedia, same-photographer gallery rows excluded.
+# Pinpoint's attention reranker (the submission's full model) on im2gps3k, yfcc4k and wikimedia: the baseline, run as in prior work (no photographer filter).
 # Usage: PYTHONPATH=src:/home/brian/workspace/pinpoint-submission/submission/src \
 #          /home/brian/workspace/pinpoint-submission/submission/.venv/bin/python -m geo_search_env.experiment.pinpoint_reranker_eval {run,parity,report}
 
-"""run: top-1 and the 12 reranked candidates for every benchmark photo, with and without the photographer filter (GPU, ~17 GB, ~10 min).
+"""run: top-1 and the 12 reranked candidates for every benchmark photo without the photographer filter (the baseline, comparable to prior work), and
+for im2gps3k / yfcc4k also with it (secondary; no wikimedia photographer is in MP16) (GPU, ~17 GB, ~15 min).
 parity: the unfiltered run against the submission's own code (`original_unfiltered.npz`, made by its unchanged inference path).
 report: % within 1 / 25 / 200 / 750 / 2500 km per benchmark, then on the 3,713 eval-half photos used for every past decision (placeholders dropped),
-next to the old one-step reranker's top-1 and both pool oracles.
+next to the old one-step reranker's top-1 and both pool oracles. The one-step pool was built with the photographer filter, which only matters on yfcc4k.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ def run() -> None:
         bench = load_benchmark(name)
         authors = query_author_ids(bench.authors, reranker.vocab)
         print(f"{name}: {len(bench.image_ids)} photos, {int((authors >= 0).sum())} by an MP16 photographer", flush=True)
-        modes = {"filtered": authors} if name == "wikimedia" else {"filtered": authors, "unfiltered": None}
+        modes = {"unfiltered": None} if name == "wikimedia" else {"unfiltered": None, "filtered": authors}
         for mode, query_authors in modes.items():
             result = reranker.predict(bench.embeddings, query_authors)
             np.savez(OUT / f"{name}_{mode}.npz", ids=np.asarray(bench.image_ids), truth=bench.latlon, **result)
@@ -78,28 +79,31 @@ def report() -> None:
         if tag == "full":
             placeholder = {p["image_id"] for p in json.loads((QE / "multi_exemplar_full_pairs.json").read_text(encoding="utf-8")) if p["placeholder"]}
             photos = [p for p in photos if p["image_id"] not in placeholder]
-        lookup = {(name, image_id): k for name in names for k, image_id in enumerate(runs[name, "filtered"]["ids"])}
-        new_top1, old_top1, truth, new_pool, old_pool = [], [], [], [], []
+        rows: dict[str, list[float]] = {}
+        old_top1, old_pool, truth = [], [], []
         for p in photos:
-            d = runs[p["benchmark"], "filtered"]
-            k = lookup[p["benchmark"], p["image_id"]]
-            t = np.asarray(json.loads(p["truth"]) if isinstance(p["truth"], str) else p["truth"], dtype=np.float64)
+            truth.append(json.loads(p["truth"]) if isinstance(p["truth"], str) else p["truth"])
             pool = np.asarray(json.loads(p["pool"]) if isinstance(p["pool"], str) else p["pool"], dtype=np.float64)
-            truth.append(t)
-            new_top1.append(d["pred"][k])
             old_top1.append(pool[0])
-            mask = np.isfinite(d["scores"][k])
-            new_pool.append(geodesic_km(d["cand_latlon"][k][mask].astype(np.float64), np.repeat(t[None], mask.sum(), 0)).min())
-            old_pool.append(geodesic_km(pool, np.repeat(t[None], len(pool), 0)).min())
-        truth = np.asarray(truth)
-        rows = {
-            "attention reranker top-1": _pct(geodesic_km(np.asarray(new_top1, dtype=np.float64), truth)),
-            "old one-step reranker top-1": _pct(geodesic_km(np.asarray(old_top1, dtype=np.float64), truth)),
-            "oracle over the attention reranker's 12": _pct(np.asarray(new_pool)),
-            "oracle over the old ~17-candidate pool": _pct(np.asarray(old_pool)),
-        }
+            old_pool.append(geodesic_km(pool, np.repeat(np.asarray(truth[-1], dtype=np.float64)[None], len(pool), 0)).min())
+        truth = np.asarray(truth, dtype=np.float64)
+        for mode in ("unfiltered", "filtered"):
+            if not all((name, mode) in runs for name in names):
+                continue
+            lookup = {(name, image_id): k for name in names for k, image_id in enumerate(runs[name, mode]["ids"])}
+            top1, best = [], []
+            for p, t in zip(photos, truth):
+                d, k = runs[p["benchmark"], mode], lookup[p["benchmark"], p["image_id"]]
+                mask = np.isfinite(d["scores"][k])
+                top1.append(d["pred"][k])
+                best.append(geodesic_km(d["cand_latlon"][k][mask].astype(np.float64), np.repeat(t[None], mask.sum(), 0)).min())
+            label = "" if mode == "unfiltered" else ", photographer-filtered"
+            rows[f"attention reranker top-1{label}"] = _pct(geodesic_km(np.asarray(top1, dtype=np.float64), truth))
+            rows[f"oracle over its 12{label}"] = _pct(np.asarray(best))
+        rows["one-step reranker top-1 (filtered)"] = _pct(geodesic_km(np.asarray(old_top1, dtype=np.float64), truth))
+        rows["oracle over the one-step pool (filtered)"] = _pct(np.asarray(old_pool))
         label = "3,713 eval-half photos (placeholders dropped)" if tag == "full" else "all wikimedia photos"
-        print(f"\n{label}, photographer filter on, % within " + " / ".join(f"{r} km" for r in RADII))
+        print(f"\n{label}, % within " + " / ".join(f"{r} km" for r in RADII))
         for k, v in rows.items():
             print(_row(k, len(truth), v))
         results[f"{tag}/compare"] = {"n": len(truth), **rows}

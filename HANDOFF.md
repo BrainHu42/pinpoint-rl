@@ -9,12 +9,18 @@ SigLIP2 gallery embeddings). Pruned before upload: the geo-adapter training copy
 ## The problem in one paragraph
 
 Photo geolocation on im2gps3k / yfcc4k (wikimedia as a third test set). Baseline to beat is **Pinpoint's attention reranker top-1** (the
-submission's full model, run with same-photographer gallery rows excluded; LEARNINGS 51), not Gemini. On the 3,713 benchmark eval-half photos:
-17.9% < 1 km / 38.1% < 25 km / 55.1% < 200 km (wikimedia 8.5 / 24.7 / 57.5); the oracle over its 12 candidates is 30.6 / 55.9 / 75.8.
+submission's full model, run as in prior work without a photographer filter; LEARNINGS 51), not Gemini. On the 3,713 benchmark eval-half photos:
+29.5% < 1 km / 47.4% < 25 km / 61.9% < 200 km (im2gps3k 21.5 / 48.9 / 64.4, yfcc4k 34.8 / 46.4 / 60.2; wikimedia 8.5 / 24.7 / 57.5); the oracle
+over its 12 candidates is 43.7 / 64.2 / 80.6. Benchmark evaluation is unfiltered from now on (user's decision 2026-10-07, comparable to prior work).
 
-Until 2026-10-07 the baseline was our own **one-step reranker** over a ~17-candidate pool (SigLIP2 photo matching over MP16 + OSV-5M, Pinpoint's
+**Filter mismatch to fix before any final number.** Everything we built for yfcc4k (the one-step pool, comparator exemplars, name-score
+candidates) excludes the query photographer's gallery photos, so it can't be compared with the unfiltered baseline on yfcc4k: with the filter the
+attention reranker drops to 15.5 / 30.9 / 48.9 there. im2gps3k and wikimedia are unaffected (no shared photographers). Rebuild those yfcc4k
+candidates and exemplars without the filter, or compare on im2gps3k + wikimedia only.
+
+Until 2026-10-07 the baseline was our own **one-step reranker** (photographer-filtered) over a ~17-candidate pool (SigLIP2 photo matching over MP16 + OSV-5M, Pinpoint's
 GPS retrieval, a region head): 17.0 / 38.9 / 56.4, pool oracle 34.2 / 60.2 / 80.3. All of LEARNINGS 1-50 (including the +0.9 comparator gain) is
-measured against it. The two baselines are within about a point of each other, so those conclusions stand. That pool and its order still feed
+measured against it. With the filter on both, the two are within about a point of each other (attention reranker 17.9 / 38.1 / 55.1), so those conclusions stand. That pool and its order still feed
 the choosers, comparator data and `name_score.py`; report new results against the attention reranker top-1 as well. Either way the right answer
 is usually already among the candidates, and **the headroom is in choosing among them** (~18-20 pts at 25 km), not in finding new ones.
 

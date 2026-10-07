@@ -15,7 +15,8 @@ On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing 
 | | < 1 km | < 25 km | < 200 km |
 |---|---|---|---|
 | One-step reranker top-1 (baseline until 2026-10-07) | 17.1% | 38.9% | 56.4% |
-| Pinpoint attention reranker top-1, photographer-filtered (baseline from 2026-10-07, lesson 51) | 17.9% | 38.1% | 55.1% |
+| Pinpoint attention reranker top-1, photographer-filtered (lesson 51) | 17.9% | 38.1% | 55.1% |
+| Pinpoint attention reranker top-1, no filter (baseline from 2026-10-07; not comparable with the filtered rows) | 29.5% | 47.4% | 61.9% |
 | + comparator-b, 4 exemplars, combiner trained on dev | 17.2% | 39.9% | 56.9% |
 | Oracle over the reranker's top 8 | 30.1% | 52.5% | 70.1% |
 | Oracle over the whole ~17-candidate pool | 34.2% | 60.2% | 80.3% |
@@ -28,10 +29,11 @@ Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-46): 1 km 
 reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks, 4x the band data (lesson 45) gives the same (+0.9), and better
 combiners (incumbent-relative features, a switching margin; lesson 46) give the same (+0.7). The single-exemplar visual signal is the limit, not data or calibration.
 
-**Baseline change (2026-10-07, lesson 51).** "The reranker" in lessons 1-50 is our one-step reranker (fitted on the benchmark tune halves). From now
-on the baseline is Pinpoint's own attention reranker, run with the photographer filter: 17.9 / 38.1 / 55.1 on the same 3,713 photos (one-step: 17.0 /
-38.9 / 56.4), wikimedia 8.5 / 24.7 / 57.5 (one-step 8.0 / 24.9 / 59.4). The two are within about a point of each other, so the conclusions above stand;
-the gains above are relative to the one-step reranker.
+**Baseline change (2026-10-07, lesson 51).** "The reranker" in lessons 1-50 is our one-step reranker (fitted on the benchmark tune halves), with the
+photographer filter. From now on the baseline is Pinpoint's own attention reranker, and benchmarks are evaluated **without** the photographer filter, as
+in prior work (user's decision): 29.5 / 47.4 / 61.9 on the same 3,713 photos (yfcc4k gains 19 pts at 1 km from same-photographer gallery photos;
+im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the filter on both, the attention reranker ties the one-step reranker
+(17.9 / 38.1 / 55.1 vs 17.0 / 38.9 / 56.4), so the conclusions above stand; the gains above are relative to the filtered one-step reranker.
 
 **One line per lesson.**
 - 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
@@ -61,8 +63,8 @@ the gains above are relative to the one-step reranker.
   look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. Directions 1-3 below are tested and closed for now.
 - 50 (open): knowledge SFT, teaching the 4B to name a photo's place and scoring each candidate's name. Base-4B control is at chance (AUC 0.50-0.53,
   -0.7 at 25 km); labels and 250k training photos are built, training has not run yet.
-- 51: Pinpoint's attention reranker with the photographer filter ties our one-step reranker (+0.9 at 1 km, -0.9 at 25 km); without the filter yfcc4k is
-  inflated by 18 pts at 1 km. It is the baseline from 2026-10-07.
+- 51: Pinpoint's attention reranker is the baseline from 2026-10-07, run unfiltered like prior work (29.5 / 47.4 / 61.9); with the photographer filter
+  it ties our one-step reranker (+0.9 at 1 km, -0.9 at 25 km). The filter moves yfcc4k by 18 pts at 1 km and nothing else.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -711,7 +713,8 @@ baseline for new evidence (10, 13).
       benchmarks and wikimedia blocked, near-duplicates of any evaluated photo removed, at most 400 per city). Training (LoRA, 448x448, batch 8 x 2 without
       gradient checkpointing, 10.9 photos/s and ~27 GB on the 5090) has not run: the overnight run of 2026-10-05 failed at selection (`.venv` has no pyarrow).
 
-51. **Pinpoint's attention reranker, photographer-filtered, ties the one-step reranker; it is the baseline from now on (2026-10-07;
+51. **Pinpoint's attention reranker is the baseline from now on, evaluated without the photographer filter as in prior work; with the filter it ties
+    the one-step reranker (2026-10-07;
     `models/pinpoint_reranker.py`, `pinpoint_reranker_eval.py`, outputs in `artifacts/pinpoint_reranker/`).** The submission's full model (contrastive
     retrieval -> union of 8 image + 2 raw-image + 2 GPS neighbours from MP16 buckets 0-98 -> attention reranker with an OSV support token), run through
     the submission's own code with one change: its exact MP16 search drops the query photographer's rows. Without the filter it matches the submission's
@@ -732,14 +735,18 @@ baseline for new evidence (10, 13).
       The one-step reranker was fitted on the benchmark tune halves, so it has a small home advantage; the attention reranker saw only MP16.
     - Oracle over the attention reranker's 12 candidates: 30.6 / 55.9 / 75.8 (one-step pool of ~17: 34.2 / 60.2 / 80.3); wikimedia 16.4 / 44.9 / 81.2
       (18.1 / 49.4 / 83.3). Choosing headroom is about 18 pts at 25 km with either.
-    - So lessons 1-50 hold against the new baseline to within about a point. The choosers, comparator data and name scores still use the one-step pool
-      and order; new results should also be reported against the attention reranker top-1.
+    - Unfiltered (the baseline from now on, user's decision, comparable to prior work), 3,713 eval-half photos: 29.5 / 47.4 / 61.9 / 76.7 / 88.1
+      (im2gps3k 21.5 / 48.9 / 64.4, yfcc4k 34.8 / 46.4 / 60.2); oracle over its 12: 43.7 / 64.2 / 80.6.
+    - So lessons 1-50 hold against the new baseline to within about a point when both are filtered. The choosers, comparator data and name scores still use the one-step pool
+      and order, built with the filter: on yfcc4k they must be rebuilt unfiltered before comparing with the unfiltered baseline (im2gps3k and wikimedia
+      are unaffected).
 
 ## Data and leakage rules we established
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
   photographer); its candidate quality matches yfcc4k eval.
-- yfcc4k shares photographers with MP16: always exclude same-photographer gallery rows (`tests/test_author_exclusion.py`).
+- yfcc4k shares photographers with MP16. Until 2026-10-07 we excluded same-photographer gallery rows everywhere (`tests/test_author_exclusion.py`);
+  since then benchmark evaluation is unfiltered, as in prior work (user's decision, lesson 51). Training data still blocks benchmark photographers.
 - Burned-in GPS overlays: base-Qwen P(yes) ≥ 0.64 drops 8 photos of the pool.
 - Reserve data: yfcc26k (~19.3k usable after photographer exclusion; lat/lon only).
 
