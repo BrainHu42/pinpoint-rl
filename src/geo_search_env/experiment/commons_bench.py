@@ -1,6 +1,7 @@
 # A new geolocation benchmark from recent Wikimedia Commons photos (the "plain" design): photos taken after the models' training cut-off, with
 # device GPS in their EXIF that agrees with the page coordinate.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench scan       (network, CPU; metadata only -> candidates.jsonl)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench search-scan (network; every geotagged upload, day by day -> candidates.jsonl)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench select     (CPU; a capped, spread, region-balanced pick -> selected.jsonl)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench download   (network; 1024 px thumbnails of selected.jsonl)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench dedup      (CPU; SigLIP2 embeddings, nearest MP16 / OSV-5M photo)
@@ -9,6 +10,8 @@
           EXIF has GPS and a capture time (GPS date stamp if present, else DateTimeOriginal) on or after --taken-after, a camera model, a long side
           >= 1024 px, and, when the page has a camera coordinate, EXIF GPS within 50 m of it. Mapillary imports are dropped. Appends to candidates.jsonl
           (resumable: finished windows are recorded in scan_windows.txt).
+search-scan: the same filters over every JPEG with a camera location (P1259) created on each day in [--start, --end), via search
+          (resumable: finished days in search_days.txt). Shares candidates.jsonl with scan (deduplicated by page id).
 select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
           uploader, --min-gap-km between any two, no country above --max-country-share of the target.
 download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present.
@@ -169,6 +172,50 @@ def scan(start: datetime, end: datetime, windows: int, per_window: int, taken_af
             print(f"window {w + 1}/{windows} {key}: {len(uploads)} uploads, {len(titles)} non-bot JPEGs, {len(records)} kept (total {len(seen)})", flush=True)
 
 
+def _search_titles(day: str) -> list[str]:
+    """Every JPEG created on `day` with a camera location (P1259). Search stops at 10,000 hits per query, so the day is read oldest-first and
+    newest-first (days have ~10-11k hits)."""
+    titles: dict[str, None] = {}
+    for sort in ("create_timestamp_asc", "create_timestamp_desc"):
+        offset = 0
+        while offset < 10_000:
+            payload = _request({"action": "query", "list": "search", "srnamespace": 6, "srlimit": 500, "sroffset": offset, "srprop": "", "srsort": sort,
+                                "srinfo": "totalhits", "srsearch": f"haswbstatement:P1259 filemime:image/jpeg creationdate:{day}"})
+            hits = payload.get("query", {}).get("search", [])
+            titles.update((h["title"], None) for h in hits)
+            total = payload.get("query", {}).get("searchinfo", {}).get("totalhits", 0)
+            offset = payload.get("continue", {}).get("sroffset", 10_000)
+            if not hits or len(titles) >= total:
+                break
+        if len(titles) >= total:
+            break
+    return list(titles)
+
+
+def search_scan(start: datetime, end: datetime, taken_after: datetime, workers: int) -> None:
+    """All geotagged JPEGs created in [start, end), day by day, through the same filters as scan."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    done_path, out_path = OUT / "search_days.txt", OUT / "candidates.jsonl"
+    done = set(done_path.read_text().split()) if done_path.exists() else set()
+    seen = {json.loads(line)["page_id"] for line in out_path.open()} if out_path.exists() else set()
+    day = start
+    with ThreadPoolExecutor(workers) as pool:
+        while day < end:
+            key = day.strftime("%Y-%m-%d")
+            day += timedelta(days=1)
+            if key in done:
+                continue
+            titles = _search_titles(key)
+            records = [r for batch in pool.map(lambda t: _details(t, taken_after), list(_chunks(titles, 50))) for r in batch]
+            records = [r for r in records if r["page_id"] not in seen and not re.search(r"bot\b|bot$", r["uploader"], re.I)]
+            seen.update(r["page_id"] for r in records)
+            with out_path.open("a", encoding="utf-8") as f:
+                f.writelines(json.dumps(r) + "\n" for r in records)
+            with done_path.open("a") as f:
+                f.write(key + "\n")
+            print(f"day {key}: {len(titles)} geotagged JPEGs, {len(records)} kept (total {len(seen)})", flush=True)
+
+
 def _places() -> tuple[Any, Any]:
     """GeoNames populated places (>= 1,000 people) as unit vectors and their country codes, cached in OUT/places.tsv."""
     import numpy as np
@@ -315,7 +362,7 @@ def download(input_path: Path, workers: int) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("node", choices=("scan", "select", "download", "dedup"))
+    parser.add_argument("node", choices=("scan", "search-scan", "select", "download", "dedup"))
     parser.add_argument("--start", default="2026-07-01", help="scan: oldest upload time")
     parser.add_argument("--end", default=None, help="scan: newest upload time (default now)")
     parser.add_argument("--taken-after", default="2026-07-01", help="scan: earliest capture date")
@@ -333,6 +380,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         utc = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
         end = utc(args.end) if args.end else datetime.now(timezone.utc) - timedelta(hours=1)
         scan(utc(args.start), end, args.windows, args.per_window, utc(args.taken_after), args.workers)
+    elif args.node == "search-scan":
+        utc = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+        end = utc(args.end) if args.end else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        search_scan(utc(args.start), end, utc(args.taken_after), args.workers)
     elif args.node == "select":
         select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.seed)
     elif args.node == "dedup":
