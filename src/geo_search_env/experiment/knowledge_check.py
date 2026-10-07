@@ -1,11 +1,11 @@
 # archive/KNOWLEDGE_PLAN.md step-1 check: does the knowledge-SFT model name the right country / region / city more often than the base 4B,
-# especially on benchmark photos where the reranker (visual similarity) is wrong?
+# especially on benchmark photos where the reranker (Pinpoint's, visual similarity) is wrong?
 # Usage: scripts/knowledge_check.sh (serves each model, runs `answer`, then `report`)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_check answer --name knowledge-a   (vLLM on :8765)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_check report
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_check rule --name knowledge-a   (after `answer --tag dev`; scripts/knowledge_ceiling.sh)
 
-"""answer: greedy answer to the knowledge prompt for every photo of the full im2gps3k + yfcc4k eval halves (artifacts/query_evidence/full),
+"""answer: greedy answer to the knowledge prompt for every photo of the full im2gps3k + yfcc4k eval halves (photo set `full`),
         optionally with a format example (`--hint`, for the base model, which wasn't trained on the format).
 report: per level, the share of photos whose answer names the truth's Overture division (accent- and case-insensitive; a level counts as
         right when one name contains the other), on all photos and on those where the reranker top-1 is >= 25 km off; paired difference
@@ -30,11 +30,10 @@ import numpy as np
 
 from ..paths import DATA_ROOT
 from .knowledge_data import PROMPT
-from .name_score import SEP
-from .strategy_search import _haversine_km
+from .name_score import SEP, _labels as labels
+from .photo_sets import load_photos as photos
+from .strategy_search import _bootstrap, _haversine_km
 
-PHOTOS = Path("artifacts/query_evidence/full/dev.json")
-TRUTH = Path("artifacts/place_labels/candidates_full.json")
 OUT = Path("artifacts/knowledge")
 HINT = " For example: France > Île-de-France > Paris"
 LEVELS = (("country", "country"), ("region", "region"), ("city", "locality"))
@@ -49,7 +48,7 @@ def answer(name: str, hint: bool, tag: str = "full", server: str = "http://127.0
 
     from .sft_data import MP16Images
 
-    photos = json.loads((PHOTOS if tag == "full" else PHOTOS.parents[1] / tag / "dev.json").read_text(encoding="utf-8"))
+    photo_set = photos(tag)
     images = MP16Images() if tag != "full" else None
     prompt = PROMPT + (HINT if hint else "")
 
@@ -66,10 +65,10 @@ def answer(name: str, hint: bool, tag: str = "full", server: str = "http://127.0
             return None
 
     with ThreadPoolExecutor(workers) as pool:
-        answers = list(pool.map(run, photos))
+        answers = list(pool.map(run, photo_set))
     path = (OUT if tag == "full" else OUT / tag) / f"check_{name}{'_hint' if hint else ''}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({e["image_id"]: a for e, a in zip(photos, answers)}) + "\n", encoding="utf-8")
+    path.write_text(json.dumps({e["image_id"]: a for e, a in zip(photo_set, answers)}) + "\n", encoding="utf-8")
     print(f"{len(answers)} answers, {sum(a is None for a in answers)} failed -> {path}")
 
 
@@ -86,11 +85,9 @@ def _right(said: str, truth: str | None) -> bool | None:
 
 
 def report() -> None:
-    from .stage1_eval import _bootstrap
-
-    photos = json.loads(PHOTOS.read_text(encoding="utf-8"))
-    truth = {p["image_id"]: p["truth"] for p in json.loads(TRUTH.read_text(encoding="utf-8"))}
-    top1_km = np.asarray([_haversine_km(*e["truth"], np.asarray([e["candidates"][0][1:3]]))[0] for e in photos])
+    full = photos("full")
+    truth = {p["image_id"]: p["truth"] for p in labels("full")}
+    top1_km = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] for e in full])
     wrong = top1_km >= 25
     runs = sorted(OUT.glob("check_*.json"))
     hits: dict[str, dict[str, np.ndarray]] = {}
@@ -99,17 +96,17 @@ def report() -> None:
         name = path.stem.removeprefix("check_")
         hits[name] = {}
         for level, key in LEVELS:
-            out = np.full(len(photos), np.nan)
-            for i, e in enumerate(photos):
+            out = np.full(len(full), np.nan)
+            for i, e in enumerate(full):
                 parts = [p.strip() for p in (answers.get(e["image_id"]) or "").split(">")]
                 said = parts[[lv for lv, _ in LEVELS].index(level)] if len(parts) > [lv for lv, _ in LEVELS].index(level) else ""
                 r = _right(said, truth[e["image_id"]].get(key))
                 out[i] = np.nan if r is None else float(r)
             hits[name][level] = out
-        fmt = np.mean([len((answers.get(e["image_id"]) or "").split(">")) >= 3 for e in photos])
+        fmt = np.mean([len((answers.get(e["image_id"]) or "").split(">")) >= 3 for e in full])
         print(f"{name}: answers in 'a > b > c' form {fmt:.1%}")
-    print(f"\nfull eval halves n={len(photos)}; reranker top-1 >= 25 km off on {wrong.sum()} ({wrong.mean():.1%})")
-    for label, mask in (("all photos", np.ones(len(photos), bool)), ("reranker wrong (>= 25 km)", wrong), ("reranker right (< 25 km)", ~wrong)):
+    print(f"\nfull eval halves n={len(full)}; reranker top-1 >= 25 km off on {wrong.sum()} ({wrong.mean():.1%})")
+    for label, mask in (("all photos", np.ones(len(full), bool)), ("reranker wrong (>= 25 km)", wrong), ("reranker right (< 25 km)", ~wrong)):
         print(f"\n{label}:")
         for level, _ in LEVELS:
             row = []
@@ -141,17 +138,17 @@ def _matches(parts: list[str], lab: dict, depth: int) -> bool:
 def _rule_hits(name: str, tag: str) -> tuple[dict[tuple[str, int], np.ndarray], np.ndarray]:
     """Per variant (level, K), the km from the chosen candidate to the truth per photo; and the reranker top-1's km."""
 
-    photos = json.loads((PHOTOS if tag == "full" else PHOTOS.parents[1] / tag / "dev.json").read_text(encoding="utf-8"))
-    labels = {p["image_id"]: p["pool"] for p in json.loads((TRUTH.parent / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
+    photo_set = photos(tag)
+    pool_labels = {p["image_id"]: p["pool"] for p in labels(tag)}
     answers = json.loads(((OUT if tag == "full" else OUT / tag) / f"check_{name}.json").read_text(encoding="utf-8"))
-    km = [_haversine_km(*e["truth"], np.asarray(e["pool"])) for e in photos]
+    km = [_haversine_km(*e["truth"], np.asarray(e["pool"])) for e in photo_set]
     out = {}
     for level in ("country", "region", "city", "deepest"):
         for k in (3, 10, 100):
-            chosen = np.zeros(len(photos))
-            for i, e in enumerate(photos):
+            chosen = np.zeros(len(photo_set))
+            for i, e in enumerate(photo_set):
                 parts = [x.strip() for x in (answers.get(e["image_id"]) or "").split(">")]
-                pool = labels[e["image_id"]][:k]
+                pool = pool_labels[e["image_id"]][:k]
                 depths = (1,) if level == "country" else (2,) if level == "region" else (3,) if level == "city" else (3, 2, 1)
                 pick = 0
                 for depth in (depths if level == "deepest" else depths[-1:]):
@@ -165,8 +162,6 @@ def _rule_hits(name: str, tag: str) -> tuple[dict[tuple[str, int], np.ndarray], 
 
 
 def rule(name: str) -> None:
-    from .stage1_eval import _bootstrap
-
     chosen = None
     for tag in ("dev", "full"):
         hits, base = _rule_hits(name, tag)

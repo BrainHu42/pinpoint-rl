@@ -3,6 +3,7 @@
 The numbered lessons behind `LEARNINGS.md`'s summary, with full numbers. Conventions (metrics, eval sets, standard
 errors) are at the top of `LEARNINGS.md`. Add new lessons here and a one-line entry to the summary there.
 Modules and scripts named in lessons 1-51 that are no longer in the tree are at git tag `pre-cleanup-2026-10-07`.
+Modules and scripts named in lessons 1-53 that were removed with the one-step reranker (lesson 54) are at commit 57918cb.
 
 1. **Selection among one-shot retrieval results is saturated.** SFT and GRPO both land at reranker parity, while the
    right answer is in the shown list for 33 / 59%. The model and the reranker agree on >90% of photos; disagreements
@@ -644,3 +645,19 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
     55.4 / 37.6; 1,500+ 20.8 / 17.5 vs 62.0 / 59.2. Median training photos in the true region: fixable 872, reranker-right 1,073. The SFT learned
     these regions (the reranker-right column gains most), but the fixable photos don't show them; more or harder knowledge data of the same kind
     is unlikely to help. Next direction: clues that aren't overall appearance, used through tools (`AGENT_DIRECTION.md`).
+
+54. **Pinpoint's attention reranker is the reference; our one-step reranker and pool are retired (2026-10-07; `models/pinpoint_reranker.py`,
+    `pinpoint_reference.py`, `photo_sets.py`).** Ported from pinpoint-yogi (27a9bfe) without Lightning, the index streamed from disk. Exact: on 320
+    benchmark photos the original code (Lightning stubbed, the full index fed lazily) gives identical query encodings, candidate rows and rank
+    features, and identical bf16 scores given the same features. Tie order matters: many index scores tie exactly (photos at one coordinate
+    share a GPS embedding), the reranker reads each hit's rank, and a naive top-k changed the top-1 on 5 of 64 photos; the port follows the
+    original's chunked top-k sequence. Index photos by the query's photographer are excluded (the original doesn't).
+    - Eval halves (n = 3,795), % within 1 / 25 / 200 / 750 / 2500 km: top-1 17.5 / 37.2 / 53.9 / 71.4 / 84.5 (im2gps3k 21.8 / 48.9, yfcc4k
+      14.8 / 29.8); oracle over its pool (11.6 candidates) 30.1 / 54.7 / 74.4 / 89.6 / 96.8. One-step reranker: 16.7 / 38.2, oracle over
+      its ~17-candidate pool 33.4 / 59.0; the union of both pools (28.7) would reach 37.4 / 63.1. Pinpoint's pool alone was chosen (user).
+    - MP16: dev (3,836) 16.0 / 33.9, oracle 27.0 / 49.5; held-out rest (34,531) 15.4 / 32.3; trained-on photos 19.0 / 38.9, oracle 32.4 /
+      57.7: its index still favours photos its retriever trained on, so training stays on bucket 99.
+    - Target photos (`knowledge_oracle`): 665 choosing photos (top-1 >= 25 km off, a pool candidate < 25 km; was 792), 371 region-fixable
+      (was 413): true-region knowledge +9.5 [+8.6, +10.6] at 25 km (city +6.9, country +3.0). knowledge-a names the region on 13.2 % of
+      the 371 (base 10.8 %), vs 52.1 % on reranker-right photos: lesson 52's conclusion holds. MP16 dev (`devall`): 600 choosing, 347
+      region-fixable (+8.9).

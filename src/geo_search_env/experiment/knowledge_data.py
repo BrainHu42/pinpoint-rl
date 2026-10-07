@@ -26,7 +26,7 @@ import numpy as np
 
 from .name_score import SEP, name_parts
 from .place_labels import CANONICAL
-from .query_evidence import ROOT
+from .photo_sets import load_photos
 from .strategy_search import MP16_CSV, MP16_EMBED
 
 OUT = Path("artifacts/knowledge")
@@ -53,7 +53,7 @@ def select(photos: int, seed: int = 0) -> None:
         for r in csv.DictReader(f):
             author_of[r["IMG_ID"]] = r["AUTHOR"]
     authors = np.asarray([author_of.get(i, "") for i in ids])
-    blocked_authors = {authors[e["row"]] for e in json.loads((ROOT / "dev" / "dev.json").read_text(encoding="utf-8"))}
+    blocked_authors = {authors[e["row"]] for e in load_photos("dev")}
     for name in ("im2gps3k", "yfcc4k", "wikimedia"):
         blocked_authors |= {a for a in load_benchmark(name).authors if a}
     blocked_authors.discard("")

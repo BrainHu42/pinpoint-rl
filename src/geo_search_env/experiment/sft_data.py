@@ -1,12 +1,12 @@
-# MP16 queries for supervised fine-tuning, with retrieval candidates built exactly as for the benchmarks.
-# Usage: .venv/bin/python -m geo_search_env.experiment.sft_data {pool,candidates,leak_check,overlay,dataset} --root artifacts/sft
+# MP16 queries for supervised fine-tuning and RL, with Pinpoint's candidate pool (`pinpoint_reference mp16`) as at test time.
+# Usage: .venv/bin/python -m geo_search_env.experiment.sft_data {pool,overlay,dataset} --root artifacts/sft
 
-"""SFT query pool, test-time candidates for each query, and a check that Pinpoint's training data does not leak.
+"""MP16 query pool, burned-in-GPS filter, and training data with each query's candidates.
 
 Pinpoint's contrastive retriever trained on MP16 images with md5(image_id) % 100 < 99; bucket 99 was its validation
-split. `leak_check` compares candidate quality on bucket-99 photos against a sample of photos Pinpoint trained on:
-if the trained-on photos get clearly better candidates, training on them would teach the model to over-trust
-retrieval. Benchmark photographers and near-duplicates of benchmark photos are never used as queries.
+split and is not in its retrieval index. The query pool is the bucket-99 photos plus a sample of photos it trained on;
+`pinpoint_reference mp16` ranks them all and reports the leak check (trained-on vs held-out candidate quality).
+Benchmark photographers and near-duplicates of benchmark photos are never used as queries.
 """
 
 from __future__ import annotations
@@ -26,31 +26,16 @@ from typing import Any, Sequence
 
 import numpy as np
 
-from ..data.benchmarks import compute_metrics
+from ..paths import MP16_ROOT
 from .pivot_diagnostics import SFT_EVIDENCE_PROMPT, SFT_PROMPT, SFT_RETRIEVAL_PROMPT, candidate_evidence, format_options
-from .strategy_search import (
-    BENCHMARK_NAMES,
-    MP16_CSV,
-    MP16_EMBED,
-    THRESHOLDS_KM,
-    _haversine_km,
-    _knn_distribution,
-    _search_candidates,
-    _xyz,
-    load_world,
-    neighbor_cache,
-    region_head,
-)
-from .verifiers import MP16_ROOT, _place_names, _read_mp16_image, fit_reranker, reranker_ranking
+from .strategy_search import MP16_CSV, MP16_EMBED, _haversine_km, load_world, neighbor_cache
 
 
-BENCH_ROOT = Path("artifacts/strategy_search")
 HELD_OUT_BUCKET = 99  # Pinpoint's contrastive retriever validated on this md5 bucket (val_pct=1) and trained on the rest
 TRAINED_ON_SAMPLE = 5_000
 NEAR_DUPLICATE_SIM = 0.95  # SigLIP2 cosine to any benchmark photo
 VAL_AUTHOR_BUCKETS = 10  # md5(author) % 10 == 0 -> validation photographers, for this pool and any later expansion
 TOP_CANDIDATES = 10
-NAME_SEARCH = 16  # nearest MP16 rows searched for a candidate's place name, skipping the query's photographer
 COPY_CANDIDATE_KM = 1.0  # within this, the target copies the candidate's coordinates (same reward, easier to learn)
 MATCH_CANDIDATE_KM = 25.0  # the target's "Candidate: N" names the nearest shown candidate within this distance
 OVERLAY_PROMPT = (
@@ -166,87 +151,19 @@ def pool(root: Path, *, seed: int = 0) -> None:
     print(json.dumps(summary, indent=2))
 
 
-def candidates(root: Path) -> None:
-    """The benchmark pipeline's 20 candidates per MP16 query, ranked by the reranker fitted on the benchmark tune halves."""
+def _place_names(rows: set[int]) -> dict[int, str]:
+    """'city, state, country' for MP16-Pro CSV rows."""
 
-    from scipy.spatial import cKDTree
-
-    bench_world = load_world()
-    score = fit_reranker(bench_world, BENCH_ROOT)
-    del bench_world
-    coarse_report = json.loads((BENCH_ROOT / "coarse.json").read_text(encoding="utf-8"))
-    head = max(("head_linear", "head_mlp"), key=lambda name: sum(coarse_report[f"{b}/tune"][name]["region_mass"] for b in BENCHMARK_NAMES))
-    gps_name = coarse_report["selected"]["knn_mp16_gps"]
-    tau, k = float(gps_name.split("tau=")[1].split("|")[0]), int(gps_name.split("k=")[1])
-
-    queries = json.loads((root / "queries.json").read_text(encoding="utf-8"))
-    world = load_world(with_pinpoint=True, mp16_queries=queries)
-    if not (root / "neighbors.npz").exists():
-        np.savez(root / "neighbors.npz", **neighbor_cache(world, chunk=16_384))
-    cache = dict(np.load(root / "neighbors.npz"))  # NpzFile re-reads an array on every key access
-    if not (root / "region_head.npz").exists():
-        region_head(root, world=world)  # query photographers held out of the region prior
-    heads = dict(np.load(root / "region_head.npz"))
-    n = len(queries)
-    head_predictions = [{int(r): float(p) for r, p in zip(heads[f"{head}_regions"][q], heads[f"{head}_probs"][q])} for q in range(n)]
-    gps_votes = [_knn_distribution(world, cache, "mp16_gps", q, k, tau) for q in range(n)]
-    coords, valid, one_shot = _search_candidates(world, cache, head_predictions, gps_votes)
-    ranking = np.argsort(-score(one_shot, valid), axis=1)
-    distance = np.full(valid.shape, np.inf)
-    for q in range(n):
-        distance[q, valid[q]] = _haversine_km(*world.query_latlon[q], coords[q, valid[q]])
-
-    print("naming candidates", flush=True)
-    tree = cKDTree(_xyz(world.mp16["latlon"]))
-    _, nearest = tree.query(_xyz(coords.reshape(-1, 2)), k=NAME_SEARCH, workers=-1)
-    nearest = nearest.reshape(n, coords.shape[1], NAME_SEARCH)
-    other = world.mp16["author"][nearest] != world.query_author[:, None, None]
-    first = np.where(other.any(-1), other.argmax(-1), 0)  # all-same-photographer neighbourhoods fall back to the nearest row
-    name_row = np.where(valid, world.mp16["row_index"][np.take_along_axis(nearest, first[..., None], -1)[..., 0]], -1)
-    np.savez(root / "candidates.npz", coords=coords, valid=valid, one_shot=one_shot, ranking=ranking, distance=distance, name_row=name_row)
-    print(f"saved candidates for {n} queries", flush=True)
-
-
-def _candidate_quality(coords, valid, one_shot, ranking, distance, truth, members) -> dict[str, Any]:
-    top = np.take_along_axis(np.where(valid, distance, np.inf), ranking[:, :TOP_CANDIDATES], axis=1)[members]
-    entry: dict[str, Any] = {"n": int(len(members))}
-    for name, pick in (
-        ("reranker top-1", ranking[:, 0]),
-        ("pinpoint top-1", np.argmax(one_shot[..., 0] == 1.0, axis=1)),
-        ("photo match + prior top-1", np.argmax(one_shot[..., 1] == 1.0, axis=1)),
-    ):
-        m = compute_metrics(coords[members, pick[members]], truth[members])
-        entry[name] = {f"Under_{int(t)}_km": m[f"Under_{int(t)}_km"] for t in THRESHOLDS_KM}
-    entry[f"top-{TOP_CANDIDATES} recall"] = {f"Under_{int(t)}_km": float((top < t).any(1).mean()) for t in THRESHOLDS_KM}
-    return entry
-
-
-def leak_check(root: Path) -> None:
-    """Candidate quality on photos Pinpoint held out vs photos it trained on, next to the benchmark eval halves."""
-
-    report: dict[str, Any] = {}
-    bench_world = load_world()
-    coords, valid, distance, ranking = reranker_ranking(bench_world, BENCH_ROOT)
-    one_shot = np.load(BENCH_ROOT / "search_features.npz")["one_shot"]
-    for name in BENCHMARK_NAMES:
-        members = np.asarray([i for i, q in enumerate(bench_world.queries) if q["benchmark"] == name and q["split"] == "eval"])
-        report[f"{name} eval"] = _candidate_quality(coords, valid, one_shot, ranking, distance, bench_world.query_latlon, members)
-    queries = json.loads((root / "queries.json").read_text(encoding="utf-8"))
-    rows = np.asarray([q["row"] for q in queries])
-    truth = bench_world.mp16["latlon"][rows]
-    saved = np.load(root / "candidates.npz")
-    for group in ("held_out", "trained_on"):
-        members = np.asarray([i for i, q in enumerate(queries) if q["group"] == group])
-        report[f"MP16 {group}"] = _candidate_quality(saved["coords"], saved["valid"], saved["one_shot"], saved["ranking"], saved["distance"], truth, members)
-    (root / "leak_check.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-
-    columns = ("reranker top-1", "pinpoint top-1", "photo match + prior top-1", f"top-{TOP_CANDIDATES} recall")
-    print(f"{'':20s} {'n':>6s}  " + "  ".join(f"{c:>27s}" for c in columns))
-    print(f"{'':20s} {'':6s}  " + "  ".join(f"{'<1km <25km <200km <750km':>27s}" for _ in columns))
-    for arm, entry in report.items():
-        print(f"{arm:20s} {entry['n']:6d}  " + "  ".join(
-            f"{'':3s}" + " ".join(f"{entry[c][f'Under_{int(t)}_km']:6.1%}" for t in THRESHOLDS_KM) for c in columns
-        ))
+    names: dict[int, str] = {}
+    with MP16_CSV.open("r", encoding="utf-8", newline="") as stream:
+        reader = csv.reader(stream)
+        header = next(reader)
+        columns = [header.index(c) for c in ("city", "county", "state", "country")]
+        for i, row in enumerate(reader):
+            if i in rows:
+                city, county, state, country = (row[c] for c in columns)
+                names[i] = ", ".join(part for part in (city or county, state, country) if part) or "unknown"
+    return names
 
 
 def _p_yes(server: str, image: bytes) -> float:
@@ -331,27 +248,35 @@ def build_example(
 def dataset(root: Path, *, overlay_threshold: float = OVERLAY_THRESHOLD, variant: str = "sft") -> None:
     """JSONL of {image_id, split, prompt, target, meta} for the held-out pool, minus burned-in-GPS photos.
 
-    Variants: `sft` (reranker top-10), `sft_evidence` (plus each candidate's retrieval support) and `sft_retrieval`
-    (no reranker: all pooled candidates in pool order, with support). meta keeps the reranker's top-1 as a reference.
+    Candidates: Pinpoint's pool (`pinpoint_reference mp16`). Variants: `sft` (the reranker's top-10), `sft_evidence` (plus
+    each candidate's retrieval support) and `sft_retrieval` (no reranker: every pool candidate in retrieval order, with
+    support). meta keeps the reranker's top-1 as the reference.
     """
+
+    from .pinpoint_reference import load_pools, retrieval_order
 
     evidence = variant != "sft"
 
     queries = json.loads((root / "queries.json").read_text(encoding="utf-8"))
-    saved = np.load(root / "candidates.npz")
-    coords, valid, ranking, name_row = saved["coords"], saved["valid"], saved["ranking"], saved["name_row"]
+    pools = load_pools("mp16")
+    if [q["image_id"] for q in pools["queries"]] != [q["image_id"] for q in queries]:
+        raise ValueError("Pinpoint's MP16 pools are for another query pool; rerun `pinpoint_reference mp16` after `sft_data pool`")
+    coords, valid, csv_rows = pools["latlon"], pools["valid"], pools["csv_rows"]
     overlay_scores = json.loads((root / "overlay_scores.json").read_text(encoding="utf-8"))
     row_index = np.fromfile(MP16_EMBED / "row_index.i64.bin", dtype=np.int64)
     latlon = np.fromfile(MP16_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(-1, 2).astype(np.float64)
     members = [i for i, q in enumerate(queries) if q["group"] == "held_out"]
     if variant == "sft_retrieval":
-        shown = {i: [int(c) for c in np.flatnonzero(valid[i])] for i in members}
+        order = retrieval_order(pools["features"], valid)
+        shown = {i: [int(c) for c in order[i] if valid[i, c]] for i in members}
     else:
-        shown = {i: [int(c) for c in ranking[i, :TOP_CANDIDATES] if valid[i, c]] for i in members}
-    names = _place_names({int(name_row[i, c]) for i in members for c in shown[i]})
+        shown = {i: [int(c) for c in np.flatnonzero(valid[i])[:TOP_CANDIDATES]] for i in members}
+    names = _place_names({int(csv_rows[i, c]) for i in members for c in shown[i]})
     labels = _mp16_labels({int(row_index[queries[i]["row"]]) for i in members})
     if evidence:
-        world = load_world(mp16_queries=queries)
+        world = load_world(with_pinpoint=not (root / "neighbors.npz").exists(), mp16_queries=queries)
+        if not (root / "neighbors.npz").exists():
+            np.savez(root / "neighbors.npz", **neighbor_cache(world, chunk=16_384))
         with np.load(root / "neighbors.npz") as saved:
             cache = {k: saved[k] for k in saved.files}
 
@@ -365,12 +290,12 @@ def dataset(root: Path, *, overlay_threshold: float = OVERLAY_THRESHOLD, variant
             if p is None or p >= overlay_threshold:
                 dropped["unreadable" if p is None else "burned-in GPS"] += 1
                 continue
-            options = [(names[int(name_row[i, c])], float(coords[i, c, 0]), float(coords[i, c, 1])) for c in shown[i]]
+            options = [(names[int(csv_rows[i, c])], float(coords[i, c, 0]), float(coords[i, c, 1])) for c in shown[i]]
             truth = (float(latlon[q["row"], 0]), float(latlon[q["row"], 1]))
             support = candidate_evidence(world, cache, i, coords[i, shown[i]]) if evidence else None
             template = SFT_RETRIEVAL_PROMPT if variant == "sft_retrieval" else None
             prompt, target, meta = build_example(options, truth, labels[int(row_index[q["row"]])], support, template)
-            meta["reranker_top1"] = [float(coords[i, ranking[i, 0], 0]), float(coords[i, ranking[i, 0], 1])]
+            meta["reranker_top1"] = [float(coords[i, 0, 0]), float(coords[i, 0, 1])]
             out.write(json.dumps({"image_id": q["image_id"], "split": q["split"], "prompt": prompt, "target": target, "meta": meta | {"lat": truth[0], "lon": truth[1]}}, ensure_ascii=False) + "\n")
             counts.setdefault(q["split"], {}).setdefault(meta["case"], 0)
             counts[q["split"]][meta["case"]] += 1
@@ -381,7 +306,7 @@ def dataset(root: Path, *, overlay_threshold: float = OVERLAY_THRESHOLD, variant
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pool", "candidates", "leak_check", "overlay", "dataset"))
+    parser.add_argument("node", choices=("pool", "overlay", "dataset"))
     parser.add_argument("--root", type=Path, default=Path("artifacts/sft"))
     parser.add_argument("--server", default="http://127.0.0.1:8765", help="OpenAI-compatible server with the base VLM (overlay)")
     parser.add_argument("--variant", choices=("sft", "sft_evidence", "sft_retrieval"), default="sft", help="dataset: prompt variant (see `dataset`)")
@@ -392,7 +317,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.node == "dataset":
         dataset(args.root, overlay_threshold=args.overlay_threshold, variant=args.variant)
     else:
-        {"pool": pool, "candidates": candidates, "leak_check": leak_check}[args.node](args.root)
+        pool(args.root)
     return 0
 
 

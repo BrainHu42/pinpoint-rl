@@ -26,12 +26,12 @@ All project datasets, caches, checkpoints, and training environments live inside
 | Path | Used for | Defined in |
 |---|---|---|
 | `data/hf` (`HF_HOME`) | Hugging Face cache; Qwen3.5-4B snapshot | `sft_train.BASE_MODEL` |
-| `data/hf/datasets/MP16-Pro` | MP16 metadata, tar shards, `tar_index.pkl` | `strategy_search.MP16_CSV`, `verifiers.MP16_ROOT` |
+| `data/hf/datasets/MP16-Pro` | MP16 metadata, tar shards, `tar_index.pkl` | `strategy_search.MP16_CSV`, `paths.MP16_ROOT` |
 | `data/pinpoint/{mp16,osv5m}-embed/siglip2-giant-opt-patch16-384` | gallery embeddings | `strategy_search.MP16_EMBED`, `OSV_EMBED` |
 | `data/pinpoint/{im2gps3k,yfcc4k}` | benchmark CSVs, images, embeddings | `data/benchmarks.py` (`DATA_ROOT`) |
-| `data/pinpoint/geonames` | GeoNames dump (fuzzy geocoding, feature codes) | `evidence_test.py` |
+| `data/pinpoint/geonames` | GeoNames dump (fuzzy geocoding, feature codes) | not read by current code (planned agent tool) |
 | `data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
-| `$PINPOINT_ROOT` | Pinpoint checkpoint + retrieval index | `models/pinpoint.py` |
+| `$PINPOINT_ROOT` | Pinpoint checkpoints (contrastive retriever, attention reranker) + attention retrieval index | `models/pinpoint.py`, `models/pinpoint_reranker.py` |
 | `data/pinpoint/overture` | Overture division polygons (knowledge SFT place labels) | `place_labels.py` |
 | `.venvs/{vllm,sft,grpo,overture}` | serving, training, and the DuckDB env for place labels (`envs/*.txt`) | `scripts/*.sh`, module usage lines |
 
@@ -141,21 +141,23 @@ curl -LO https://download.geonames.org/export/dump/countryInfo.txt
 Run from the repo root as `.venv/bin/python -m geo_search_env.experiment.<module> <node>`; each module's docstring
 documents its nodes. Output goes to `artifacts/` (git-ignored).
 
+Candidates and the reference (`artifacts/pinpoint_reference`): Pinpoint's attention reranker (`models/pinpoint_reranker.py`).
+1. `pinpoint_reference bench`: its pool and top-1 for every benchmark photo (GPU, ~5 min).
+2. `pinpoint_reference mp16`: the same for the MP16 query pool (after `sft_data pool`; the report includes the leak check).
+
 Benchmark side (`artifacts/strategy_search`):
-1. `strategy_search neighbors`: MP16/OSV photo matches and Pinpoint GPS neighbours per query (GPU).
-2. `strategy_search region_head`: region-classifier head.
-3. `strategy_search coarse`: head and kNN vote settings.
-4. `strategy_search search`: pooled candidates and reranker features.
+1. `strategy_search neighbors`: MP16/OSV photo matches and Pinpoint GPS neighbours per query (GPU; the evidence prompts).
+2. `strategy_search region_head`, `strategy_search coarse`: region-classifier head, head and kNN vote settings.
 
 MP16 training side (`artifacts/sft`):
-1. `sft_data pool`: bucket-99 query photos.
-2. `sft_data candidates`: candidates for those photos (needs the benchmark side).
-3. `sft_data leak_check`: sanity check.
-4. `sft_data overlay`: burned-in GPS filter (needs base Qwen served, see §7).
-5. `sft_data dataset --variant sft_retrieval`: the SFT dataset.
+1. `sft_data pool`: bucket-99 query photos (then `pinpoint_reference mp16`).
+2. `sft_data overlay`: burned-in GPS filter (needs base Qwen served, see §7).
+3. `sft_data dataset --variant sft_retrieval`: the SFT dataset.
 
-Analyses: `query_headroom`, `evidence_test landmarks` then `evidence_test run`; knowledge diagnostics `knowledge_check`,
-`knowledge_oracle`, `knowledge_coverage` (lessons 52-53).
+Photo sets (`artifacts/photo_sets`): `photo_sets select --tag dev --n 1000` (MP16 dev), `--tag devall --n 100000` (all of it),
+`--source bench --tag val --n 1000` and `--source bench --tag full --n 100000`; then `place_labels pool-labels --tag <tag>`
+(`.venvs/overture`; needs `place_labels label-all` once for `artifacts/place_labels/mp16.parquet`). Knowledge diagnostics:
+`knowledge_check`, `knowledge_oracle [tag]` (the target photos), `knowledge_coverage` (lessons 52-54).
 
 ## 7. Serving, training and evaluation
 
@@ -182,4 +184,4 @@ PATH=.venvs/grpo/bin:$PATH .venvs/grpo/bin/python -m geo_search_env.experiment.g
 ```
 
 `scripts/` has end-to-end wrappers that serve, evaluate and stop their own server: `eval_run.sh <run>`,
-`full_eval.sh <run> <prompt>` and `evidence_test.sh`. Expected numbers are in `LEARNINGS.md`.
+`full_eval.sh <run> <prompt>` (both on Pinpoint's candidates), and the knowledge scripts `knowledge_*.sh`. Expected numbers are in `LEARNINGS.md`.
