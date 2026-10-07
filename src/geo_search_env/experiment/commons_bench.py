@@ -124,23 +124,33 @@ def _record(page: dict[str, Any], taken_after: datetime) -> dict[str, Any] | Non
     gap = _haversine_m(lat, lon, float(camera[0]["lat"]), float(camera[0]["lon"])) if camera else None
     if gap is not None and gap > MAX_GPS_GAP_M:
         return None
-    ext = info.get("extmetadata") or {}
-    artist, credit = _text(ext, "Artist"), _text(ext, "Credit")
-    if any(s in f"{page['title']} {artist} {credit}".lower() for s in EXCLUDED_SOURCES):
-        return None
     return {
-        "page_id": page["pageid"], "title": page["title"], "uploader": info.get("user", ""), "artist": artist, "credit": credit,
+        "page_id": page["pageid"], "title": page["title"], "uploader": info.get("user", ""),
         "lat": lat, "lon": lon, "page_gps_gap_m": gap, "taken": taken.strftime("%Y-%m-%d"), "uploaded": info.get("timestamp", ""),
         "make": str(metadata.get("Make") or ""), "model": str(metadata["Model"]), "width": info["width"], "height": info["height"],
-        "thumb_url": info.get("thumburl", ""), "page_url": info.get("descriptionurl", ""),
-        "license": _text(ext, "LicenseShortName"), "license_url": _text(ext, "LicenseUrl"),
     }
 
 
 def _details(titles: Sequence[str], taken_after: datetime) -> list[dict[str, Any]]:
-    payload = _request({"action": "query", "prop": "imageinfo|coordinates", "titles": "|".join(titles), "iiprop": "timestamp|user|url|mime|size|metadata|extmetadata",
-                        "iiurlwidth": THUMB_WIDTH, "colimit": "max", "coprop": "type|globe", "coprimary": "all"}, post=True)
-    return [r for page in payload.get("query", {}).get("pages", {}).values() if "pageid" in page and (r := _record(page, taken_after))]
+    """EXIF filter first (cheap), then licence, author and thumbnail for the survivors only: extmetadata makes a request ~10x slower."""
+    payload = _request({"action": "query", "prop": "imageinfo|coordinates", "titles": "|".join(titles), "iiprop": "timestamp|user|mime|size|metadata",
+                        "colimit": "max", "coprop": "type|globe", "coprimary": "all"}, post=True)
+    kept = {r["title"]: r for page in payload.get("query", {}).get("pages", {}).values() if "pageid" in page and (r := _record(page, taken_after))}
+    if not kept:
+        return []
+    payload = _request({"action": "query", "prop": "imageinfo", "titles": "|".join(kept), "iiprop": "url|extmetadata", "iiurlwidth": THUMB_WIDTH}, post=True)
+    out = []
+    for page in payload.get("query", {}).get("pages", {}).values():
+        record, info = kept.get(page.get("title", "")), (page.get("imageinfo") or [None])[0]
+        if record is None or info is None:
+            continue
+        ext = info.get("extmetadata") or {}
+        artist, credit = _text(ext, "Artist"), _text(ext, "Credit")
+        if any(s in f"{record['title']} {artist} {credit}".lower() for s in EXCLUDED_SOURCES):
+            continue
+        out.append({**record, "artist": artist, "credit": credit, "thumb_url": info.get("thumburl", ""), "page_url": info.get("descriptionurl", ""),
+                    "license": _text(ext, "LicenseShortName"), "license_url": _text(ext, "LicenseUrl")})
+    return out
 
 
 def _chunks(items: Sequence[str], size: int) -> Iterable[Sequence[str]]:
