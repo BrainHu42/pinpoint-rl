@@ -10,8 +10,11 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Work toward one research idea with novelty, not small incremental experiments.
 
 ## Research state (2026-10-06; details in `HANDOFF.md`, numbers in `LEARNINGS.md`)
-- **Baseline: the reranker's top-1** (3,713 benchmark eval-half photos: 17.1 / 38.9 / 56.4% within 1 / 25 / 200 km). The right answer is
-  in the ~17-candidate pool far more often (oracle 34.2 / 60.2 / 80.3), so the headroom is in **choosing among candidates**.
+- **Baseline: Pinpoint's attention reranker top-1** (the submission's full model, same-photographer gallery rows excluded; LEARNINGS 51):
+  17.9 / 38.1 / 55.1% within 1 / 25 / 200 km on the 3,713 benchmark eval-half photos, 8.5 / 24.7 / 57.5 on wikimedia; oracle over its 12
+  candidates 30.6 / 55.9 / 75.8. Results before 2026-10-07 (LEARNINGS 1-50) were measured against our **one-step reranker** (17.0 / 38.9 /
+  56.4; fitted on the benchmark tune halves), which is about equal; its ~17-candidate pool (oracle 34.2 / 60.2 / 80.3) still feeds the
+  choosers and comparator data. Either way the headroom is in **choosing among candidates**.
 - Closed (LEARNINGS 1-49): SFT / single-turn GRPO of the 4B as a chooser (reranker parity); new evidence from search queries,
   Wikipedia, place names, text, attributes ("stage 1", 11-21; old plan in `archive/stage1_plan.md`); zero-shot choosers up to 27B;
   comparator scaling and combiners (best confirmed **+0.9 [+0.3, +1.6] at 25 km**, fine-tuned 4B comparator, 24-29, 39-46);
@@ -90,6 +93,9 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
   `name_score.py` (log P(place name | photo) per candidate, combiner report); `knowledge_data.py` (knowledge SFT data:
   `select` with `~/.venvs/sft` for pyarrow, `overlay`, `dataset`); pipeline `scripts/knowledge_run.sh`, scoring `scripts/name_scores.sh`.
 - `experiment/wikimedia_eval.py`: wikimedia candidates and baseline / oracle report.
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, plus a same-photographer filter on its
+  MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
+  `PYTHONPATH=src:<submission>/src`; one photo per call, batching changes bf16 results) -> `artifacts/pinpoint_reranker/`.
   Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`, `text_screen.sh`,
   `photo_attributes.sh`, `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
   (all 3,795 eval-half), `train` (MP16 train), `wikimedia` under `artifacts/query_evidence/`.

@@ -8,10 +8,15 @@ SigLIP2 gallery embeddings). Pruned before upload: the geo-adapter training copy
 
 ## The problem in one paragraph
 
-Photo geolocation on im2gps3k / yfcc4k (wikimedia as a third test set). A retrieval pipeline (Pinpoint: SigLIP2 photo matching over MP16 + OSV-5M,
-a region head, a small reranker) proposes ~17 candidate locations per photo. Baseline to beat is **the reranker's top-1**, not Gemini. On the 3,713
-benchmark eval-half photos: top-1 17.1% < 1 km / 38.9% < 25 km / 56.4% < 200 km; the oracle over the whole pool is 34.2 / 60.2 / 80.3. So the
-right answer is usually already in the pool, and **the headroom is in choosing among candidates** (~20 pts at 25 km), not in finding new ones.
+Photo geolocation on im2gps3k / yfcc4k (wikimedia as a third test set). Baseline to beat is **Pinpoint's attention reranker top-1** (the
+submission's full model, run with same-photographer gallery rows excluded; LEARNINGS 51), not Gemini. On the 3,713 benchmark eval-half photos:
+17.9% < 1 km / 38.1% < 25 km / 55.1% < 200 km (wikimedia 8.5 / 24.7 / 57.5); the oracle over its 12 candidates is 30.6 / 55.9 / 75.8.
+
+Until 2026-10-07 the baseline was our own **one-step reranker** over a ~17-candidate pool (SigLIP2 photo matching over MP16 + OSV-5M, Pinpoint's
+GPS retrieval, a region head): 17.0 / 38.9 / 56.4, pool oracle 34.2 / 60.2 / 80.3. All of LEARNINGS 1-50 (including the +0.9 comparator gain) is
+measured against it. The two baselines are within about a point of each other, so those conclusions stand. That pool and its order still feed
+the choosers, comparator data and `name_score.py`; report new results against the attention reranker top-1 as well. Either way the right answer
+is usually already among the candidates, and **the headroom is in choosing among them** (~18-20 pts at 25 km), not in finding new ones.
 
 ## What we've learned (details and numbers in LEARNINGS.md)
 
@@ -59,7 +64,8 @@ On a bigger GPU, raise the batch / `--gpu-memory-utilization` in the script and 
 selection first (deterministic, seed 0).
 
 **How to read the result.** Primary: change in top-1 < 25 km vs the reranker top-1 from the CV combiner (rank + name scores), dev then val;
-`name_score.py report` prints it. Secondary: within-photo AUC per level and right-country-first rate on multi-country photos, trained vs base 4B.
+`name_score.py report` prints it (against the one-step reranker; on val also compare with the attention reranker top-1 from
+`artifacts/pinpoint_reranker/`, dev has no attention-reranker run yet). Secondary: within-photo AUC per level and right-country-first rate on multi-country photos, trained vs base 4B.
 The usual bar in this project has been **+2 pts at 25 km** over the reranker top-1 (it would be the first lever to clear it). A large AUC gain with
 no top-1 gain means knowledge exists but the combination is the problem (try adding it to the comparator combiner); no AUC gain means 250k photos
 of SFT doesn't teach the 4B usable place knowledge.
