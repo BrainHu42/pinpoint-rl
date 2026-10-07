@@ -52,8 +52,8 @@ that geolocates like a professional, with retrieval as the candidate generator a
 ## Guardrails (hard rules)
 - Long jobs in a memory-capped scope (`systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 ...`), launched with
   `setsid nohup ... > log 2>&1 &`; record PIDs; stop them by PID only, never `pkill -f`. One GPU job at a time.
-- **Never train on the benchmarks.** Develop and choose everything on MP16 dev / val or bucket-99 train. The eval halves are a test set:
-  **at most 3 measurements this session**, each of a method fixed beforehand; report every one. Exemplar / gallery photos: exclude the query's
+- **Never train on the benchmarks.** Develop and choose everything on MP16 dev / val or bucket-99 train. **Leave the test set (eval halves) alone:**
+  no model runs, features, diagnostics or measurements on it unless the user asks (CLAUDE.md). Exemplar / gallery photos: exclude the query's
   photographer and benchmark photos.
 - Training only on bucket 99. No Gemini, OpenRouter or other paid APIs; no web or reverse image search for benchmark photos. Public map data is fine.
 - Ground-truth labels only; no distillation from another model's answers.
