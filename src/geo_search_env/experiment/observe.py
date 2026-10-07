@@ -180,6 +180,41 @@ def crops(tag: str, base: str, out: str, server: str = "http://127.0.0.1:8765", 
     print(f"{tag}: {len(jobs)} crops, {sum(a is None for a in answers)} failed; new text on {added} photos -> {OUT / f'observe_{tag}_{out}.json'}")
 
 
+LANDMARK_PROMPT = ('Does this photo show a specific, recognisable landmark or named place (a particular building, monument, castle, church, museum, '
+                   'bridge, square, natural landmark)? Answer with JSON only: {"landmark": "its name, or null", "city": "city or null", '
+                   '"region": "state / province / region, or null", "country": "country or null", "confidence": "high, medium or low"}. '
+                   'Use null for landmark if it is a generic scene.')
+
+
+def landmarks(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
+    """Per photo: the landmark the VLM recognises, with city / region / country -> artifacts/agent/landmark_{tag}_{name}.json."""
+
+    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
+    images = MP16Images()
+
+    def run(e: dict) -> dict | None:
+        body = {"model": "vlm", "temperature": 0.0, "max_tokens": 150, "chat_template_kwargs": {"enable_thinking": False},
+                "messages": [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(_read(e, images)).decode()}},
+                    {"type": "text", "text": LANDMARK_PROMPT}]}]}
+        request = urllib.request.Request(f"{server}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=900) as response:
+                raw = json.loads(response.read())["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+        obj = _salvage(raw) or {}
+        clean = {k: (str(obj[k]).strip() if obj.get(k) not in (None, "", "null", "None") else None) for k in ("landmark", "city", "region", "country", "confidence")}
+        return clean | {"raw": raw}
+
+    with ThreadPoolExecutor(workers) as pool:
+        answers = list(pool.map(run, photos))
+    path = OUT / f"landmark_{tag}_{name}.json"
+    path.write_text(json.dumps({e["image_id"]: a for e, a in zip(photos, answers)}) + "\n", encoding="utf-8")
+    named = sum(bool(a and a["landmark"]) for a in answers)
+    print(f"{tag}: {len(answers)} answers, {sum(a is None for a in answers)} failed, landmark named on {named} -> {path}")
+
+
 def report(tag: str, name: str) -> None:
     obs = json.loads((OUT / f"observe_{tag}_{name}.json").read_text(encoding="utf-8"))
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
@@ -201,7 +236,7 @@ def report(tag: str, name: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("extract", "crops", "report"))
+    parser.add_argument("node", choices=("extract", "crops", "landmarks", "report"))
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--name", default="base")
     parser.add_argument("--base", default="9b", help="crops: the clues the crop text is merged into")
@@ -211,6 +246,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         extract(args.tag, args.name, args.server)
     elif args.node == "crops":
         crops(args.tag, args.base, args.name, args.server)
+    elif args.node == "landmarks":
+        landmarks(args.tag, args.name, args.server)
     else:
         report(args.tag, args.name)
     return 0

@@ -57,11 +57,18 @@ SCRIPTS = {  # writing system -> languages written in it (Latin is too common to
 }
 FEATURES = (["feat frac 1", "feat frac 5", "feat frac 25", "feat idf 1", "feat idf 5", "feat idf 25", "text match 1", "text match 5", "text match 25",
              "name match 1", "name match 5", "name match 25", "language ok", "script ok", "driving ok", "country guess",
-             "text region", "text country", "name region", "name country", "poi 1", "poi 5", "poi 25", "poi region"])
+             "text region", "text country", "name region", "name country", "poi 1", "poi 5", "poi 25", "poi region",
+             "lm city 25", "lm name 5", "lm region ok", "lm country ok", "fuzzy 0.5", "fuzzy 2", "fuzzy nochain 2", "fuzzy exact 2"])
 GROUPS = {"features": [f for f in FEATURES if f.startswith("feat")], "text": [f for f in FEATURES if f.startswith(("text match", "name match"))],
           "rules": ["language ok", "script ok", "driving ok"], "country guess": ["country guess"],
           "text region": ["text region", "text country", "name region", "name country"], "poi": ["poi 1", "poi 5", "poi 25", "poi region"]}
 GROUPS["text+poi"] = GROUPS["text"] + GROUPS["poi"]
+GROUPS["landmark"] = ["lm city 25", "lm name 5", "lm region ok", "lm country ok"]
+GROUPS["fuzzy"] = ["fuzzy 0.5", "fuzzy 2", "fuzzy nochain 2", "fuzzy exact 2"]
+GROUPS["text+landmark"] = GROUPS["text"] + GROUPS["landmark"]
+GROUPS["text+fuzzy"] = GROUPS["text"] + GROUPS["fuzzy"]
+GROUPS["text+landmark+fuzzy"] = GROUPS["text"] + GROUPS["landmark"] + GROUPS["fuzzy"]
+CONFIDENCE = {"high": 1.0, "medium": 0.6, "low": 0.3}
 MAX_NGRAM = 4  # words; CJK runs: substrings of 2-6 characters
 
 
@@ -271,7 +278,15 @@ def score(tag: str, name: str) -> None:
     table_path = OUT / f"textgeo_{name}.json"
     table = json.loads(table_path.read_text(encoding="utf-8")) if table_path.exists() else {}
     pois = POIs(name, g)
+    lm_path = OUT / f"landmark_{tag}_{name}.json"
+    lms = json.loads(lm_path.read_text(encoding="utf-8")) if lm_path.exists() else {}
+    from .knowledge_check import _right
+    cand_labels = {p["image_id"]: p["pool"] for p in json.loads((Path("artifacts/place_labels") / f"candidates_{tag}.json").read_text(encoding="utf-8"))}
     for i, e in enumerate(photos):
+        lm = lms.get(e["image_id"]) or {}
+        lm_w = CONFIDENCE.get(norm(lm.get("confidence") or ""), 0.3)
+        lm_name, lm_city = norm(lm.get("landmark") or ""), norm(lm.get("city") or "")
+        lm_tokens = {t for t in lm_name.split() if len(t) >= MIN_NAME}
         o = (obs.get(e["image_id"]) or {}).get("parsed") or {}
         text_reg, text_cty = _region_scores(o.get("text") or [], table)
         name_reg, name_cty = _region_scores(o.get("place_names") or [], table)
@@ -310,6 +325,22 @@ def score(tag: str, name: str) -> None:
             cc, region = g.region(lat, lon)
             F[i, k, col["text region"]], F[i, k, col["text country"]] = text_reg.get(region, 0.0), text_cty.get(cc, 0.0)
             F[i, k, col["name region"]], F[i, k, col["name country"]] = name_reg.get(region, 0.0), name_cty.get(cc, 0.0)
+            labels_k = cand_labels[e["image_id"]][k] if k < len(cand_labels[e["image_id"]]) else {}
+            if lm.get("region"):
+                F[i, k, col["lm region ok"]] = lm_w if _right(lm["region"], labels_k.get("region")) else -lm_w
+            if lm.get("country"):
+                F[i, k, col["lm country ok"]] = lm_w if _right(lm["country"], labels_k.get("country")) else -lm_w
+            if lm_city or lm_tokens:
+                for j, dist in zip(near25, d):
+                    js = int(j)
+                    if lm_city and str(g.code[js]).startswith("P.") and lm_city in g.names(js):
+                        F[i, k, col["lm city 25"]] = lm_w
+                    if lm_tokens and dist <= 5.0:
+                        for n in g.names(js):
+                            nt = {t for t in n.split() if len(t) >= MIN_NAME}
+                            if nt and (nt <= lm_tokens or (len(lm_tokens) and lm_tokens <= nt)):
+                                F[i, k, col["lm name 5"]] = lm_w
+                                break
             for gram in poi_grams:
                 w, dist = pois.weight(gram), pois.nearest_km(gram, lat, lon)
                 for r in RADII:
@@ -334,7 +365,12 @@ def _load(tag: str, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.n
 
     photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
-    T = np.load(OUT / f"tools_{tag}_{name}.npz")["F"]
+    T = np.load(OUT / f"tools_{tag}_{name}.npz")["F"].copy()
+    fuzzy_path = OUT / f"poifuzzy_{tag}.npz"
+    if fuzzy_path.exists() and T.shape[-1] == len(FEATURES):
+        Z = np.load(fuzzy_path)["F"]
+        start = FEATURES.index("fuzzy 0.5")
+        T[:, : Z.shape[1], start: start + Z.shape[2]] = Z
     n, C = len(photos), T.shape[1]
     D, V = np.full((n, C), 1e5), np.zeros((n, C), bool)
     for i, e in enumerate(photos):
@@ -378,7 +414,7 @@ def _summary(label: str, hits: dict, base: np.ndarray, fix: np.ndarray) -> str:
     return f"  {label:22s}: " + "; ".join(parts) + f"; 25 km fixes {fixes:.0f} (on fixable {hits[25][fix].sum():.0f} of {fix.sum()}), breaks {breaks:.0f}"
 
 
-def report(tags: Sequence[str], name: str) -> None:
+def report(tags: Sequence[str], name: str, groups: Sequence[str] | None = None) -> None:
     from .name_score import _fit
 
     parts = [_load(t, name) for t in tags]
@@ -390,7 +426,7 @@ def report(tags: Sequence[str], name: str) -> None:
         nz = (F[..., 3 + j][V] != 0).mean()
         print(f"  {f:16s} {_auc(F, D, V, 3 + j, np.ones(n, bool)):.3f} / {_auc(F, D, V, 3 + j, fix):.3f}   nonzero {nz:.0%}")
     folds = np.array_split(np.random.default_rng(0).permutation(n), 5)
-    for group in ["rank", *GROUPS, "all"]:
+    for group in ["rank", *(groups or [*GROUPS, "all"])]:
         cols = _cols(group)
         hits = {km: np.zeros(n) for km in (1, 25)}
         for seed in range(3):
@@ -431,6 +467,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--fit", nargs="+", default=["dev", "val"])
     parser.add_argument("--name", default="base")
     parser.add_argument("--group", default="all", choices=["rank", *GROUPS, "all"])
+    parser.add_argument("--groups", nargs="+", default=None, choices=[*GROUPS, "all"], help="report: only these tool groups")
     args = parser.parse_args(argv)
     if args.node == "index":
         index()
@@ -441,7 +478,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.node == "score":
         score(args.tag, args.name)
     elif args.node == "report":
-        report(args.tags, args.name)
+        report(args.tags, args.name, args.groups)
     else:
         transfer(args.fit, args.tag, args.name, args.group)
     return 0
