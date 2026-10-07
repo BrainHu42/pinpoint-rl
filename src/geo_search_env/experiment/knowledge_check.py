@@ -152,7 +152,7 @@ def _rule_hits(name: str, tag: str) -> tuple[dict[tuple[str, int], np.ndarray], 
             for i, e in enumerate(photos):
                 parts = [x.strip() for x in (answers.get(e["image_id"]) or "").split(">")]
                 pool = labels[e["image_id"]][:k]
-                depths = (1, 2, 3) if level == "country" else (2,) if level == "region" else (3,) if level == "city" else (3, 2, 1)
+                depths = (1,) if level == "country" else (2,) if level == "region" else (3,) if level == "city" else (3, 2, 1)
                 pick = 0
                 for depth in (depths if level == "deepest" else depths[-1:]):
                     hit = next((j for j, lab in enumerate(pool) if _matches(parts, lab, depth)), None)
