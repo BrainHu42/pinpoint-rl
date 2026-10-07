@@ -57,10 +57,11 @@ SCRIPTS = {  # writing system -> languages written in it (Latin is too common to
 }
 FEATURES = (["feat frac 1", "feat frac 5", "feat frac 25", "feat idf 1", "feat idf 5", "feat idf 25", "text match 1", "text match 5", "text match 25",
              "name match 1", "name match 5", "name match 25", "language ok", "script ok", "driving ok", "country guess",
-             "text region", "text country", "name region", "name country"])
+             "text region", "text country", "name region", "name country", "poi 1", "poi 5", "poi 25", "poi region"])
 GROUPS = {"features": [f for f in FEATURES if f.startswith("feat")], "text": [f for f in FEATURES if f.startswith(("text match", "name match"))],
           "rules": ["language ok", "script ok", "driving ok"], "country guess": ["country guess"],
-          "text region": ["text region", "text country", "name region", "name country"]}
+          "text region": ["text region", "text country", "name region", "name country"], "poi": ["poi 1", "poi 5", "poi 25", "poi region"]}
+GROUPS["text+poi"] = GROUPS["text"] + GROUPS["poi"]
 MAX_NGRAM = 4  # words; CJK runs: substrings of 2-6 characters
 
 
@@ -102,6 +103,47 @@ def textgeo(name: str, tags: Sequence[str]) -> None:
     found = {g: sorted(r) for g, r in regions.items() if r}
     (OUT / f"textgeo_{name}.json").write_text(json.dumps(found) + "\n", encoding="utf-8")
     print(f"{len(grams)} n-grams, {len(found)} found in GeoNames -> {OUT / f'textgeo_{name}.json'}")
+
+
+def poigrams(name: str, tags: Sequence[str]) -> None:
+    """The n-grams of the read text and place names of the given sets, for poi_query.py -> artifacts/agent/poi_grams_{name}.json."""
+
+    grams: set[str] = set()
+    for tag in tags:
+        for v in json.loads((OUT / f"observe_{tag}_{name}.json").read_text(encoding="utf-8")).values():
+            o = v.get("parsed") or {}
+            grams |= ngrams((o.get("text") or []) + (o.get("place_names") or []))
+    (OUT / f"poi_grams_{name}.json").write_text(json.dumps(sorted(grams)) + "\n", encoding="utf-8")
+    print(f"{len(grams)} n-grams -> {OUT / f'poi_grams_{name}.json'}")
+
+
+class POIs:
+    """Overture POIs per read n-gram (poi_query.py): match strength near a candidate and the regions the n-gram's POIs lie in."""
+
+    def __init__(self, name: str, g: "Gazetteer") -> None:
+        path = OUT / f"poi_{name}.json"
+        self.table = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        self.g, self._regions = g, {}
+
+    def grams(self, items: Sequence[str]) -> list[str]:
+        found = [x for x in ngrams(items) if x in self.table]
+        return [x for x in found if not any(x != y and x in y for y in found)]  # drop n-grams inside a longer matched one
+
+    def weight(self, gram: str) -> float:
+        """Long, rare names count most: characters / log2(2 + number of POIs with that name)."""
+
+        return len(gram) / np.log2(2 + self.table[gram]["count"])
+
+    def nearest_km(self, gram: str, lat: float, lon: float) -> float:
+        pts = np.radians(np.asarray(self.table[gram]["points"]))
+        la, lo = np.radians(lat), np.radians(lon)
+        h = np.sin((pts[:, 0] - la) / 2) ** 2 + np.cos(la) * np.cos(pts[:, 0]) * np.sin((pts[:, 1] - lo) / 2) ** 2
+        return float(2 * EARTH_KM * np.arcsin(np.sqrt(h)).min())
+
+    def regions(self, gram: str) -> set[str]:
+        if gram not in self._regions:
+            self._regions[gram] = {self.g.region(a, b)[1] for a, b in self.table[gram]["points"]}
+        return self._regions[gram]
 
 
 def _region_scores(items: Sequence[str], table: dict[str, list[str]]) -> tuple[dict[str, float], dict[str, float]]:
@@ -228,10 +270,12 @@ def score(tag: str, name: str) -> None:
     col = {f: i for i, f in enumerate(FEATURES)}
     table_path = OUT / f"textgeo_{name}.json"
     table = json.loads(table_path.read_text(encoding="utf-8")) if table_path.exists() else {}
+    pois = POIs(name, g)
     for i, e in enumerate(photos):
         o = (obs.get(e["image_id"]) or {}).get("parsed") or {}
         text_reg, text_cty = _region_scores(o.get("text") or [], table)
         name_reg, name_cty = _region_scores(o.get("place_names") or [], table)
+        poi_grams = pois.grams((o.get("text") or []) + (o.get("place_names") or []))
         feats = o.get("features") or []
         text_blob = " " + " ".join(norm(t) for t in o.get("text") or []) + " "
         name_blob = " " + " ".join(norm(t) for t in o.get("place_names") or []) + " "
@@ -266,6 +310,13 @@ def score(tag: str, name: str) -> None:
             cc, region = g.region(lat, lon)
             F[i, k, col["text region"]], F[i, k, col["text country"]] = text_reg.get(region, 0.0), text_cty.get(cc, 0.0)
             F[i, k, col["name region"]], F[i, k, col["name country"]] = name_reg.get(region, 0.0), name_cty.get(cc, 0.0)
+            for gram in poi_grams:
+                w, dist = pois.weight(gram), pois.nearest_km(gram, lat, lon)
+                for r in RADII:
+                    if dist <= r:
+                        F[i, k, col[f"poi {r:g}"]] = max(F[i, k, col[f"poi {r:g}"]], w)
+                if region in pois.regions(gram):
+                    F[i, k, col["poi region"]] += w / len(pois.regions(gram))
             F[i, k, col["language ok"]] = 0.0 if lang is None else (1.0 if lang in langs.get(cc, set()) else -1.0)
             F[i, k, col["script ok"]] = 0.0 if script_langs is None else (1.0 if script_langs & langs.get(cc, set()) else -1.0)
             F[i, k, col["driving ok"]] = 0.0 if side not in ("left", "right") else (1.0 if (cc in LEFT_DRIVING) == (side == "left") else -1.0)
@@ -374,7 +425,7 @@ def transfer(fit_tags: Sequence[str], tag: str, name: str, group: str = "all") -
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("index", "textgeo", "score", "report", "transfer"))
+    parser.add_argument("node", choices=("index", "textgeo", "poigrams", "score", "report", "transfer"))
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--tags", nargs="+", default=["dev"])
     parser.add_argument("--fit", nargs="+", default=["dev", "val"])
@@ -385,6 +436,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         index()
     elif args.node == "textgeo":
         textgeo(args.name, args.tags)
+    elif args.node == "poigrams":
+        poigrams(args.name, args.tags)
     elif args.node == "score":
         score(args.tag, args.name)
     elif args.node == "report":

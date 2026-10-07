@@ -58,6 +58,12 @@ that write like this"). A constraint can be decisive on a photo that looks gener
 - Reward: distance to the truth (as in `grpo_train.py`), ground truth only, no Gemini traces (CLAUDE.md).
 - Train on MP16 bucket 99 (34.5k), multi-turn tool calls, Qwen3.5-4B thinking off, LoRA.
 
+## Status (2026-10-07, lessons 54-56, `OVERNIGHT2_REPORT.md`)
+- First tools built and measured. Text matched near a candidate is the one confirmed gain: +0.4 [+0.2, +0.6] at 25 km, 18 fixes / 3 breaks.
+  Features, rules and the country guess add nothing; POI names +0.2 on dev + val.
+- Headroom on fixable photos: ~58% have nothing place-specific; the rest needs landmark matching (~12%) or business-name search with
+  correct reading (~15%). Build those signals before RL; an agent can't learn from tools without signal (lesson 3).
+
 ## How to proceed (one real-task check, then the agent)
 0. **Development set:** the same "fixable" definition on MP16 dev / val (bucket 99), so prompts, tools and rules are
    developed there; the 413 are measured once per method.

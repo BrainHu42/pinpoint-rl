@@ -644,3 +644,23 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
     55.4 / 37.6; 1,500+ 20.8 / 17.5 vs 62.0 / 59.2. Median training photos in the true region: fixable 872, reranker-right 1,073. The SFT learned
     these regions (the reranker-right column gains most), but the fixable photos don't show them; more or harder knowledge data of the same kind
     is unlikely to help. Next direction: clues that aren't overall appearance, used through tools (`AGENT_DIRECTION.md`).
+
+54. **Constraint tools from photo clues: precise but rare (2026-10-07; `observe.py`, `geo_tools.py`, `poi_query.py`, `agent_targets.py`).** A VLM reads
+    each photo into JSON clues (text, language, script, driving side, features from a GeoNames-mapped vocabulary, place names, country); tools score
+    each retrieval candidate; listwise combiner of rank + tool features (CV on MP16 dev + val, n = 2,000, 208 fixable photos).
+    - Text matched to a GeoNames name near the candidate (9B clues): dev + val +0.4 [+0.1, +0.9] at 25 km (14 fixes / 5 breaks); **eval halves, fit on
+      dev + val: +0.4 [+0.2, +0.6], 18 fixes / 3 breaks** (single test-set look of a method fixed beforehand). 4B clues: +0.1 (v2 prompt).
+    - Overture POI names near the candidate +0.2 [-0.1, +0.7] (13 / 8); text -> GeoNames region +0.1; visible features near candidate -0.4 (AUC <= 0.545);
+      country rules and the VLM's country guess 0.0 even with the 9B's fuller language / driving-side fields; all tools -0.1 (overfits).
+    - Ceiling: read text names a place in the true region specifically (<= 5 regions) on 4 / 102 dev and 7 / 106 val fixable photos.
+    - Extraction: greedy JSON from the 4B looped on long text lists (8.8% unparsed); text last + capped + repetition penalty 1.05 -> 0%.
+
+55. **Capacity and resolution barely move region knowledge on hard photos (2026-10-07; `agent_capacity.py`, `scripts/capacity.sh`).** Right region
+    (country > region) on dev + val fixable photos: Qwen3.5-4B 13.9%, Qwen3.5-9B 16.8% (+2.9 [-1.9, +7.7]); city 6.3 vs 10.7 (+4.4 [+0.6, +8.8]).
+    Same 4B, dev fixable: 448 -> 786k px +3.9 [+1.0, +7.8] region, +6.9 country (no change on reranker-right photos); 1.6M px = 786k. Agreement of
+    4B and 9B as a switch rule: best +0.4 [-0.1, +0.9]; requiring agreement halves fixes and breaks alike (`agent_vote.py`).
+
+56. **What the photos retrieval fails on contain (2026-10-07; by eye, one reader, 24 random dev fixable photos).** Nothing place-specific 58% (indoor,
+    people, food, sky, generic nature); a readable business / organisation name ~15% (POI search; the 9B misread one); a recognisable landmark 12%
+    (landmark matching); country-level cultural objects 12% (e.g. Strandkorb beach chairs). GeoNames suits places, not the business names hard photos
+    show; Overture places covers more but not all (2,907 vs 1,946 of the read n-grams matched).
