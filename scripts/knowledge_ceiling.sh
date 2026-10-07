@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Can the knowledge model's place knowledge pick better among the retrieval candidates than the reranker? (go/no-go for KNOWLEDGE_PLAN.md step 2)
+# Can the knowledge model's place knowledge pick better among the retrieval candidates than the reranker? (go/no-go for archive/KNOWLEDGE_PLAN.md step 2)
 # For the knowledge-SFT model and the base 4B (control), both at 448 px: greedy answers on MP16 dev (for knowledge_check rule) and candidate-name scores
 # with the knowledge prompt on dev and the full eval halves (name_score --levels 3); then the reports: rule and combiner chosen / fitted on dev, applied
 # once to the full eval halves. ~45 min.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KNOWLEDGE_PLAN.md step-1 check: base 4B (with and without a format example) and the knowledge-SFT model name the place for every
+# archive/KNOWLEDGE_PLAN.md step-1 check: base 4B (with and without a format example) and the knowledge-SFT model name the place for every
 # full-eval-half photo; then the report. Both models see 448x448 images (the knowledge model's training size). ~30 min.
 # Usage: setsid nohup bash scripts/knowledge_check.sh > artifacts/knowledge/logs/knowledge_check.log 2>&1 &
 set -uo pipefail

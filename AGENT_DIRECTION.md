@@ -1,4 +1,4 @@
-# Direction: an agent that geolocates like a professional (proposed 2026-10-07, not yet agreed)
+# Direction: an agent that geolocates like a professional (agreed 2026-10-07)
 
 **Goal.** Train an RL agent that does what professional geolocators do: eliminate places with rule-like clues and
 structured map queries, then verify, instead of asking "what does this look like?". Retrieval stays as one tool (the
@@ -16,6 +16,19 @@ candidate generator); the agent's job is to win on the photos where visual simil
   region vs 1,073 for reranker-right photos). With 300-1,500 training photos in the region, the model names it 55 %
   on reranker-right photos but **6 %** on the 413. These photos don't look like their region, for the VLM or for retrieval.
 - So the next gain has to come from clues that aren't overall appearance. That is what professionals rely on.
+
+## The target photos (the 413, eval halves; measure only, never develop on them)
+- Definition: reranker top-1 >= 25 km off, and the best-ranked pool candidate in the photo's true (country, region) is < 25 km.
+- 280 from yfcc4k (12.1 % of it), 133 from im2gps3k (9.0 %): personal, often generic photos more than landmarks.
+- Far misses, not near-misses: top-1 error > 200 km for 77 %, > 750 km for 45 %. But the top-1 is in the true country for
+  62 %: the typical failure is the wrong region inside the right country (United States 140, UK 25, Spain 19, China 17,
+  Taiwan 17, Japan 16). 23 % are > 2,500 km off (wrong continent).
+- The fix is often deep: the first true-region candidate is rank 2 for 20 %, ranks 3-6 for 31 %, rank 7+ for 49 %;
+  pools span a median of 8 regions.
+- So the clues that matter most are region-level within a country (plates, route markers and road signs, place names in
+  text, feature co-occurrence); country rules (driving side, script) cover the wrong-continent quarter.
+- An upper bound: it assumes perfect region knowledge and right labels, and in large regions the 25 km hit partly relies on
+  retrieval's order within the region.
 
 ## How professionals work
 Hypothesise, eliminate, verify. Each clue rules places out; the shortlist is then checked against maps or imagery.
@@ -46,6 +59,8 @@ that write like this"). A constraint can be decisive on a photo that looks gener
 - Train on MP16 bucket 99 (34.5k), multi-turn tool calls, Qwen3.5-4B thinking off, LoRA.
 
 ## How to proceed (one real-task check, then the agent)
+0. **Development set:** the same "fixable" definition on MP16 dev / val (bucket 99), so prompts, tools and rules are
+   developed there; the 413 are measured once per method.
 1. **Tool ceiling on the real photos (no training, ~1 day):** for the 792 choosing photos (and all 3,795), base 4B lists
    features and reads text; the tools score each candidate; measure fixes / breaks vs the reranker top-1, choosing any
    rule on MP16 dev. Key number: of the 413 region-fixable photos, how many the constraints point to the right region

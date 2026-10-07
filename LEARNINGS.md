@@ -1,7 +1,7 @@
 # Learnings so far (Sep 2026)
 
 What the base-model diagnostic, SFT, single-turn GRPO and the follow-up headroom checks established, and what they
-rule out. The current plan lives in `KNOWLEDGE_PLAN.md`; the numbered lessons with full numbers are in `LESSONS.md`
+rule out. The current direction is `AGENT_DIRECTION.md` (superseded plans in `archive/`); the numbered lessons with full numbers are in `LESSONS.md`
 (lesson numbers cited anywhere, e.g. "LEARNINGS 50", refer to it). Numbers are % of
 photos within 1 km / 25 km of the truth, with same-photographer gallery images excluded. "Full eval halves" = every
 im2gps3k + yfcc4k eval-half query (n = 3,795; SE about 0.6 pts at 1 km, 0.8 at 25 km). "300 subset" = the stratified
@@ -53,14 +53,16 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 46: combiner variants (relative-to-top-1 features, switching margin) chosen by CV on held-out train photos: +0.7; fixes and breaks move together.
 - 47-49 (map search pivot): searching within 25 km of the top-1 reaches 70-82% of near-misses within 100-300 photos (fixed list 56%), but SigLIP2 (AUC
   0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
-  look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. The old directions 1-3 (end of `LESSONS.md`) are tested and closed.
+  look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. The old directions 1-3 (`archive/directions-2026-10-05.md`) are tested and closed.
 - 51: concept-query similarity around each candidate is real alone but adds +0.3 / +0.0 to the reranker (lesson 15's open variant).
 - 52: knowledge SFT (250k photos) names the right country / region +7.7 / +4.4 pts more often where the reranker fails, but as a chooser adds
   -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
 - 53: not a coverage gap: at equal training photos per region the model names the region 55% on reranker-right photos, 6% on
   the fixable ones. Those photos don't look like their region; next is non-appearance clues via tools (`AGENT_DIRECTION.md`).
 
-**Next.** `KNOWLEDGE_PLAN.md` (knowledge SFT warm start, then GRPO). The ranked directions of 2026-10-05 it replaces are at the end of `LESSONS.md`.
+**Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
+feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
+2026-10-05 directions) are in `archive/`.
 
 **Traps worth remembering.** Choose scorers on dev, not by looking at val or the benchmarks (41). A judge's Yes/No logit level can drift in training; always
 check the failed-score count and restrict output to the answer tokens (40). Compare against the reranker top-1, not current greedy; the pool oracle is the

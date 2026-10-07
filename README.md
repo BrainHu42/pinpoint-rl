@@ -6,7 +6,8 @@ of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves wi
 excluded.
 
 - **`LEARNINGS.md`**: results so far and what they rule out (read first); details per lesson in `LESSONS.md`.
-- **`CLAUDE.md`**: current research plan, project rules, environment notes and code map.
+- **`AGENT_DIRECTION.md`**: the current research direction. Superseded plans are in `archive/`.
+- **`CLAUDE.md`**: research plan summary, project rules, environment notes and code map.
 - **`SETUP.md`**: complete setup guide (hardware, environments, models, datasets, cache build order, commands).
 
 ## Repository layout

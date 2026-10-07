@@ -10,17 +10,17 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research plan (2026-10-06)
-- Where we are (LEARNINGS summary): the answer is usually in the ~17-candidate pool (oracle 34.2 / 60.2% within
-  1 / 25 km) but every chooser, evidence source and comparator lands at -0.5 to +1.3 pts over the reranker top-1
-  (17.1 / 38.9), mostly because it re-encodes what visual retrieval already knows.
-- **Main question: can a model learn geographic knowledge that visual similarity doesn't already capture?**
-- Next: **`KNOWLEDGE_PLAN.md`** (agreed 2026-10-06): knowledge SFT warm start (photo -> "country > region > city"),
-  then GRPO on photo + retrieval candidates from the knowledge model vs from the base 4B; measured by fixes on the
-  benchmark photos where the reranker is wrong. Real geolocation only; no artificial held-out tasks.
-- 2026-10-07: step 1 done, GRPO gate failed (lessons 52-53: the SFT's knowledge sits where retrieval already works). **Proposed next
-  (not yet agreed): `AGENT_DIRECTION.md`**, an agent that geolocates like a professional: constraints from text, rules and
-  feature co-occurrence map queries via tools, retrieval as the candidate generator.
+## Research plan (2026-10-07)
+- Where we are (LEARNINGS summary): the answer is usually in the ~17-candidate pool (oracle 33.4 / 59.0% within
+  1 / 25 km) but every chooser, evidence source, comparator and the knowledge SFT lands at -0.5 to +1.3 pts over the
+  reranker top-1 (16.7 / 38.2), because each re-encodes what visual retrieval already knows. Knowledge in the weights
+  sits on the photos retrieval already solves (lessons 52-53).
+- **Direction: `AGENT_DIRECTION.md`** (agreed 2026-10-07): train an agent that geolocates like a professional, using
+  constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
+  candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
+  where the reranker is wrong but knowing the region would fix it (413 of 3,795 on the eval halves; develop on the
+  MP16 dev equivalent).
+- Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
@@ -63,5 +63,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
 - Knowledge SFT: `place_labels.py` (Overture division labels), `knowledge_data.py` (training photos), `name_score.py`
   (candidate name scoring + combiner). Photo sets: `query_evidence.py select` (tags `dev`, `val`, `full`).
+- Knowledge diagnostics (lessons 52-53): `knowledge_check.py` (answers, report, rule), `knowledge_oracle.py` (perfect-knowledge
+  ceiling per level, fixable photos), `knowledge_coverage.py` (accuracy by training coverage).
 - Earlier lines (comparator, near-miss, stage-1 evidence, map search): modules named in their lessons (`LESSONS.md`).
 - Caches: `artifacts/` (not tracked). Setup from scratch: `SETUP.md`.

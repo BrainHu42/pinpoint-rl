@@ -1,4 +1,4 @@
-# KNOWLEDGE_PLAN.md step-1 check: does the knowledge-SFT model name the right country / region / city more often than the base 4B,
+# archive/KNOWLEDGE_PLAN.md step-1 check: does the knowledge-SFT model name the right country / region / city more often than the base 4B,
 # especially on benchmark photos where the reranker (visual similarity) is wrong?
 # Usage: scripts/knowledge_check.sh (serves each model, runs `answer`, then `report`)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_check answer --name knowledge-a   (vLLM on :8765)

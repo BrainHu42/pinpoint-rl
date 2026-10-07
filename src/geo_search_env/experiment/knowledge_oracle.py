@@ -1,8 +1,8 @@
-# Lesson 52 / OVERNIGHT.md NO-GO diagnosis: what perfect place knowledge at each level would add over the reranker top-1 on the full eval halves,
+# Lesson 52 / archive/OVERNIGHT.md NO-GO diagnosis: what perfect place knowledge at each level would add over the reranker top-1 on the full eval halves,
 # and how often the knowledge model names the truth on the photos it would fix. CPU, seconds; needs knowledge_check answer outputs.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_oracle
 
-"""NO-GO diagnosis (OVERNIGHT.md): can place knowledge at a given level fix reranker failures at all, and does knowledge-a have it there?
+"""NO-GO diagnosis (archive/OVERNIGHT.md): can place knowledge at a given level fix reranker failures at all, and does knowledge-a have it there?
 
 Oracle-knowledge rule: take the best-ranked pool candidate whose labels match the TRUTH's labels down to a level (else keep the top-1).
 Then, on the photos that rule fixes, how often knowledge-a / base name the truth down to that level."""

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KNOWLEDGE_PLAN.md step 1: knowledge dataset (no burned-in-GPS filter: rare at this scale, user 2026-10-06), LoRA SFT on photo -> "country > region > city"
+# archive/KNOWLEDGE_PLAN.md step 1: knowledge dataset (no burned-in-GPS filter: rare at this scale, user 2026-10-06), LoRA SFT on photo -> "country > region > city"
 # at 448x448, merge. Reuses artifacts/knowledge/selected.json (250k photos). ~3.5 h on the L40S (~20 photos/s training).
 # Usage: setsid nohup bash scripts/knowledge_run.sh > artifacts/knowledge/logs/knowledge_run.log 2>&1 &
 set -uo pipefail
