@@ -645,11 +645,12 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
     these regions (the reranker-right column gains most), but the fixable photos don't show them; more or harder knowledge data of the same kind
     is unlikely to help. Next direction: clues that aren't overall appearance, used through tools (`AGENT_DIRECTION.md`).
 
-54. **Constraint tools from photo clues: precise but rare (2026-10-07; `observe.py`, `geo_tools.py`, `poi_query.py`, `agent_targets.py`).** A VLM reads
+54. **Constraint tools from photo clues: precise but rare, and smaller than first reported (2026-10-07; `observe.py`, `geo_tools.py`, `poi_query.py`, `agent_targets.py`).** A VLM reads
     each photo into JSON clues (text, language, script, driving side, features from a GeoNames-mapped vocabulary, place names, country); tools score
     each retrieval candidate; listwise combiner of rank + tool features (CV on MP16 dev + val, n = 2,000, 208 fixable photos).
-    - Text matched to a GeoNames name near the candidate (9B clues): dev + val +0.4 [+0.1, +0.9] at 25 km (14 fixes / 5 breaks); **eval halves, fit on
-      dev + val: +0.4 [+0.2, +0.6], 18 fixes / 3 breaks** (single test-set look of a method fixed beforehand). 4B clues: +0.1 (v2 prompt).
+    - **Correction:** "val" (query_evidence `val`) is 1,000 benchmark eval-half photos, not MP16, so every "dev + val" number here mixes in test photos.
+      Clean (combiner fitted on MP16 dev only, `agent_clean.py`): text matched to a GeoNames name near the candidate (9B clues) **+0.2 [+0.0, +0.3]**
+      at 25 km on all eval halves (7 fixes / 1 break), **+0.1 [-0.0, +0.3] on the 2,795 never in val** (4 / 1). Withdrawn: +0.4 [+0.2, +0.6] (fit on dev + val).
     - Overture POI names near the candidate +0.2 [-0.1, +0.7] (13 / 8); text -> GeoNames region +0.1; visible features near candidate -0.4 (AUC <= 0.545);
       country rules and the VLM's country guess 0.0 even with the 9B's fuller language / driving-side fields; all tools -0.1 (overfits).
     - Ceiling: read text names a place in the true region specifically (<= 5 regions) on 4 / 102 dev and 7 / 106 val fixable photos.
@@ -658,7 +659,7 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
       (14 / 6): reading quality isn't the limit, the text isn't geographic.
 
 55. **Capacity and resolution barely move region knowledge on hard photos (2026-10-07; `agent_capacity.py`, `scripts/capacity.sh`).** Right region
-    (country > region) on dev + val fixable photos: Qwen3.5-4B 13.9%, Qwen3.5-9B 16.8% (+2.9 [-1.9, +7.7]); city 6.3 vs 10.7 (+4.4 [+0.6, +8.8]).
+    (country > region) on dev + val fixable photos (val = benchmark photos; diagnostic only, nothing fitted): Qwen3.5-4B 13.9%, Qwen3.5-9B 16.8% (+2.9 [-1.9, +7.7]); city 6.3 vs 10.7 (+4.4 [+0.6, +8.8]).
     Same 4B, dev fixable: 448 -> 786k px +3.9 [+1.0, +7.8] region, +6.9 country (no change on reranker-right photos); 1.6M px = 786k. Agreement of
     4B and 9B as a switch rule: best +0.4 [-0.1, +0.9]; requiring agreement halves fixes and breaks alike (`agent_vote.py`).
 

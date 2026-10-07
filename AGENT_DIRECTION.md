@@ -59,7 +59,8 @@ that write like this"). A constraint can be decisive on a photo that looks gener
 - Train on MP16 bucket 99 (34.5k), multi-turn tool calls, Qwen3.5-4B thinking off, LoRA.
 
 ## Status (2026-10-07, lessons 54-56, `OVERNIGHT2_REPORT.md`)
-- First tools built and measured. Text matched near a candidate is the one confirmed gain: +0.4 [+0.2, +0.6] at 25 km, 18 fixes / 3 breaks.
+- First tools built and measured. Text matched near a candidate is the best tool: +0.2 [+0.0, +0.3] at 25 km fitted on MP16 dev only (+0.1 on
+  photos never used); an earlier +0.4 was fitted on 'val', which is benchmark photos.
   Features, rules and the country guess add nothing; POI names +0.2 on dev + val.
 - Headroom on fixable photos: ~58% have nothing place-specific; the rest needs landmark matching (~12%) or business-name search with
   correct reading (~15%). Build those signals before RL; an agent can't learn from tools without signal (lesson 3).

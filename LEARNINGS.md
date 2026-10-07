@@ -59,8 +59,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
 - 53: not a coverage gap: at equal training photos per region the model names the region 55% on reranker-right photos, 6% on
   the fixable ones. Those photos don't look like their region; next is non-appearance clues via tools (`AGENT_DIRECTION.md`).
-- 54: constraint tools from VLM-read clues: text matched to GeoNames near the candidate +0.4 [+0.2, +0.6] at 25 km on the eval halves
-  (18 fixes / 3 breaks, precise but rare); POI names +0.2, features / rules / country guess ~0; text names the true region on ~5% of fixable photos.
+- 54: constraint tools from VLM-read clues: text matched to GeoNames near the candidate +0.2 [+0.0, +0.3] at 25 km on the eval halves when fitted
+  on MP16 dev only (+0.1 on photos never used; the first +0.4 was fitted on the 'val' benchmark photos); POI names +0.2, features / rules / country guess ~0; text names the true region on ~5% of fixable photos.
 - 55: 9B vs 4B right region on fixable photos 16.8 vs 13.9% (n.s.); resolution helps up to 786k px; model agreement trades fixes for breaks.
 - 56: by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
 

@@ -1,5 +1,11 @@
 # Overnight 2 report (2026-10-07; plan `OVERNIGHT.md`, journal `artifacts/overnight2/JOURNAL.md`)
 
+> **Correction (2026-10-07 19:05):** the "val" set used for development here is 1,000 *benchmark* eval-half photos (500 im2gps3k + 500 yfcc4k),
+> not MP16. Every "dev + val" number below mixes in test photos, and the headline combiner was fitted on 1,000 test photos. Clean re-measurement
+> (fit on MP16 dev only, `agent_clean.py`): rank + text **+0.2 [+0.0, +0.3]** at 25 km on all eval halves (7 fixes / 1 break), **+0.1 [-0.0, +0.3]**
+> on the 2,795 eval photos never in val (4 / 1). The +0.4 [+0.2, +0.6] headline is withdrawn. Lesson 54 is corrected.
+
+
 Ran 05:06-05:27 and 14:30-19:30, with two stalls (05:30-14:23: the wakeup never fired; 15:40-17:37: my error, no wakeup
 scheduled). Question: can constraint-style evidence through tools fix the photos where visual retrieval fails?
 
