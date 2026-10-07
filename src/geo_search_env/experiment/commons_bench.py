@@ -3,6 +3,7 @@
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench scan       (network, CPU; metadata only -> candidates.jsonl)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench select     (CPU; a capped, spread, region-balanced pick -> selected.jsonl)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench download   (network; 1024 px thumbnails of selected.jsonl)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.commons_bench dedup      (CPU; SigLIP2 embeddings, nearest MP16 / OSV-5M photo)
 
 """scan:     walks Commons uploads in time windows spread over [--start, --end) (upload time), skips bot accounts and non-JPEGs, and keeps photos whose
           EXIF has GPS and a capture time (GPS date stamp if present, else DateTimeOriginal) on or after --taken-after, a camera model, a long side
@@ -10,7 +11,9 @@
           (resumable: finished windows are recorded in scan_windows.txt).
 select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
           uploader, --min-gap-km between any two, no country above --max-country-share of the target.
-download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present."""
+download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present.
+dedup:    SigLIP2-giant embeddings of the downloaded photos on the CPU and each one's most similar MP16 and OSV-5M gallery photo (cosine, km);
+          flags only, in near_duplicates.jsonl."""
 
 from __future__ import annotations
 
@@ -233,6 +236,56 @@ def select(target: int, per_uploader: int, min_gap_km: float, max_country_share:
           f"{len(per_country)} countries\n by continent {regions}\n top countries {top}")
 
 
+def dedup(batch_size: int, chunk: int) -> None:
+    """SigLIP2-giant embeddings of the downloaded photos on the CPU (same model and preprocessing as embed_cache), then each photo's most similar
+    MP16 and OSV-5M gallery photo (cosine) and its distance in km. Writes embeddings.f16.npy and near_duplicates.jsonl; drops nothing."""
+    import numpy as np
+    import torch
+    from transformers import AutoModel, AutoProcessor
+
+    from .embed_cache import MODEL, _pixels
+    from .strategy_search import MP16_EMBED, OSV_EMBED
+
+    records = [json.loads(line) for line in (OUT / "selected.jsonl").open()]
+    emb_path = OUT / "embeddings.f16.npy"
+    if emb_path.exists():
+        queries = np.load(emb_path).astype(np.float32)
+    else:
+        torch.set_num_threads(16)
+        model, processor = AutoModel.from_pretrained(MODEL, dtype=torch.float32).eval(), AutoProcessor.from_pretrained(MODEL)
+        rows = []
+        for start in range(0, len(records), batch_size):
+            pixels = torch.stack([_pixels(processor, (OUT / "images" / f"{r['page_id']}.jpg").read_bytes()) for r in records[start:start + batch_size]])
+            with torch.inference_mode():
+                out = model.get_image_features(pixel_values=pixels)
+            rows.append((out.pooler_output if hasattr(out, "pooler_output") else out).numpy())
+            print(f"embedded {start + len(pixels)}/{len(records)}", flush=True)
+        queries = np.concatenate(rows)
+        np.save(emb_path, queries.astype(np.float16))
+    queries /= np.linalg.norm(queries, axis=1, keepdims=True)
+    latlon = np.array([[r["lat"], r["lon"]] for r in records])
+    best: dict[str, tuple[Any, Any]] = {}
+    for name, root in (("mp16", MP16_EMBED), ("osv5m", OSV_EMBED)):
+        manifest = json.loads((root / "manifest.json").read_text())
+        gallery = np.memmap(root / manifest["files"]["embeddings"], dtype=np.float16, mode="r").reshape(-1, manifest["embedding_dim"])
+        sim, idx = np.full(len(queries), -1.0, dtype=np.float32), np.zeros(len(queries), dtype=np.int64)
+        for start in range(0, len(gallery), chunk):
+            block = np.asarray(gallery[start:start + chunk], dtype=np.float32)
+            block /= np.linalg.norm(block, axis=1, keepdims=True)
+            s = queries @ block.T
+            j = s.argmax(1)
+            better = s[np.arange(len(queries)), j] > sim
+            sim[better], idx[better] = s[np.arange(len(queries)), j][better], start + j[better]
+        where = np.memmap(root / manifest["files"]["latlon_deg"], dtype=np.float32, mode="r").reshape(-1, 2)[idx]
+        km = [_haversine_m(a, b, float(c), float(d)) / 1000 for (a, b), (c, d) in zip(latlon, where)]
+        best[name] = (sim, km)
+        print(f"{name}: max cosine >= 0.90 {int((sim >= 0.90).sum())}, >= 0.95 {int((sim >= 0.95).sum())} of {len(sim)}; median max cosine {np.median(sim):.3f}", flush=True)
+    with (OUT / "near_duplicates.jsonl").open("w", encoding="utf-8") as f:
+        for i, r in enumerate(records):
+            f.write(json.dumps({"page_id": r["page_id"], **{f"{n}_cos": round(float(best[n][0][i]), 4) for n in best},
+                                **{f"{n}_km": round(best[n][1][i], 2) for n in best}}) + "\n")
+
+
 def _fetch(record: dict[str, Any], folder: Path) -> str:
     path = folder / f"{record['page_id']}.jpg"
     if path.exists():
@@ -262,7 +315,7 @@ def download(input_path: Path, workers: int) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("node", choices=("scan", "select", "download"))
+    parser.add_argument("node", choices=("scan", "select", "download", "dedup"))
     parser.add_argument("--start", default="2026-07-01", help="scan: oldest upload time")
     parser.add_argument("--end", default=None, help="scan: newest upload time (default now)")
     parser.add_argument("--taken-after", default="2026-07-01", help="scan: earliest capture date")
@@ -282,6 +335,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         scan(utc(args.start), end, args.windows, args.per_window, utc(args.taken_after), args.workers)
     elif args.node == "select":
         select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.seed)
+    elif args.node == "dedup":
+        dedup(batch_size=8, chunk=262_144)
     else:
         download(args.input, args.workers)
     return 0
