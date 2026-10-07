@@ -55,7 +55,7 @@ session can build on also counts. A null result, clearly measured, is a good res
   Overture places / buildings / divisions (`aws s3 cp --no-sign-request` or https from `overturemaps-us-west-2`; the DuckDB env
   `.venvs/overture` doesn't exist on this machine, so create one with uv if needed). Also Qwen3.5-9B or another open VLM from
   Hugging Face if model capacity is the question (set `HF_HOME=data/hf`). Log every download (what, size, why) in the journal.
-- **Compute:** one L40S (46 GB), 30 GB RAM, no swap. Deadline = start + 9 h (record it in the journal).
+- **Compute:** one L40S (46 GB), 30 GB RAM, no swap. Deadline: the latest one recorded in the journal (restarts may set a new budget).
 
 ## Guardrails (hard rules)
 - Long jobs run in a memory-capped scope (`systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 ...`), launched
