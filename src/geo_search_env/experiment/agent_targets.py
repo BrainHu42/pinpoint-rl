@@ -2,6 +2,7 @@
 # and would knowing the true region fix it ("fixable": the best-ranked candidate in the truth's (country, region) is < 25 km)?
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets [--tags dev val full]
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --select-big dev10k --n 10000   (bigger MP16 development set)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --subset dev10k dev3k 3000   (fixed random subset, artifacts sliced)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --splits   (artifacts/agent/splits.json: train / dev / test ids)
 # Note: only `dev` (and sets built here) are MP16; `val` is 1,000 benchmark eval-half photos (query_evidence select --source bench).
 
@@ -64,7 +65,39 @@ def select_big(tag: str, n: int) -> None:
     print(f"{tag}: {len(rows)} MP16 photos ({len(val)} val-split, {len(used_train)} train-split) -> {ROOT / tag / 'dev.json'}")
 
 
-def write_splits(dev_tag: str = "dev10k") -> None:
+def subset(src: str, dst: str, n: int) -> None:
+    """A fixed random subset (seed 0) of photo set `src` as `dst`, with every per-set artifact already computed for `src` sliced to it
+    (photo set, labels, targets, VLM clues / landmark answers, tool feature arrays), so nothing is recomputed."""
+
+    photos = json.loads((ROOT / src / "dev.json").read_text(encoding="utf-8"))
+    keep = np.sort(np.random.default_rng(0).permutation(len(photos))[:n])
+    ids = {photos[i]["image_id"] for i in keep}
+    (ROOT / dst).mkdir(parents=True, exist_ok=True)
+    (ROOT / dst / "dev.json").write_text(json.dumps([photos[i] for i in keep], ensure_ascii=False) + "\n", encoding="utf-8")
+    labels = json.loads((LABELS / f"candidates_{src}.json").read_text(encoding="utf-8"))
+    (LABELS / f"candidates_{dst}.json").write_text(json.dumps([labels[i] for i in keep]) + "\n", encoding="utf-8")
+    done = ["photos", "labels"]
+    for path in sorted(OUT.glob(f"*_{src}*")):
+        name = path.name.replace(f"_{src}", f"_{dst}", 1)
+        if path.suffix == ".json":
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):  # per-photo answers keyed by image id
+                data = {k: v for k, v in data.items() if k in ids}
+            elif data and isinstance(data[0], dict) and "image_id" in data[0]:  # targets
+                data = [data[i] for i in keep]
+            else:  # e.g. the train ids used by select_big: not per-photo
+                continue
+            (OUT / name).write_text(json.dumps(data) + "\n", encoding="utf-8")
+        elif path.suffix == ".npz":  # per-photo feature arrays, rows in photo-set order
+            z = np.load(path)
+            np.savez(OUT / name, **{k: (z[k][keep] if z[k].shape[:1] == (len(photos),) else z[k]) for k in z.files})
+        else:
+            continue
+        done.append(name)
+    print(f"{dst}: {n} of {len(photos)} {src} photos; sliced " + ", ".join(done))
+
+
+def write_splits(dev_tag: str = "dev3k") -> None:
     """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev10k;
     test = the im2gps3k + yfcc4k eval halves. Image ids -> artifacts/agent/splits.json."""
 
@@ -115,8 +148,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--select-big", default=None, help="build this MP16 development set (then GeoNames labels and targets)")
     parser.add_argument("--n", type=int, default=10_000)
     parser.add_argument("--splits", action="store_true", help="write artifacts/agent/splits.json and exit")
+    parser.add_argument("--subset", nargs=3, metavar=("SRC", "DST", "N"), default=None, help="fixed random subset of a photo set, artifacts sliced")
     args = parser.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
+    if args.subset:
+        subset(args.subset[0], args.subset[1], int(args.subset[2]))
+        return 0
     if args.splits:
         write_splits()
         return 0

@@ -36,7 +36,7 @@ that geolocates like a professional, with retrieval as the candidate generator a
   `geo_tools.py` (GeoNames index, tools, `POIs`, CV `report`, `transfer`), `poi_query.py` (DuckDB over Overture places; env `.venvs/overture`),
   `agent_capacity.py`, `agent_vote.py`, `scripts/capacity.sh`. Clues on disk: `artifacts/agent/observe_{dev,val,full}_9b.json` (Qwen3.5-9B;
   fields include `place_names`, often the landmark's name), `observe_{dev,val}_9bcrop.json`, tool features `tools_*_9b.npz`.
-- **Photo sets:** splits in `CLAUDE.md`: dev = `artifacts/query_evidence/dev10k/dev.json` (MP16, via `sft_data.MP16Images`), test =
+- **Photo sets:** splits in `CLAUDE.md`: dev = `artifacts/query_evidence/dev3k/dev.json` (MP16, via `sft_data.MP16Images`), test =
   `full` (by path, remap with `name_score._read`). The `val` tag is test photos: never use it; place labels `artifacts/place_labels/candidates_*.json`.
 - **Visual data:** MP16 SigLIP2 gallery embeddings `data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384` (with lat / lon and image ids),
   MP16 images (tar shards, `MP16Images`), neighbour caches `artifacts/strategy_search{,_v6}`. The trained comparator weights are **not** on

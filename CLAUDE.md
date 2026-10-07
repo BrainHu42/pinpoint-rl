@@ -28,13 +28,15 @@ experiments); full numbered lessons in `LESSONS.md`.**
 One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 | Split | What | Size |
 |---|---|---|
-| **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 28,359 |
-| **dev** | `dev10k` (`artifacts/query_evidence/dev10k`): choose and tune everything here | 10,000 |
+| **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 35,359 |
+| **dev** | `dev3k` (`artifacts/query_evidence/dev3k`): choose and tune everything here | 3,000 |
 | **test** | im2gps3k + yfcc4k eval halves (`artifacts/query_evidence/full`): measure once per finished method | 3,795 |
 - **Leave the test set alone** (user, 2026-10-07): no training, tuning, model runs, feature extraction, diagnostics or measurements on
   it unless the user asks. Everything is chosen and measured on dev.
 - No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
-- Retired: the `val` tag (1,000 test photos, never use), the 1,000-photo `dev` (inside dev10k), the knowledge-SFT bucket 0-98 exception.
+- Target: improvements of **>= 1 pt** at 25 km over the reranker top-1 (user, 2026-10-07); dev3k (+-0.26 pts SE) resolves that.
+- Retired: the `val` tag (1,000 test photos, never use), the 1,000-photo `dev` and `dev10k` (dev3k is a fixed random subset of dev10k;
+  the other 7,000 went back to train), the knowledge-SFT bucket 0-98 exception.
 - Burned-in GPS photos are already filtered out of train and dev. No wikimedia (not on this machine).
 
 ## Rules
