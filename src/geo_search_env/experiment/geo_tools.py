@@ -58,7 +58,8 @@ SCRIPTS = {  # writing system -> languages written in it (Latin is too common to
 FEATURES = (["feat frac 1", "feat frac 5", "feat frac 25", "feat idf 1", "feat idf 5", "feat idf 25", "text match 1", "text match 5", "text match 25",
              "name match 1", "name match 5", "name match 25", "language ok", "script ok", "driving ok", "country guess",
              "text region", "text country", "name region", "name country", "poi 1", "poi 5", "poi 25", "poi region",
-             "lm city 25", "lm name 5", "lm region ok", "lm country ok", "fuzzy 0.5", "fuzzy 2", "fuzzy nochain 2", "fuzzy exact 2"])
+             "lm city 25", "lm name 5", "lm region ok", "lm country ok", "fuzzy 0.5", "fuzzy 2", "fuzzy nochain 2", "fuzzy exact 2",
+             "kp matches", "kp exemplar"])
 GROUPS = {"features": [f for f in FEATURES if f.startswith("feat")], "text": [f for f in FEATURES if f.startswith(("text match", "name match"))],
           "rules": ["language ok", "script ok", "driving ok"], "country guess": ["country guess"],
           "text region": ["text region", "text country", "name region", "name country"], "poi": ["poi 1", "poi 5", "poi 25", "poi region"]}
@@ -68,6 +69,8 @@ GROUPS["fuzzy"] = ["fuzzy 0.5", "fuzzy 2", "fuzzy nochain 2", "fuzzy exact 2"]
 GROUPS["text+landmark"] = GROUPS["text"] + GROUPS["landmark"]
 GROUPS["text+fuzzy"] = GROUPS["text"] + GROUPS["fuzzy"]
 GROUPS["text+landmark+fuzzy"] = GROUPS["text"] + GROUPS["landmark"] + GROUPS["fuzzy"]
+GROUPS["keypoints"] = ["kp matches", "kp exemplar"]
+GROUPS["text+keypoints"] = GROUPS["text"] + GROUPS["keypoints"]
 CONFIDENCE = {"high": 1.0, "medium": 0.6, "low": 0.3}
 MAX_NGRAM = 4  # words; CJK runs: substrings of 2-6 characters
 
@@ -365,12 +368,17 @@ def _load(tag: str, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.n
 
     photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
-    T = np.load(OUT / f"tools_{tag}_{name}.npz")["F"].copy()
-    fuzzy_path = OUT / f"poifuzzy_{tag}.npz"
-    if fuzzy_path.exists() and T.shape[-1] == len(FEATURES):
-        Z = np.load(fuzzy_path)["F"]
-        start = FEATURES.index("fuzzy 0.5")
-        T[:, : Z.shape[1], start: start + Z.shape[2]] = Z
+    T = np.load(OUT / f"tools_{tag}_{name}.npz")["F"]
+    if T.shape[-1] < len(FEATURES):  # feature files written before later tools were added
+        T = np.concatenate([T, np.zeros((*T.shape[:2], len(FEATURES) - T.shape[-1]), T.dtype)], -1)
+    T = T.copy()
+    for path, first in ((OUT / f"poifuzzy_{tag}.npz", "fuzzy 0.5"), (OUT / f"kp_{tag}.npz", "kp matches")):
+        if path.exists():  # tools computed in other envs (poi_near.py, landmark_match.py)
+            Z = np.load(path)["F"]
+            start = FEATURES.index(first)
+            T[:, : Z.shape[1], start: start + Z.shape[2]] = Z[:, : T.shape[1]]
+    kp = FEATURES.index("kp matches")
+    T[..., kp] = np.log1p(T[..., kp])
     n, C = len(photos), T.shape[1]
     D, V = np.full((n, C), 1e5), np.zeros((n, C), bool)
     for i, e in enumerate(photos):

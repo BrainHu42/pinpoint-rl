@@ -66,8 +66,8 @@ that write like this"). A constraint can be decisive on a photo that looks gener
   correct reading (~15%). Build those signals before RL; an agent can't learn from tools without signal (lesson 3).
 
 ## How to proceed (one real-task check, then the agent)
-0. **Development set:** the same "fixable" definition on MP16 dev / val (bucket 99), so prompts, tools and rules are
-   developed there; the 413 are measured once per method.
+0. **Development set:** dev10k (10,000 MP16 bucket-99 photos, 1,160 fixable; splits in `CLAUDE.md`), so prompts, tools and rules are
+   developed there; the 413 test photos are measured once per method.
 1. **Tool ceiling on the real photos (no training, ~1 day):** for the 792 choosing photos (and all 3,795), base 4B lists
    features and reads text; the tools score each candidate; measure fixes / breaks vs the reranker top-1, choosing any
    rule on MP16 dev. Key number: of the 413 region-fixable photos, how many the constraints point to the right region

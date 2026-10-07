@@ -2,6 +2,7 @@
 # and would knowing the true region fix it ("fixable": the best-ranked candidate in the truth's (country, region) is < 25 km)?
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets [--tags dev val full]
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --select-big dev10k --n 10000   (bigger MP16 development set)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --splits   (artifacts/agent/splits.json: train / dev / test ids)
 # Note: only `dev` (and sets built here) are MP16; `val` is 1,000 benchmark eval-half photos (query_evidence select --source bench).
 
 """Writes artifacts/agent/targets_{tag}.json: per photo the image id, reranker top-1 km, pool oracle km, choosing / fixable flags and the rank of
@@ -63,6 +64,23 @@ def select_big(tag: str, n: int) -> None:
     print(f"{tag}: {len(rows)} MP16 photos ({len(val)} val-split, {len(used_train)} train-split) -> {ROOT / tag / 'dev.json'}")
 
 
+def write_splits(dev_tag: str = "dev10k") -> None:
+    """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev10k;
+    test = the im2gps3k + yfcc4k eval halves. Image ids -> artifacts/agent/splits.json."""
+
+    from .query_evidence import SFT_ROOT
+    from .sft_data import OVERLAY_THRESHOLD
+
+    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
+    scores = json.loads((SFT_ROOT / "overlay_scores.json").read_text(encoding="utf-8"))
+    dev = [e["image_id"] for e in json.loads((ROOT / dev_tag / "dev.json").read_text(encoding="utf-8"))]
+    held = {q["image_id"] for q in queries if q["group"] == "held_out" and scores.get(q["image_id"]) is not None and scores[q["image_id"]] < OVERLAY_THRESHOLD}
+    train = sorted(held - set(dev))
+    test = [e["image_id"] for e in json.loads((ROOT / "full" / "dev.json").read_text(encoding="utf-8"))]
+    (OUT / "splits.json").write_text(json.dumps({"train": train, "dev": sorted(dev), "test": test}) + "\n", encoding="utf-8")
+    print(f"splits: train {len(train)}, dev {len(dev)}, test {len(test)} -> {OUT / 'splits.json'}")
+
+
 def geonames_labels(tag: str) -> None:
     """Place labels from the GeoNames index (country code and "cc.admin1" of the nearest populated place) for the truth and every pool candidate,
     in the candidates_{tag}.json format, marked source=geonames (Overture divisions aren't on this machine)."""
@@ -96,8 +114,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tags", nargs="+", default=["dev", "val", "full"])
     parser.add_argument("--select-big", default=None, help="build this MP16 development set (then GeoNames labels and targets)")
     parser.add_argument("--n", type=int, default=10_000)
+    parser.add_argument("--splits", action="store_true", help="write artifacts/agent/splits.json and exit")
     args = parser.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
+    if args.splits:
+        write_splits()
+        return 0
     if args.select_big:
         select_big(args.select_big, args.n)
         geonames_labels(args.select_big)

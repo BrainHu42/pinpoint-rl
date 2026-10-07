@@ -24,14 +24,19 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
+## Data (simplified 2026-10-07, user)
+One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
+| Split | What | Size |
+|---|---|---|
+| **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 28,359 |
+| **dev** | `dev10k` (`artifacts/query_evidence/dev10k`): choose and tune everything here | 10,000 |
+| **test** | im2gps3k + yfcc4k eval halves (`artifacts/query_evidence/full`): measure once per finished method | 3,795 |
+- **Never train or tune on test.** Everything is chosen on dev; test numbers are reported, not optimised.
+- No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
+- Retired: the `val` tag (1,000 test photos, never use), the 1,000-photo `dev` (inside dev10k), the knowledge-SFT bucket 0-98 exception.
+- Burned-in GPS photos are already filtered out of train and dev. No wikimedia (not on this machine).
+
 ## Rules
-- Test sets: **im2gps3k and yfcc4k** eval halves. Don't use the wikimedia photos for validation (user, 2026-10-06);
-  they aren't on this machine.
-- Exclude same-photographer gallery images (yfcc4k shares photographers with MP16). Never train on the benchmarks.
-- Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest). Exception (user's decision,
-  2026-10-05): the knowledge SFT teaches place names from buckets 0-98; anything that learns to choose between
-  candidates stays on bucket 99.
-- Filter images with GPS coordinates burned into the frame (except the 250k-photo knowledge SFT data, where they are rare; user, 2026-10-06).
 - RAM is 30 GB with no swap: run long jobs in a memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=24G
   -p MemorySwapMax=0`); an uncapped job crashed the machine once.
 - The GPU (L40S, 46 GB) is ours alone. Stop our own processes by PID (`pkill -f` patterns have matched our own shell).

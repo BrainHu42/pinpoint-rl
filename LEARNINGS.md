@@ -85,10 +85,10 @@ baseline for new evidence (10, 13).
 27.7 / 55.7 (best-of-8 31.3 / 58.0; oracle over its samples + candidates 40.7 / 65.7).
 
 ## Data and leakage rules we established
-- Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
-  <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
-  photographer); its candidate quality matches yfcc4k eval.
-- yfcc4k shares photographers with MP16: always exclude same-photographer gallery rows (`tests/test_author_exclusion.py`).
+- Splits are in `CLAUDE.md` (train / dev10k / test, `artifacts/agent/splits.json`; simplified 2026-10-07).
+- Why bucket 99: Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99, so those photos get inflated candidates
+  (Pinpoint top-1 <25 km 40.6% vs 30.4% held out); bucket-99 candidate quality matches yfcc4k eval.
+- The `val` photo-set tag is 1,000 test photos; using it for development contaminated lesson 54's first numbers.
 - Burned-in GPS overlays: base-Qwen P(yes) ≥ 0.64 drops 8 photos of the pool.
 - Reserve data: yfcc26k (~19.3k usable after photographer exclusion; lat/lon only).
 
