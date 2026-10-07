@@ -1,13 +1,12 @@
-# Offline geotagged-Wikipedia search backend (BM25 + dense), and a go/no-go probe of what it adds beyond the shown candidates.
-# Usage: ~/.venvs/sft/bin/python -m geo_search_env.experiment.wiki_backend {build,embed,probe}   (PYTHONPATH=src)
+# Offline geotagged-Wikipedia search backend (BM25 + dense), a candidate tool for the agent.
+# Usage: .venvs/sft/bin/python -m geo_search_env.experiment.wiki_backend {build,embed}   (PYTHONPATH=src)
 
 """English Wikipedia articles with a primary Earth coordinate, searchable by text.
 
 build: join the geo_tags dump (coordinates, Sep 2026) with wikimedia/wikipedia 20231101.en (text) on page id; write a
        SQLite table of (title, lat, lon, type, lead) with an FTS5 index over title + lead.
 embed: bge-base-en-v1.5 embeddings of "title. lead" (CLS, normalized, fp16) for dense search.
-probe: run the dev run's generated queries (artifacts/query_evidence/<tag>) through both indexes and measure coverage
-       beyond the shown candidates, next to the SigLIP2 evidence of the same queries.
+(A probe of what its hits added beyond the candidates, lesson 20, read the removed query-evidence runs; at commit 57918cb.)
 """
 
 from __future__ import annotations
@@ -15,8 +14,6 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import gzip
-import json
-import math
 from pathlib import Path
 import re
 import sqlite3
@@ -35,8 +32,6 @@ EMBED_MODEL = "BAAI/bge-base-en-v1.5"
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 LEAD_CHARS = 1500
 EMBED_TOKENS = 256
-EVIDENCE_ROOT = Path("artifacts/query_evidence")
-THRESHOLDS = (1.0, 25.0)
 ROW = re.compile(r"^\((\d+),(\d+),'([^']*)',(\d),(-?[\d.]+|NULL),(-?[\d.]+|NULL),(-?\d+|NULL),(NULL|'(?:[^'\\]|\\.)*')")
 
 
@@ -160,78 +155,11 @@ class Wiki:
         return out
 
 
-def _km(points: np.ndarray, lat: float, lon: float) -> np.ndarray:
-    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
-    lat1, lon1, lat2, lon2 = math.radians(lat), math.radians(lon), np.radians(points[:, 0]), np.radians(points[:, 1])
-    h = np.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
-    return 2 * 6371.0088 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
-
-
-def probe(tag: str, *, per_query: int = 1) -> None:
-    """Coverage of the truth by the top `per_query` article(s) of each generated query, vs the shown candidates and SigLIP2."""
-
-    root = EVIDENCE_ROOT / tag
-    dev = json.loads((root / "dev.json").read_text(encoding="utf-8"))
-    generated = json.loads((root / "generated.json").read_text(encoding="utf-8"))
-    retrieved = json.loads((root / "retrieved.json").read_text(encoding="utf-8"))
-    wiki = Wiki()
-    texts = [(m, arm, q) for m, e in enumerate(dev) for arm in ("visual", "geo", "caption") for q in generated[e["image_id"]][arm]["queries"]]
-    dense = wiki.dense([q for _, _, q in texts], k=max(3, per_query))
-    bm25 = wiki.bm25_many([q for _, _, q in texts], k=max(3, per_query))
-    hits: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
-    for (m, arm, q), d, b in zip(texts, dense, bm25):
-        k = 3 if arm == "caption" else per_query  # caption: one query, so three results, as in the SigLIP arm
-        hits.setdefault(("dense", arm, m), []).extend(d[:k])
-        hits.setdefault(("bm25", arm, m), []).extend(b[:k])
-    report: dict[str, Any] = {"n": len(dev), "per_query": per_query}
-    shown_km = np.asarray([_km([c[1:] for c in e["candidates"]], *e["truth"]).min() for e in dev])
-    reranker_km = np.asarray([_km([e["candidates"][0][1:]], *e["truth"])[0] for e in dev])  # candidates are in reranker order
-    for name, d in (("reranker top-1", reranker_km), ("shown", shown_km)):
-        for t in THRESHOLDS:
-            report[f"{name} <{int(t)} km"] = float((d < t).mean())
-    print(f"n={len(dev)}, top-{per_query} per query   ORACLE accuracy (shown candidates + retrieved evidence)   gain over shown-only oracle")
-    print(f"                                    <1 km   <25 km      <1 km   <25 km")
-    print(f"  {'reranker top-1':26s} {report['reranker top-1 <1 km']:9.1%} {report['reranker top-1 <25 km']:7.1%}")
-    print(f"  {'shown candidates (oracle)':26s} {report['shown <1 km']:9.1%} {report['shown <25 km']:7.1%}")
-    for backend in ("siglip", "bm25", "dense"):
-        for arm in ("visual", "geo", "caption"):
-            near = []
-            for m, e in enumerate(dev):
-                pts = ([[c["lat"], c["lon"]] for c in retrieved[e["image_id"]][arm]] if backend == "siglip"
-                       else [[h["lat"], h["lon"]] for h in hits.get((backend, arm, m), [])])
-                near.append(_km(pts, *e["truth"]).min() if pts else np.inf)
-            near = np.asarray(near)
-            row = {f"hit <{int(t)} km": float((near < t).mean()) for t in THRESHOLDS}
-            row |= {f"shown+hits <{int(t)} km": float((np.minimum(near, shown_km) < t).mean()) for t in THRESHOLDS}
-            row["new <25 km"] = float(((near < 25) & (shown_km >= 25)).mean())
-            row["beats reranker <25 km"] = float(((near < 25) & (reranker_km >= 25)).mean())
-            row["reranker+hits <25 km"] = float((np.minimum(near, reranker_km) < 25).mean())
-            report[f"{backend}/{arm}"] = row
-            gains = {t: row[f"shown+hits <{t} km"] - report[f"shown <{t} km"] for t in (1, 25)}
-            print(f"  {backend + ' / ' + arm:26s} {row['shown+hits <1 km']:9.1%} {row['shown+hits <25 km']:7.1%}   {gains[1]:+9.1%} {gains[25]:+7.1%}")
-    (root / f"wiki_probe_top{per_query}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    samples = []
-    for m, e in enumerate(dev[:40]):
-        samples.append({"image_id": e["image_id"], "truth": e["truth"], "geo": generated[e["image_id"]]["geo"]["queries"],
-                        "bm25": [(h["title"], round(float(_km([[h["lat"], h["lon"]]], *e["truth"])[0]))) for h in hits.get(("bm25", "geo", m), [])],
-                        "dense": [(h["title"], round(float(_km([[h["lat"], h["lon"]]], *e["truth"])[0]))) for h in hits.get(("dense", "geo", m), [])],
-                        "visual": generated[e["image_id"]]["visual"]["queries"],
-                        "dense visual": [(h["title"], round(float(_km([[h["lat"], h["lon"]]], *e["truth"])[0]))) for h in hits.get(("dense", "visual", m), [])]})
-    (root / f"wiki_probe_samples.json").write_text(json.dumps(samples, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("build", "embed", "probe"))
-    parser.add_argument("--tag", default="dev", help="probe: query_evidence run to read queries from")
-    parser.add_argument("--per-query", type=int, default=1, help="probe: articles kept per query")
+    parser.add_argument("node", choices=("build", "embed"))
     args = parser.parse_args(argv)
-    if args.node == "build":
-        build()
-    elif args.node == "embed":
-        embed()
-    else:
-        probe(args.tag, per_query=args.per_query)
+    build() if args.node == "build" else embed()
     return 0
 
 

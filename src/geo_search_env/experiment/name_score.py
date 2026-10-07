@@ -1,4 +1,4 @@
-# Knowledge as a score per candidate: name each candidate by the Overture divisions containing it (place_labels.py label-all) and score the name
+# Knowledge as a score per candidate: name each candidate by the Overture divisions containing it (place_labels.py pool-labels) and score the name
 # "country > region > city > neighbourhood" as the VLM's answer for the photo (log-probability per level from vLLM prompt logprobs), with and without the
 # photo (the difference corrects for how common a name is). Then a cross-validated combiner of rank + these scores against the reranker top-1.
 # Usage: RUN=base TAG=dev bash scripts/name_scores.sh     (serves the model, runs `score`, then `report`)
@@ -13,20 +13,22 @@ transfer: the combiner fitted on all of one set (MP16 dev) and applied once to a
 from __future__ import annotations
 
 import argparse
+import base64
 from concurrent.futures import ThreadPoolExecutor
+import io
 import json
 from pathlib import Path
+import urllib.request
 from typing import Any, Sequence
 
 import numpy as np
 
 from ..paths import DATA_ROOT
-from .exemplar_judge import _jpeg
-from .multi_exemplar import _post
-from .query_evidence import ROOT
+from .photo_sets import PHOTO_SETS, load_photos
 from .sft_data import MP16Images
+from .strategy_search import _bootstrap
 
-LABELS = Path("artifacts/place_labels")
+JPEG_SIZE = 448  # longest side of the photo sent to the model
 LEVELS = ("country", "region", "city", "neighbourhood")
 PROMPT = "Where was this photo taken? Answer as: country > region > city > neighbourhood."
 PROMPT3 = "Where was this photo taken? Answer as: country > region > city."  # knowledge_data.PROMPT, the knowledge model's training prompt
@@ -46,6 +48,30 @@ def name_parts(lab: dict[str, str | None]) -> list[str]:
 
 def _name(lab: dict[str, str | None], levels: int) -> str:
     return SEP.join(name_parts(lab)[:levels])
+
+
+def _jpeg(data: bytes) -> str:
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    image.thumbnail((JPEG_SIZE, JPEG_SIZE))
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=88)
+    return base64.b64encode(out.getvalue()).decode()
+
+
+def _post(server: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    request = urllib.request.Request(f"{server}{path}", json.dumps(body).encode(), {"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=600) as response:
+        return json.loads(response.read())
+
+
+def _labels(tag: str) -> list[dict[str, Any]]:
+    return json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))
+
+
+def _scores_path(tag: str, name: str) -> Path:
+    return PHOTO_SETS / tag / f"name_scores_{name}.json"
 
 
 def _read(e: dict, images: MP16Images) -> bytes:
@@ -97,9 +123,8 @@ def _level_logprobs(server: str, parts: list[str], image_b64: str | None, prompt
 
 
 def score(server: str, tag: str, name: str, levels: int = 4) -> None:
-    sets = json.loads((LABELS / f"candidates_{tag}.json").read_text(encoding="utf-8"))
-    photos = json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))
-    by_id = {e["image_id"]: e for e in photos}
+    sets = _labels(tag)
+    by_id = {e["image_id"]: e for e in load_photos(tag)}
     images = MP16Images()
     prompt = PROMPT if levels == 4 else PROMPT3
     names = sorted({_name(lab, levels) for p in sets for lab in p["pool"]} - {""})
@@ -120,7 +145,7 @@ def score(server: str, tag: str, name: str, levels: int = 4) -> None:
     out = [{"image_id": p["image_id"], "image": {}, "text": {}} for p in sets]
     for (i, n), lp in zip(jobs, with_image):
         out[i]["image"][n], out[i]["text"][n] = lp, text_only.get(n)
-    path = ROOT / f"name_scores_{tag}_{name}.json"
+    path = _scores_path(tag, name)
     path.write_text(json.dumps(out) + "\n", encoding="utf-8")
     failed = sum(lp is None for lp in with_image)
     print(f"{len(jobs)} photo-name scorings ({len(names)} distinct names), {failed} failed -> {path}")
@@ -129,9 +154,9 @@ def score(server: str, tag: str, name: str, levels: int = 4) -> None:
 def _features(tag: str, name: str, levels: int = 4) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
     """[photos, candidates, F] features, [photos, candidates] km to the truth, validity mask, feature names."""
 
-    sets =json.loads((LABELS / f"candidates_{tag}.json").read_text(encoding="utf-8"))
-    photos = {e["image_id"]: e for e in json.loads((ROOT / tag / "dev.json").read_text(encoding="utf-8"))}
-    scored = {p["image_id"]: p for p in json.loads((ROOT / f"name_scores_{tag}_{name}.json").read_text(encoding="utf-8"))}
+    sets = _labels(tag)
+    photos = {e["image_id"]: e for e in load_photos(tag)}
+    scored = {p["image_id"]: p for p in json.loads(_scores_path(tag, name).read_text(encoding="utf-8"))}
     C = max(len(p["pool"]) for p in sets)
     names = ["rank", "log rank", "top-1"] + [f"{kind} {lv}" for kind in ("image", "pmi", "cum pmi") for lv in LEVELS] + ["levels"]
     F, D, V = np.zeros((len(sets), C, len(names)), np.float32), np.full((len(sets), C), 1e5), np.zeros((len(sets), C), bool)
@@ -173,8 +198,6 @@ def _fit(F: np.ndarray, D: np.ndarray, V: np.ndarray, seed: int, steps: int = 40
 
 
 def report(tag: str, name: str, levels: int = 4) -> None:
-    from .stage1_eval import _bootstrap
-
     F, D, V, names = _features(tag, name, levels)
     n = len(D)
     base = D[:, 0]
@@ -207,8 +230,6 @@ def report(tag: str, name: str, levels: int = 4) -> None:
 
 
 def transfer(fit_tag: str, tag: str, name: str, levels: int = 4) -> None:
-    from .stage1_eval import _bootstrap
-
     Ff, Df, Vf, names = _features(fit_tag, name, levels)
     F, D, V, _ = _features(tag, name, levels)
     C = max(Ff.shape[1], F.shape[1])  # pad both sets to the same pool width

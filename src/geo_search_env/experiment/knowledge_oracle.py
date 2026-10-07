@@ -1,6 +1,6 @@
 # Lesson 52 / archive/OVERNIGHT.md NO-GO diagnosis: what perfect place knowledge at each level would add over the reranker top-1 on the full eval halves,
 # and how often the knowledge model names the truth on the photos it would fix. CPU, seconds; needs knowledge_check answer outputs.
-# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_oracle
+# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_oracle [tag]   (default full; MP16 sets e.g. dev)
 
 """NO-GO diagnosis (archive/OVERNIGHT.md): can place knowledge at a given level fix reranker failures at all, and does knowledge-a have it there?
 
@@ -8,21 +8,24 @@ Oracle-knowledge rule: take the best-ranked pool candidate whose labels match th
 Then, on the photos that rule fixes, how often knowledge-a / base name the truth down to that level."""
 
 import json
+import sys
 
 import numpy as np
 
-from geo_search_env.experiment.knowledge_check import LEVELS, OUT, PHOTOS, TRUTH, _right
-from geo_search_env.experiment.stage1_eval import _bootstrap
-from geo_search_env.experiment.strategy_search import _haversine_km
+from geo_search_env.experiment.knowledge_check import LEVELS, OUT, _right
+from geo_search_env.experiment.name_score import _labels
+from geo_search_env.experiment.photo_sets import load_photos
+from geo_search_env.experiment.strategy_search import _bootstrap, _haversine_km
 
-photos = json.loads(PHOTOS.read_text())
-labels = {p["image_id"]: p for p in json.loads((TRUTH.parent / "candidates_full.json").read_text())}
-answers = {p.stem.removeprefix("check_"): json.loads(p.read_text()) for p in sorted(OUT.glob("check_*.json"))}  # every model answered by knowledge_check
+TAG = sys.argv[1] if len(sys.argv) > 1 else "full"  # an MP16 set (dev) for the development-set version of the target photos
+photos = load_photos(TAG)
+labels = {p["image_id"]: p for p in _labels(TAG)}
+answers = {p.stem.removeprefix("check_"): json.loads(p.read_text()) for p in sorted((OUT if TAG == "full" else OUT / TAG).glob("check_*.json"))}  # every model answered by knowledge_check
 km = [_haversine_km(*e["truth"], np.asarray(e["pool"])) for e in photos]
 base = np.array([d[0] for d in km])
 oracle = np.array([d.min() for d in km])
 choosing = (base >= 25) & (oracle < 25)
-print(f"full n={len(photos)}; reranker top-1 <25 km {np.mean(base < 25):.1%}; choosing photos (top-1 wrong, a pool candidate right) {choosing.sum()} ({choosing.mean():.1%})")
+print(f"{TAG} n={len(photos)}; reranker top-1 <25 km {np.mean(base < 25):.1%}; choosing photos (top-1 wrong, a pool candidate right) {choosing.sum()} ({choosing.mean():.1%})")
 
 
 def same(a, b):

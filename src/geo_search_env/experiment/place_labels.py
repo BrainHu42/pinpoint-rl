@@ -2,9 +2,13 @@
 # `aws s3 cp --no-sign-request --recursive s3://overturemaps-us-west-2/release/2026-09-23.1/theme=divisions/ .`): for each photo, the smallest land polygon of
 # each subtype (country, region, county, locality, macrohood, neighborhood, microhood) that contains its coordinates.
 # Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.place_labels pilot [--sample 200000]   (CPU; .venvs/overture = duckdb, shapely, pyarrow)
+#        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.place_labels pool-labels --tag dev   (duckdb only; after `photo_sets select`)
 
-"""pilot: label a random sample of MP16 photos and report coverage, area per level, and label agreement between near-duplicate photos by different
-        photographers (cosine >= DUP_SIM in SigLIP2 space, within 2 km), the label noise from GPS error and camera position."""
+"""pilot:       label a random sample of MP16 photos and report coverage, area per level, and label agreement between near-duplicate photos by different
+             photographers (cosine >= DUP_SIM in SigLIP2 space, within 2 km), the label noise from GPS error and camera position.
+label-all:   canonical labels of the benchmark eval-half truths (BENCH_TRUTH) and of every MP16 photo (MP16_LABELS, by embedding-cache row).
+pool-labels: canonical labels of a photo set's pool candidates (each an MP16 photo, looked up in MP16_LABELS) and of its truths, written next to the set
+             as labels.json: [{image_id, pool: [labels per candidate, pool order], truth: labels}]."""
 
 from __future__ import annotations
 
@@ -21,6 +25,9 @@ from ..paths import DATA_ROOT, MP16_ROOT
 DIVISIONS = DATA_ROOT / "overture/divisions/type=division_area"
 MP16_EMBED = DATA_ROOT / "mp16-embed/siglip2-giant-opt-patch16-384"
 OUT = Path("artifacts/place_labels")
+MP16_LABELS = OUT / "mp16.parquet"
+BENCH_TRUTH = OUT / "bench_truth.json"  # {image_id: labels} for the benchmark eval-half photos
+PHOTO_SETS = Path("artifacts/photo_sets")  # photo_sets.PHOTO_SETS (not imported: this runs in the duckdb-only env)
 LEVELS = ("country", "region", "county", "locality", "macrohood", "neighborhood", "microhood")
 DUP_SIM = 0.95
 
@@ -104,36 +111,42 @@ def label(latlon: np.ndarray, threads: int = 16) -> dict[str, list]:
 
 
 def label_all(chunk: int = 1_000_000) -> None:
-    """Labels for every candidate (and the truth) of the dev / val / full photo sets, then for all MP16 photos (chunked), written under OUT."""
+    """Labels for the benchmark eval-half truths (photo set `full`), then for all MP16 photos (chunked), written under OUT."""
 
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     labeller = Labeller()
     OUT.mkdir(parents=True, exist_ok=True)
-    for tag in ("dev", "val", "full"):
-        photos = json.loads((Path("artifacts/query_evidence") / tag / "dev.json").read_text(encoding="utf-8"))
-        pts = np.asarray([c for e in photos for c in e["pool"]] + [e["truth"] for e in photos], dtype=np.float64)
-        names = labeller.canonical(pts)
-        out, k = [], 0
-        for e in photos:
-            out.append({"image_id": e["image_id"], "pool": names[k : k + len(e["pool"])]})
-            k += len(e["pool"])
-        for e, o in zip(photos, out):
-            o["truth"] = names[k]
-            k += 1
-        (OUT / f"candidates_{tag}.json").write_text(json.dumps(out) + "\n", encoding="utf-8")
-        print(f"{tag}: {len(photos)} photos, {len(pts)} points labelled", flush=True)
+    photos = json.loads((PHOTO_SETS / "full" / "photos.json").read_text(encoding="utf-8"))
+    names = labeller.canonical(np.asarray([e["truth"] for e in photos], dtype=np.float64))
+    BENCH_TRUTH.write_text(json.dumps({e["image_id"]: n for e, n in zip(photos, names)}) + "\n", encoding="utf-8")
+    print(f"benchmark truths: {len(photos)} labelled", flush=True)
     latlon = np.fromfile(MP16_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(-1, 2).astype(np.float64)
     writer = None
     start = time.time()
     for lo in range(0, len(latlon), chunk):
         lab = labeller.canonical(latlon[lo : lo + chunk])
         table = pa.table({"row": np.arange(lo, lo + len(lab))} | {lv: pa.array([x[lv] for x in lab], pa.string()) for lv in CANONICAL})
-        writer = writer or pq.ParquetWriter(OUT / "mp16.parquet", table.schema)
+        writer = writer or pq.ParquetWriter(MP16_LABELS, table.schema)
         writer.write_table(table)
         print(f"  mp16 {lo + len(lab)}/{len(latlon)} ({time.time() - start:.0f} s)", flush=True)
     writer.close()
+
+
+def pool_labels(tag: str) -> None:
+    import duckdb
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    rows = sorted({r for e in photos for r in e["pool_rows"]} | {e["row"] for e in photos if "row" in e})
+    found = duckdb.sql(f"SELECT row, {', '.join(CANONICAL)} FROM read_parquet('{MP16_LABELS}') SEMI JOIN (SELECT unnest({rows}::BIGINT[]) AS row) USING (row)")
+    mp16 = {r[0]: dict(zip(CANONICAL, r[1:])) for r in found.fetchall()}
+    if not BENCH_TRUTH.exists():  # label-all before 2026-10-07 wrote the truths inside its per-set file; they don't depend on the pool
+        BENCH_TRUTH.write_text(json.dumps({p["image_id"]: p["truth"] for p in json.loads((OUT / "candidates_full.json").read_text(encoding="utf-8"))}) + "\n", encoding="utf-8")
+    bench = json.loads(BENCH_TRUTH.read_text(encoding="utf-8"))
+    out = [{"image_id": e["image_id"], "pool": [mp16[r] for r in e["pool_rows"]], "truth": mp16[e["row"]] if "row" in e else bench[e["image_id"]]} for e in photos]
+    (PHOTO_SETS / tag / "labels.json").write_text(json.dumps(out, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"{tag}: {len(photos)} photos, {sum(len(e['pool_rows']) for e in photos)} candidates labelled -> {PHOTO_SETS / tag / 'labels.json'}")
 
 
 def pilot(sample: int) -> None:
@@ -198,11 +211,14 @@ def agreement(rows: np.ndarray, labels: dict, latlon: np.ndarray) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("pilot", "agreement", "label-all"))
+    parser.add_argument("node", choices=("pilot", "agreement", "label-all", "pool-labels"))
     parser.add_argument("--sample", type=int, default=200_000)
+    parser.add_argument("--tag", default="dev", help="pool-labels: photo set under artifacts/photo_sets")
     args = parser.parse_args(argv)
     if args.node == "label-all":
         label_all()
+    elif args.node == "pool-labels":
+        pool_labels(args.tag)
     elif args.node == "pilot":
         pilot(args.sample)
     else:  # rerun the agreement check on the saved pilot labels

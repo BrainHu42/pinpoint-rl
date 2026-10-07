@@ -9,7 +9,9 @@ import json
 
 import numpy as np
 
-from geo_search_env.experiment.knowledge_check import LEVELS, OUT, PHOTOS, TRUTH, _norm, _right
+from geo_search_env.experiment.knowledge_check import LEVELS, OUT, _norm, _right
+from geo_search_env.experiment.name_score import _labels
+from geo_search_env.experiment.photo_sets import load_photos
 from geo_search_env.experiment.strategy_search import _haversine_km
 
 train = collections.Counter()
@@ -21,8 +23,8 @@ for line in open("artifacts/knowledge/knowledge.jsonl"):
             train[(_norm(parts[0]), _norm(parts[1]))] += 1
 print(f"{sum(train.values())} train photos, {len(train)} (country, region) pairs")
 
-photos = json.loads(PHOTOS.read_text())
-labels = {p["image_id"]: p for p in json.loads((TRUTH.parent / "candidates_full.json").read_text())}
+photos = load_photos("full")
+labels = {p["image_id"]: p for p in _labels("full")}
 answers = {m: json.loads((OUT / f"check_{m}.json").read_text()) for m in ("knowledge-a", "base")}
 rows = []
 for e in photos:

@@ -9,6 +9,11 @@ study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
 
 ## Summary (read this first; numbered lessons in `LESSONS.md`)
 
+**Reference changed (2026-10-07, lesson 54).** "The reranker" is now Pinpoint's attention reranker (its released final model, ported
+exactly): top-1 **17.5 / 37.2** on the full eval halves (MP16 dev 16.0 / 33.9), and its pool (<= 12 candidates, oracle 30.1 / 54.7) is the
+pool we choose from. In lessons 1-53 and the numbers below, "the reranker" is our earlier one-step reranker (an MLP over 17 hand-made
+features, top-1 16.7 / 38.2) over our ~17-candidate pool (oracle 33.4 / 59.0); gains quoted against it need re-measuring against Pinpoint.
+
 **Where we are (2026-10-04).** Against Pinpoint's reranker top-1, the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
 from a fine-tuned 4B comparator (query photo + exemplar photo of a candidate -> same place?) combined with the reranker's rank (lessons 24, 29, 40, 41).
 On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing fitted on them:
@@ -59,10 +64,12 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
 - 53: not a coverage gap: at equal training photos per region the model names the region 55% on reranker-right photos, 6% on
   the fixable ones. Those photos don't look like their region; next is non-appearance clues via tools (`AGENT_DIRECTION.md`).
-- 54: constraint tools from VLM-read clues: text matched to GeoNames near the candidate +0.2 [+0.0, +0.3] at 25 km on the eval halves when fitted
+- 54: Pinpoint's attention reranker, ported exactly, is the reference: 17.5 / 37.2 (one-step reranker 16.7 / 38.2), pool oracle 30.1 / 54.7
+  with <= 12 candidates; 371 region-fixable target photos (+9.5 at 25 km), the knowledge SFT names their region 13.2%.
+- 55 (old pool): constraint tools from VLM-read clues: text matched to GeoNames near the candidate +0.2 [+0.0, +0.3] at 25 km on the eval halves when fitted
   on MP16 dev only (+0.1 on photos never used; the first +0.4 was fitted on the 'val' benchmark photos); POI names +0.2, features / rules / country guess ~0; text names the true region on ~5% of fixable photos.
-- 55: 9B vs 4B right region on fixable photos 16.8 vs 13.9% (n.s.); resolution helps up to 786k px; model agreement trades fixes for breaks.
-- 56: by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
+- 56 (old pool): 9B vs 4B right region on fixable photos 16.8 vs 13.9% (n.s.); resolution helps up to 786k px; model agreement trades fixes for breaks.
+- 57 (old pool): by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
@@ -76,7 +83,8 @@ baseline for new evidence (10, 13).
 
 | System | Greedy | Single sample | Best of 8 | Right answer among shown candidates |
 |---|---|---|---|---|
-| One-step reranker #1 | 16.7 / 38.2 | | | |
+| Pinpoint attention reranker #1 (the reference since lesson 54) | 17.5 / 37.2 | | | 30.1 / 54.7 (its pool) |
+| One-step reranker #1 (the reference in lessons 1-53) | 16.7 / 38.2 | | | |
 | sft-34k (reranker top-10 in prompt) | 15.8 / 37.6 | 11.5 / 33.0 | 22.3 / 48.0 | 30.8 / 53.6 |
 | sft-34k-retrieval (all ~17 pooled candidates, retrieval order, evidence; no reranker) | 16.3 / 37.2 | 12.6 / 32.8 | 22.3 / 48.2 | 33.4 / 59.0 |
 | grpo-kl step 200 (from sft-34k-retrieval) | 16.9 / 37.9 | 15.9 / 36.8 | 21.7 / 45.1 | 33.4 / 59.0 |
@@ -129,5 +137,6 @@ baseline for new evidence (10, 13).
 
 ## Kept artifacts
 - None of the old machine's models or caches were transferred (2026-10-06). On this machine: `artifacts/strategy_search/`
-  (benchmark caches, rebuilt with the released Pinpoint index; reproduces reranker 16.8 / 38.5, oracle 33.6 / 58.9) and
-  `data/pinpoint/geonames/allCountries.txt`. Everything else is rebuilt per `SETUP.md`.
+  (benchmark caches, rebuilt with the released Pinpoint index; reproduced the one-step reranker 16.8 / 38.5, oracle 33.6 / 58.9),
+  `artifacts/pinpoint_reference/` (Pinpoint's pools), `artifacts/photo_sets/` and `data/pinpoint/geonames/allCountries.txt`.
+  Everything else is rebuilt per `SETUP.md`.

@@ -3,6 +3,7 @@
 The numbered lessons behind `LEARNINGS.md`'s summary, with full numbers. Conventions (metrics, eval sets, standard
 errors) are at the top of `LEARNINGS.md`. Add new lessons here and a one-line entry to the summary there.
 Modules and scripts named in lessons 1-51 that are no longer in the tree are at git tag `pre-cleanup-2026-10-07`.
+Modules and scripts named in lessons 1-53 that were removed with the one-step reranker (lesson 54) are at commit 57918cb.
 
 1. **Selection among one-shot retrieval results is saturated.** SFT and GRPO both land at reranker parity, while the
    right answer is in the shown list for 33 / 59%. The model and the reranker agree on >90% of photos; disagreements
@@ -645,7 +646,23 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
     these regions (the reranker-right column gains most), but the fixable photos don't show them; more or harder knowledge data of the same kind
     is unlikely to help. Next direction: clues that aren't overall appearance, used through tools (`AGENT_DIRECTION.md`).
 
-54. **Constraint tools from photo clues: precise but rare, and smaller than first reported (2026-10-07; `observe.py`, `geo_tools.py`, `poi_query.py`, `agent_targets.py`).** A VLM reads
+54. **Pinpoint's attention reranker is the reference; our one-step reranker and pool are retired (2026-10-07; `models/pinpoint_reranker.py`,
+    `pinpoint_reference.py`, `photo_sets.py`).** Ported from pinpoint-yogi (27a9bfe) without Lightning, the index streamed from disk. Exact: on 320
+    benchmark photos the original code (Lightning stubbed, the full index fed lazily) gives identical query encodings, candidate rows and rank
+    features, and identical bf16 scores given the same features. Tie order matters: many index scores tie exactly (photos at one coordinate
+    share a GPS embedding), the reranker reads each hit's rank, and a naive top-k changed the top-1 on 5 of 64 photos; the port follows the
+    original's chunked top-k sequence. Index photos by the query's photographer are excluded (the original doesn't).
+    - Eval halves (n = 3,795), % within 1 / 25 / 200 / 750 / 2500 km: top-1 17.5 / 37.2 / 53.9 / 71.4 / 84.5 (im2gps3k 21.8 / 48.9, yfcc4k
+      14.8 / 29.8); oracle over its pool (11.6 candidates) 30.1 / 54.7 / 74.4 / 89.6 / 96.8. One-step reranker: 16.7 / 38.2, oracle over
+      its ~17-candidate pool 33.4 / 59.0; the union of both pools (28.7) would reach 37.4 / 63.1. Pinpoint's pool alone was chosen (user).
+    - MP16: dev (3,836) 16.0 / 33.9, oracle 27.0 / 49.5; held-out rest (34,531) 15.4 / 32.3; trained-on photos 19.0 / 38.9, oracle 32.4 /
+      57.7: its index still favours photos its retriever trained on, so training stays on bucket 99.
+    - Target photos (`knowledge_oracle`): 665 choosing photos (top-1 >= 25 km off, a pool candidate < 25 km; was 792), 371 region-fixable
+      (was 413): true-region knowledge +9.5 [+8.6, +10.6] at 25 km (city +6.9, country +3.0). knowledge-a names the region on 13.2 % of
+      the 371 (base 10.8 %), vs 52.1 % on reranker-right photos: lesson 52's conclusion holds. MP16 dev (`devall`): 600 choosing, 347
+      region-fixable (+8.9).
+
+55. **Constraint tools from photo clues: precise but rare, and smaller than first reported (measured with the old one-step reranker's ~17-candidate pool, before lesson 54) (2026-10-07; `observe.py`, `geo_tools.py`, `poi_query.py`, `agent_targets.py`).** A VLM reads
     each photo into JSON clues (text, language, script, driving side, features from a GeoNames-mapped vocabulary, place names, country); tools score
     each retrieval candidate; listwise combiner of rank + tool features (CV on MP16 dev + val, n = 2,000, 208 fixable photos).
     - **Correction:** "val" (query_evidence `val`) is 1,000 benchmark eval-half photos, not MP16, so every "dev + val" number here mixes in test photos.
@@ -658,12 +675,12 @@ Modules and scripts named in lessons 1-51 that are no longer in the tree are at 
     - Crops: 9B text from 4 overlapping tiles per photo lifts text coverage on fixable photos 43% -> 63-73% but rank + text stays +0.4 [-0.0, +0.8]
       (14 / 6): reading quality isn't the limit, the text isn't geographic.
 
-55. **Capacity and resolution barely move region knowledge on hard photos (2026-10-07; `agent_capacity.py`, `scripts/capacity.sh`).** Right region
+56. **Capacity and resolution barely move region knowledge on hard photos (measured with the old one-step reranker's ~17-candidate pool, before lesson 54) (2026-10-07; `agent_capacity.py`, `scripts/capacity.sh`).** Right region
     (country > region) on dev + val fixable photos (val = benchmark photos; diagnostic only, nothing fitted): Qwen3.5-4B 13.9%, Qwen3.5-9B 16.8% (+2.9 [-1.9, +7.7]); city 6.3 vs 10.7 (+4.4 [+0.6, +8.8]).
     Same 4B, dev fixable: 448 -> 786k px +3.9 [+1.0, +7.8] region, +6.9 country (no change on reranker-right photos); 1.6M px = 786k. Agreement of
     4B and 9B as a switch rule: best +0.4 [-0.1, +0.9]; requiring agreement halves fixes and breaks alike (`agent_vote.py`).
 
-56. **What the photos retrieval fails on contain (2026-10-07; by eye, one reader, 24 random dev fixable photos).** Nothing place-specific 58% (indoor,
+57. **What the photos retrieval fails on contain (measured with the old one-step reranker's ~17-candidate pool, before lesson 54) (2026-10-07; by eye, one reader, 24 random dev fixable photos).** Nothing place-specific 58% (indoor,
     people, food, sky, generic nature); a readable business / organisation name ~15% (POI search; the 9B misread one); a recognisable landmark 12%
     (landmark matching); country-level cultural objects 12% (e.g. Strandkorb beach chairs). GeoNames suits places, not the business names hard photos
     show; Overture places covers more but not all (2,907 vs 1,946 of the read n-grams matched).

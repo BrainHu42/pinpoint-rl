@@ -11,15 +11,17 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Work toward one research idea with novelty, not small incremental experiments.
 
 ## Research plan (2026-10-07)
-- Where we are (LEARNINGS summary): the answer is usually in the ~17-candidate pool (oracle 33.4 / 59.0% within
-  1 / 25 km) but every chooser, evidence source, comparator and the knowledge SFT lands at -0.5 to +1.3 pts over the
-  reranker top-1 (16.7 / 38.2), because each re-encodes what visual retrieval already knows. Knowledge in the weights
-  sits on the photos retrieval already solves (lessons 52-53).
+- **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
+  exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
+  (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; MP16 dev 16.0 / 33.9 (oracle 27.0 / 49.5).
+- Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
+  over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
+  visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
 - **Direction: `AGENT_DIRECTION.md`** (agreed 2026-10-07): train an agent that geolocates like a professional, using
   constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
   candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
-  where the reranker is wrong but knowing the region would fix it (413 of 3,795 on the eval halves; develop on the
-  MP16 dev equivalent).
+  where the reranker is wrong but knowing the region would fix it (371 of 3,795 on the eval halves; develop on the
+  MP16 dev equivalent, 347 of 3,836: `knowledge_oracle devall`).
 - Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
@@ -65,15 +67,24 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 
 ## Code map (`src/geo_search_env/`)
 - `data/benchmarks.py`: benchmark loader and metrics. `paths.py`: storage roots.
-- `experiment/strategy_search.py`: world loading, neighbour caches, region head, candidate pools, reranker features.
-- `experiment/verifiers.py`: reranker ranking. `experiment/sft_data.py`: MP16 query pool, candidates, overlay filter.
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact.
+- `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
+- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (tags `dev`, `devall`, `val`, `full`; `load_photos`).
+- `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
+- `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
+  and the benchmark harness for any VLM chooser (`vlm_sampling`).
 - `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
 - `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
-- Knowledge SFT: `place_labels.py` (Overture division labels), `knowledge_data.py` (training photos), `name_score.py`
-  (candidate name scoring + combiner). Photo sets: `query_evidence.py select` (tags `dev`, `val`, `full`).
+- Knowledge SFT: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool), `knowledge_data.py`
+  (training photos), `name_score.py` (candidate name scoring + combiner).
 - Knowledge diagnostics (lessons 52-53): `knowledge_check.py` (answers, report, rule), `knowledge_oracle.py` (perfect-knowledge
   ceiling per level, fixable photos), `knowledge_coverage.py` (accuracy by training coverage).
 - Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment): removed 2026-10-07; their
-  modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. Kept helpers they shared:
-  `evidence_test`, `exemplar_judge`, `multi_exemplar`, `wiki_backend`, `category_evidence`, `coarse_filter`, `feasibility`.
-- Caches: `artifacts/` (not tracked). Setup from scratch: `SETUP.md`.
+  modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. The one-step reranker, our ~17-candidate
+  pool builder and the modules built on them (`verifiers`, `evidence_ranker`, `exemplar_judge`, `multi_exemplar`,
+  `category_evidence`, `stage1_eval`, `evidence_test`, `query_headroom`, `query_evidence`) were removed when Pinpoint's reranker
+  became the reference (lesson 54); they are at commit 57918cb. Kept: `wiki_backend` (offline Wikipedia search), `coarse_filter`,
+  `feasibility`.
+- Caches: `artifacts/` (not tracked). Photo sets and pools built before lesson 54 (`artifacts/query_evidence/*/dev.json`,
+  `artifacts/sft/candidates.npz`, `artifacts/place_labels/candidates_*.json`) hold the old reranker's pools; current code doesn't read them.
+  Setup from scratch: `SETUP.md`.
