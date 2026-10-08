@@ -85,6 +85,22 @@ pick's region fixes clearly more than the pick's own coordinate (60), this desig
 - **Upper bound with a perfect selector:** a query names the true region while Pinpoint's region is wrong on 119 photos;
   restricting Pinpoint there fixes 68 (+2.3 pts). That's the most these clues can give, and no simple rule gets near it.
 
+**Eye check of those 119 photos (2026-10-08).**
+- **Method:** sorted by each photo's best query, compared with the 811 trap photos (a query's region differs from Pinpoint's,
+  Pinpoint right, query wrong), and looked at 5 contact sheets (45 photos).
+- **Wins:** 38 are luck: a generic word ("CHIPS", "PAPER", "©2009") whose top cluster happened to fall in the right region.
+  29 are names read in the photo: a shop shutter "Dr Sanchis Bergon", "R-KIOSKI", the Antietam plaque, "International
+  Stadium Yokohama", "Porto de Manaus", "City Island". 52 are names the model recalled: Glastonbury, VDNKh, the Catacombs of
+  Domitilla, Huangshan, Mount Rundle.
+- **Traps outnumber wins in both real-clue groups,** counting specific results (cluster share >= 0.3):
+  - **Text read in the photo:** 369 wrong vs 72 right. Text often names somewhere else: brands (KIRKLAND, KONA), shirts
+    ("MICHIGAN"), posters for other cities ("Cartagena de Indias" in Bogotá, "Hochschule Wismar" in Groningen).
+  - **Names the model recalled:** 691 wrong vs 72 right. These are look-alike guesses: Atlanta airport for San Jose's,
+    Lake Champlain for Lake Starnberg, Cape Spear for Prince Edward Island, the Twelve Apostles in Egypt.
+- **What separates them is visible, not countable:** whether the text belongs to the place (a shop sign, a street or station
+  sign, a plaque) or travels (a brand, clothing, a poster), and whether a landmark is recognised from its own visible
+  name or only from appearance. An agent that sees the photo could judge this. Counts and match statistics can't.
+
 ## Plan
 
 ### Step 1. Finish the tool (about half a day, CPU)

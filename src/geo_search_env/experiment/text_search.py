@@ -222,7 +222,8 @@ def build_places(memory: str = "8GB") -> None:
 
 def build_yfcc() -> None:
     z = np.load(YFCC_NPZ)
-    vocab = json.loads((YFCC_NPZ.parent / "uid_vocab.json").read_text(encoding="utf-8"))
+    vocab_file = next(p for p in (YFCC_NPZ.parent / "geo_uid_vocab.json", YFCC_NPZ.parent / "uid_vocab.json") if p.exists())
+    vocab = json.loads(vocab_file.read_text(encoding="utf-8"))
     photo_id, uid, lat, lon = z["photo_id"], z["uid"], z["lat"], z["lon"]
     accuracy = z["accuracy"] if "accuracy" in z.files else np.full(len(photo_id), 16, np.int8)
     blob, offsets = z["blob"], z["offsets"]
