@@ -72,6 +72,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 57 (old pool): by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
 - 58: landmark / object identification by VLM object box + SigLIP2 crop search over MP16 + keypoint / RANSAC verification: best +0.0 on dev3k;
   verification prefers wrong hits (right wins 12% with RANSAC inliers). Needs real recognition, not crop retrieval.
+- 59: Qwen3.6-27B landmark naming: city right on 1.7% of Pinpoint's mistakes (9B 0.6%, user's estimate ~6% identifiable); as a pool-restricted
+  switch rule +0.2 pts (16 fixes / 10 breaks). Larger open VLMs don't close the recognition gap.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

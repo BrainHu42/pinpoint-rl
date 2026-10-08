@@ -697,3 +697,10 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       (right wins 12%). Switch rules over thresholds and hit agreement: best +0.0 at 25 km, looser ones negative (e.g. -1.1, 13 fixes / 47 breaks).
     - Reading: strong geometric matches come from the same *kind* of thing elsewhere (repetitive facades, chain signage). Identifying the user's
       examples needs real recognition (a much stronger model, or a curated landmark collection), not crop retrieval in MP16.
+
+59. **A 27B VLM names more landmarks, but not enough of the right ones (2026-10-08; dev3k, Pinpoint's pool; Qwen3.6-27B-FP8 via `observe.py
+    landmarks`).** Same landmark prompt as the 9B (lesson 58). On Pinpoint's 1,997 >= 25 km mistakes: landmark named 10.5% (9B 2.5%), city right
+    (a GeoNames place of that name within 25 km of the truth) 1.7% (9B 0.6%), vs the ~6% the user judged identifiable by landmark / object.
+    On the 1,003 photos Pinpoint gets right it names a city away from Pinpoint's top-1 189 times, never right: following every answer would cost
+    ~-5 pts. Switching only to a pool candidate near the named city: +0.2 pts at 25 km (16 fixes / 10 breaks at "high" confidence; nearly every
+    answer is "high"). Recognition triples from 9B to 27B, but precision and coverage stay far below the >= 1 pt target.
