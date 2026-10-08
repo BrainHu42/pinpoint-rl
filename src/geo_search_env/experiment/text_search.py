@@ -4,6 +4,7 @@
 # Storage: SQLite FTS5 databases under data/text_search/ (on disk, stdlib only at query time, so it runs in any env, including GRPO rollouts).
 # Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.text_search build-places     (GeoNames + Overture; needs DuckDB)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.text_search build-yfcc                  (needs data/yfcc100m/geo.npz)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.text_search stage   (copy to the NVMe drive after each restart; searches use it)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.text_search query "Galéria Nedbalka" [--near LAT LON KM]
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.text_search report --tag dev3k
 
@@ -28,6 +29,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -36,7 +38,21 @@ from typing import Any, Sequence
 
 import numpy as np
 
-ROOT = Path("data/text_search")
+ROOT = Path("data/text_search")  # the durable copy (builds write here)
+NVME = Path("/opt/dlami/nvme/text_search")  # instance-local NVMe: much faster reads, wiped on restart (`stage` copies the databases there)
+
+
+def _db_dir() -> Path:
+    """Where searches read: $TEXT_SEARCH_DIR, else the NVMe copy if it is complete, else the durable copy."""
+
+    if os.environ.get("TEXT_SEARCH_DIR"):
+        return Path(os.environ["TEXT_SEARCH_DIR"])
+    durable = [p for p in (ROOT / "places.db", ROOT / "yfcc.db") if p.exists()]
+    if durable and all((NVME / p.name).exists() and (NVME / p.name).stat().st_size == p.stat().st_size for p in durable):
+        return NVME
+    return ROOT
+
+
 PLACES_DB, YFCC_DB = ROOT / "places.db", ROOT / "yfcc.db"
 GEONAMES = Path("data/pinpoint/geonames")
 OVERTURE = Path("data/pinpoint/overture/places")
@@ -229,6 +245,18 @@ def build_yfcc() -> None:
     print(f"{len(photo_id)} photos -> {YFCC_DB} ({YFCC_DB.stat().st_size / 1e9:.1f} GB)", flush=True)
 
 
+def stage() -> None:
+    """Copy the built databases to the NVMe drive (redo after every restart)."""
+
+    import shutil
+
+    NVME.mkdir(parents=True, exist_ok=True)
+    for p in (ROOT / "places.db", ROOT / "yfcc.db"):
+        if p.exists():
+            shutil.copyfile(p, NVME / p.name)
+            print(f"{p} -> {NVME / p.name}", flush=True)
+
+
 # ---------------------------------------------------------------------------------------------------------------------------- search
 
 
@@ -275,8 +303,11 @@ class Result:
 
 class TextSearch:
     def __init__(self, yfcc: bool = True, min_accuracy: int = MIN_ACCURACY) -> None:
-        self.places = sqlite3.connect(f"file:{PLACES_DB}?mode=ro", uri=True, check_same_thread=False)
-        self.yfcc = sqlite3.connect(f"file:{YFCC_DB}?mode=ro", uri=True, check_same_thread=False) if yfcc and YFCC_DB.exists() else None
+        places_db, yfcc_db = PLACES_DB, YFCC_DB
+        if places_db == ROOT / "places.db":  # not overridden (tests point these at temporary files)
+            places_db, yfcc_db = _db_dir() / "places.db", _db_dir() / "yfcc.db"
+        self.places = sqlite3.connect(f"file:{places_db}?mode=ro", uri=True, check_same_thread=False)
+        self.yfcc = sqlite3.connect(f"file:{yfcc_db}?mode=ro", uri=True, check_same_thread=False) if yfcc and yfcc_db.exists() else None
         self.min_accuracy = min_accuracy
         self.tld, self.phone, self.country_names = _countries()
         t = np.asarray(self.places.execute("SELECT lat, lon, pop FROM towns").fetchall(), np.float64)
@@ -520,6 +551,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     b = sub.add_parser("build-places")
     b.add_argument("--memory", default="8GB")
     sub.add_parser("build-yfcc")
+    sub.add_parser("stage")
     q = sub.add_parser("query")
     q.add_argument("text")
     q.add_argument("--near", type=float, nargs=3, metavar=("LAT", "LON", "KM"))
@@ -532,6 +564,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         build_places(args.memory)
     elif args.cmd == "build-yfcc":
         build_yfcc()
+    elif args.cmd == "stage":
+        stage()
     elif args.cmd == "query":
         print(TextSearch(yfcc=not args.no_yfcc).search(args.text, near=tuple(args.near) if args.near else None).text())
     else:
