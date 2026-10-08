@@ -224,5 +224,24 @@ about +0.3 pts in practice (lesson 65). Each option below has a cheap first chec
 | 4 | **Build the agent now** with Pinpoint-as-tool + text search + the judge, and let RL combine them | Tools are complementary; the judge shows the visual decision is learnable | Base-4B headroom (best of 8 vs Pinpoint) in the multi-turn loop | No tool clears the bar alone, and GRPO sharpens rather than discovers (lesson 3) |
 | 5 | **Live web search** for the deployed agent | Coverage of right clues is the limit lesson 65 found | Needs a search API key; on Flickr-based dev the photo's own page can leak | Can't be measured cleanly offline |
 
+**Option 1, first checks (`vlm_country.py`, dev3k; truth / Pinpoint countries from the Overture labels):**
+- **The VLM's holistic country guess is worse than Pinpoint's:**
+  - 9B greedy: right on 62.4% of the photos it answers, where Pinpoint is right on 77.1% of the same photos. Where they
+    disagree: VLM right 145, Pinpoint right 461. Even in Pinpoint's least confident fifth: 40 vs 63.
+  - 8 samples per photo, the modal answer: 4B right 46.9% and 9B 54.6%, against Pinpoint 68.4%.
+  - Where all 8 samples agree and differ from Pinpoint: 4B 10 vs 19, 9B 47 vs 47.
+  - A guess from appearance carries the same information as retrieval, only less of it.
+- **Explicit clues are rare or noisy on these photos (personal Flickr):**
+
+| Explicit clue (as a constraint) | Photos | Truth allowed | Pinpoint not allowed | Of those, Pinpoint wrong |
+|---|---|---|---|---|
+| Country-code domain | 20 | 75% | 6 | 4 |
+| Phone prefix | 1 | | 0 | |
+| Language of text the 9B read | 999 | 80% | 191 | 133 (70%, vs 67% baseline) |
+| Same, excluding English | 342 | 80% | 77 | 53 |
+
+  Domains and phone numbers almost never appear. Read-text language is often wrong (20% of the time the true country isn't
+  allowed: brands, foreign text), so a violation barely signals a Pinpoint mistake. Number plates are not measured yet.
+
 **Recommendation:** 1 first. It's the cheapest, uses data already on disk, and has the largest clean ceiling with few breaks. If
 it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt on dev3k by itself.
