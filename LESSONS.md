@@ -721,3 +721,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Scoring Pinpoint's candidates (max / summed crop-hit similarity within 1 / 5 km, hit counts; listwise combiner with rank, CV on dev3k):
       +0.1 [-0.4, +0.5] at 25 km (27 fixes / 25 breaks), -0.7 at 1 km.
     With lessons 58-60: the crop search's hits carry almost no information beyond Pinpoint's own retrieval.
+
+62. **The landmark / text target exists in dev3k; recognition and Pinpoint's pool are what cap the tool (2026-10-08; dev3k).** By-eye check of 40 random
+    Pinpoint mistakes (>= 25 km; one reader who knew the truth, so counting only clues identifiable without it): clear landmark / object 2 (5%:
+    Wittenham Clumps, Bagan), +4 borderline (Sebring paddock, Gran Sasso, Trieste's Piazza Unita, a San Diego office block); searchable text 3 (7.5%:
+    "City Island Lobster House", a Swiss board "Bellinzona Lugano Chiasso", "AIK Banka - Posetite nas"), +1 borderline; nothing usable ~31 (77%).
+    Close to the user's test-set estimate (~6% landmark / object, ~5% text).
+    - On the clear cases: 9B and 27B named City Island Lobster House (and read its text), the 27B named Bagan; none recognised Wittenham Clumps; the
+      Swiss board needs reasoning about the line. The DINOv2-best crop hit was 146-8,719 km off on all four.
+    - Pool restriction: Lobster House and Bagan weren't fixed because no Pinpoint candidate lies near them. Geocoding the 27B's named city (most
+      populous GeoNames place of that name in the stated country) and answering outside the pool: 30 fixes but 151 breaks (-4.0).
+    - Gate on Pinpoint's confidence: top-1 reranker score median 0.46 when right, 0.31 when wrong (margin to the 2nd candidate doesn't separate).
+      Switching only when Pinpoint's score is in its bottom 20%: +0.2 [+0.0, +0.4] (8 fixes / 2 breaks); bottom 50%: +0.2 (18 / 13). Even perfect
+      gating caps 27B naming at 30 fixes = +1.0 pt: more correct recognitions are needed.

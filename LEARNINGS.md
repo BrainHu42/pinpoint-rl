@@ -77,6 +77,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 60: DINOv2-large re-scoring of the crop search's top 100: top-1 right on 3.3% of Pinpoint's mistakes (SigLIP 2.3%); best rule +0.2 pts.
   The landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.
 - 61: deciding by place doesn't help: location voting over crop hits best -0.0; crop-hit features on Pinpoint's candidates +0.1 [-0.4, +0.5].
+- 62: by eye, dev3k mistakes: 5% clear landmark / object, 7.5% searchable text (matches the user's test estimate). Models recognise only some;
+  answers outside Pinpoint's pool + a Pinpoint-confidence gate: +0.2 (8 fixes / 2 breaks); 27B naming caps at +1.0 pt even with perfect gating.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
