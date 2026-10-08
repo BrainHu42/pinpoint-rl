@@ -810,7 +810,15 @@ baseline for new evidence (10, 13).
       | commons26 test, continent-balanced (headline) | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
       | commons26 test, plain mean | 4,052 | 3.0 / 11.3 / 26.7 / 52.7 / 75.3 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268; EU 3.4 / 9.2 / 30.5 / 69.7 / 91.4) |
       Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
-    - Not yet run on commons26: Pinpoint's attention reranker (the baseline) and our methods.
+    - Pinpoint's attention reranker (the baseline; `pinpoint_reranker_eval run --benchmarks commons26`, unfiltered: no uploader is in MP16) on
+      commons26, continent-balanced, < 1 / 25 / 200 / 750 / 2500 km (predictions in `/data/pinpoint/commons26/pred_*.csv`):
+      | commons26 | n | retrieval top-1 | reranker top-1 | oracle over its 12 |
+      |---|---|---|---|---|
+      | dev | 977 | 3.1 / 12.1 / 25.2 / 44.8 / 67.7 | 6.2 / 22.1 / 38.7 / 62.7 / 78.5 | 11.0 / 38.1 / 64.0 / 79.8 / 91.8 |
+      | test | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 | 4.6 / 16.8 / 33.6 / 58.4 / 78.0 (± 0.5 / 0.9 / 1.1 / 1.2 / 1.0) | 9.9 / 33.5 / 59.8 / 80.7 / 92.4 |
+      Test plain mean 4.7 / 17.5 / 38.7 / 65.3 / 83.3. By continent at 25 km: AS 21.6, OC 21.3, NA 20.0, EU 14.3, SA 13.2, AF 10.4; tier none 7.0.
+      Versus the old benchmarks (29.5 / 47.4 / 61.9 at 1 / 25 / 200 km), 1 km falls ~6x and 25 km ~3x. The headroom in choosing among the 12 is
+      the same in points as before (+16.7 at 25 km, old sets +16.8) but doubles the score here, so the project's choosing problem carries over.
 
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by

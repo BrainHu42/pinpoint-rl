@@ -1,4 +1,4 @@
-# Pinpoint's attention reranker (the submission's full model) on im2gps3k, yfcc4k and wikimedia: the baseline, run as in prior work (no photographer filter).
+# Pinpoint's attention reranker (the submission's full model) on im2gps3k, yfcc4k, wikimedia (and commons26 with --benchmarks): the baseline, run as in prior work (no photographer filter).
 # Usage: PYTHONPATH=src:/home/brian/workspace/pinpoint-submission/submission/src \
 #          /home/brian/workspace/pinpoint-submission/submission/.venv/bin/python -m geo_search_env.experiment.pinpoint_reranker_eval {run,parity,report}
 
@@ -26,16 +26,16 @@ BENCHMARKS = ("im2gps3k", "yfcc4k", "wikimedia")
 RADII = (1, 25, 200, 750, 2500)
 
 
-def run() -> None:
+def run(names: tuple[str, ...] = BENCHMARKS) -> None:
     from ..models.pinpoint_reranker import PinpointReranker, query_author_ids
 
     reranker = PinpointReranker()
     OUT.mkdir(parents=True, exist_ok=True)
-    for name in BENCHMARKS:
+    for name in names:
         bench = load_benchmark(name)
         authors = query_author_ids(bench.authors, reranker.vocab)
         print(f"{name}: {len(bench.image_ids)} photos, {int((authors >= 0).sum())} by an MP16 photographer", flush=True)
-        modes = {"unfiltered": None} if name == "wikimedia" else {"unfiltered": None, "filtered": authors}
+        modes = {"unfiltered": None} if name in ("wikimedia", "commons26") else {"unfiltered": None, "filtered": authors}
         for mode, query_authors in modes.items():
             result = reranker.predict(bench.embeddings, query_authors)
             np.savez(OUT / f"{name}_{mode}.npz", ids=np.asarray(bench.image_ids), truth=bench.latlon, **result)
@@ -113,8 +113,9 @@ def report() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("run", "parity", "report"))
+    parser.add_argument("--benchmarks", nargs="+", default=list(BENCHMARKS), help="run: which benchmarks (e.g. commons26: unfiltered only)")
     args = parser.parse_args()
-    {"run": run, "parity": parity, "report": report}[args.command]()
+    run(tuple(args.benchmarks)) if args.command == "run" else {"parity": parity, "report": report}[args.command]()
 
 
 if __name__ == "__main__":
