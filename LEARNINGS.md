@@ -76,6 +76,7 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   switch rule +0.2 pts (16 fixes / 10 breaks). Larger open VLMs don't close the recognition gap.
 - 60: DINOv2-large re-scoring of the crop search's top 100: top-1 right on 3.3% of Pinpoint's mistakes (SigLIP 2.3%); best rule +0.2 pts.
   The landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.
+- 61: deciding by place doesn't help: location voting over crop hits best -0.0; crop-hit features on Pinpoint's candidates +0.1 [-0.4, +0.5].
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

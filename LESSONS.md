@@ -712,3 +712,12 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     right 36.8 / 39.6 / 33.1%). Best switch rule (DINOv2 CLS score >= median and 3 of its top 5 hits within 25 km): +0.2 [-0.0, +0.5] at 25 km
     (12 fixes / 5 breaks); every other rule +0.2 or worse. No GLDv2-trained descriptor (CVNet, SuperGlobal) is on Hugging Face. With lessons 58-59,
     the landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.
+
+61. **Deciding by place doesn't rescue the landmark crop search (2026-10-08; dev3k, Pinpoint's pool; `landmark_vote.py`).** From the top-100 MP16
+    crop hits and their SigLIP2 / DINOv2 scores (lesson 60):
+    - Location voting (each hit's place scored by similarity-weighted hits within 1 km; switch when the best place is far from Pinpoint's top-1,
+      scores high and beats the next place >= 25 km away): no rule beats Pinpoint; best -0.0 (2 fixes / 3 breaks), looser rules -1.6 to -6.3.
+      Voting favours densely photographed places, which Pinpoint already gets right.
+    - Scoring Pinpoint's candidates (max / summed crop-hit similarity within 1 / 5 km, hit counts; listwise combiner with rank, CV on dev3k):
+      +0.1 [-0.4, +0.5] at 25 km (27 fixes / 25 breaks), -0.7 at 1 km.
+    With lessons 58-60: the crop search's hits carry almost no information beyond Pinpoint's own retrieval.
