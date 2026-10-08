@@ -97,7 +97,7 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
   `select` with `~/.venvs/sft` for pyarrow, `overlay`, `dataset`); pipeline `scripts/knowledge_run.sh`, scoring `scripts/name_scores.sh`.
 - `experiment/wikimedia_eval.py`: wikimedia candidates and baseline / oracle report.
 - `experiment/commons_bench.py`: the commons26 benchmark (LEARNINGS 53): Commons scan, selection, download, gallery near-duplicates, 27B tiers,
-  release (`/data/pinpoint/commons26/release/`, loader entry `commons26`) and `score` (by tier / continent, uploader-clustered SE).
+  release (`/data/pinpoint/commons26/release/`, loader entry `commons26`) and `score` (continent-balanced headline over all photos; tiers as slices).
 - `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, with an optional same-photographer
   filter on its MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
   `PYTHONPATH=src:<submission>/src`; one photo per call, batching changes bf16 results) -> `artifacts/pinpoint_reranker/`.

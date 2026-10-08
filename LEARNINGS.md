@@ -68,9 +68,9 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
   readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
   pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
-- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 5,561 Commons photos taken after 2026-07-01). im2gps3k has 198 photographers
+- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 3,251 Commons photos taken after 2026-07-01). im2gps3k has 198 photographers
   (design effect ~6: its error bars are ~2.5x too small) and our tune / eval split shares 97.5% of them. The same top-1 MP16 retrieval gets 37.6 / 38.1%
-  within 25 km on im2gps3k / yfcc4k but 10.0% on commons26 test (13.0% on locatable photos); 1 km 14.9 / 29.5 vs 3.2.
+  within 25 km on im2gps3k / yfcc4k but 10.6% on commons26 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 3.2.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -786,20 +786,25 @@ baseline for new evidence (10, 13).
     - commons26: every geotagged JPEG uploaded to Commons 2026-07-01 to 10-06 (search `haswbstatement:P1259`, ~10k / day; 4 days hit the 20k read cap),
       kept if EXIF GPS + capture date >= 2026-07-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of the page's camera
       location, not bots / Mapillary: 227,086 photos from 3,935 uploaders. Pick: <= 3 per uploader (2 gives 4,780), >= 2 km apart, continents in turn,
-      no country > 15%: 5,668; 101 non-photos and 6 with printed coordinates dropped -> 5,561 from 3,241 uploaders, 140 countries; split by uploader
-      (dev 935, test 4,626). Still 52% Europe, 3% Africa: Commons is European.
+      no country > 15%: 5,668 -> 5,561 (v1, 52% Europe, 3% Africa; kept in `release_v1_5561/`). v2 (2026-10-08): Commons can't supply a balanced set
+      (Africa has ~120 uploaders in the window; even 10 per uploader and a 0.5 km gap give only 321 photos), so continents are capped at 1,000 and
+      countries at 500: 3,303 picked, 51 non-photos and 1 with printed coordinates dropped -> 3,251 from 1,909 uploaders (EU 981, AS 987, NA 678,
+      SA 274, AF 188, OC 143; dev 566, test 2,685). The headline weights the six continents equally (SE clustered by uploader).
     - Gallery near-duplicates are not a problem by construction: 23 of 5,668 have an MP16 photo at cosine >= 0.95 (OSV-5M 1); >= 0.90 (527) are mostly
       look-alikes hundreds of km away (clouds, altars, roads), so they are flagged, not dropped.
     - Tiers (Qwen3.6-27B Q4, no location shown, JSON-schema output; without the schema it writes an analysis and runs out of tokens): landmark 1,794,
       city 608, region 1,583, none 1,576. Against one blind reader (the agent) on 198 photos: exact 113 / 198, locatable vs none 175 / 198 with the v2
-      prompt (v1: 99, 159); the 27B over-calls landmark (59 vs 29). Use tiers as coarse slices; the headline excludes `none`.
+      prompt (v1: 99, 159); the 27B over-calls landmark (59 vs 29). Tiers are slices only: v1's headline excluded `none`, which inflates scores
+      (a model that sees no cue doesn't show there is none); v2 scores all photos.
     - Top-1 MP16 SigLIP2 retrieval, no photographer filter (the only baseline run so far), < 1 / 25 / 200 / 750 / 2500 km:
       | set | n | result |
       |---|---|---|
       | im2gps3k | 2,997 | 14.9 / 37.6 / 50.7 / 67.8 / 83.5 |
       | yfcc4k | 4,536 | 29.5 / 38.1 / 47.0 / 61.9 / 76.5 |
-      | commons26 test, all | 4,626 | 3.2 / 10.0 / 26.5 / 57.5 / 80.1 |
-      | commons26 test, headline (tier != none) | 3,307 | 4.2 / 13.0 / 33.4 / 68.3 / 88.7 (landmark 7.9 / 18.5; none 0.5 / 2.4) |
+      | commons26 v1 test, tier != none (old headline) | 3,307 | 4.2 / 13.0 / 33.4 / 68.3 / 88.7 |
+      | commons26 v2 test, continent-balanced (headline) | 2,685 | 3.2 / 10.6 / 21.9 / 45.4 / 68.0 (± 0.5 / 0.9 / 1.1 / 1.3 / 1.3) |
+      | commons26 v2 test, plain mean | 2,685 | 3.3 / 10.8 / 25.8 / 52.8 / 75.8 (AF 1.9 / 3.8 / 8.3 / 16.7 / 41.0; EU 3.2 / 8.6 / 31.2 / 69.7 / 90.8) |
+      Weighting and keeping `none` take ~21 pts off at 750 km: the v1 headline flattered Europe-heavy, locatable-looking photos.
       Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
     - Not yet run on commons26: Pinpoint's attention reranker (the baseline) and our methods.
 

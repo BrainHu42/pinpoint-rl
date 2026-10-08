@@ -16,7 +16,8 @@
 search-scan: the same filters over every JPEG with a camera location (P1259) created on each day in [--start, --end), via search
           (resumable: finished days in search_days.txt). Shares candidates.jsonl with scan (deduplicated by page id).
 select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
-          uploader, --min-gap-km between any two, no country above --max-country-share of the target.
+          uploader, --min-gap-km between any two, at most --per-continent per continent, no country above --max-country-share of that cap.
+          Release: --target 100000 --per-uploader 3 --per-continent 1000 --max-country-share 0.5 (3,303 photos).
 download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present.
 dedup:    SigLIP2-giant embeddings of the downloaded photos on the CPU and each one's most similar MP16 and OSV-5M gallery photo (cosine, km);
           flags only, in near_duplicates.jsonl.
@@ -24,8 +25,8 @@ tiers:    locatability tier (landmark / city / region / none) and flags (place t
           not shown the location -> tiers.jsonl.
 release:  drops non-photos and photos with printed coordinates, splits by uploader (~1,000 dev photos, rest test), strips JPEG metadata
           (EXIF / XMP / IPTC) without re-encoding, writes release/benchmark.csv (no titles or captions), attribution.csv and the SigLIP2 cache.
-score:    headline over locatable photos (tier != none), by tier and continent, the mean over continents, GeoScore and median km, with
-          standard errors clustered by uploader."""
+score:    headline over all photos with continents weighted equally, then the plain mean, each continent and each 27B tier (slices only),
+          GeoScore and median km, with standard errors clustered by uploader."""
 
 from __future__ import annotations
 
@@ -257,8 +258,10 @@ def _unit(latlon: Any) -> Any:
     return np.c_[np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]
 
 
-def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, seed: int) -> None:
-    """Greedy pick over continents in turn: at most `per_uploader` photos per uploader, `min_gap_km` between any two, no country above the share."""
+def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, per_continent: int, seed: int) -> None:
+    """Greedy pick over continents in turn: at most `per_uploader` photos per uploader, `min_gap_km` between any two, at most `per_continent` per
+    continent (0 = no cap) and no country above `max_country_share` of that cap (of `target` without one). Commons is European and the thin
+    continents run out early (Africa ~190 photos from ~120 uploaders in 2026-07 to 10), so the cap is what limits the skew; `score` reweights the rest."""
     import numpy as np
     from scipy.spatial import cKDTree
 
@@ -275,14 +278,18 @@ def select(target: int, per_uploader: int, min_gap_km: float, max_country_share:
     uploads: dict[str, int] = {}
     per_country: dict[str, int] = {}
     tree_points: list[Any] = []
+    per_region: dict[str, int] = {}
+    country_cap = max(1, max_country_share * (per_continent or target))
     gap = min_gap_km / 6371.0
     while len(picked) < target and any(by_region.values()):
         for region in sorted(by_region):
             queue = by_region[region]
+            if per_continent and per_region.get(region, 0) >= per_continent:
+                queue.clear()
             while queue:
                 i = queue.pop()
                 r, c = records[i], countries[i]
-                if uploads.get(r["uploader"], 0) >= per_uploader or per_country.get(c, 0) >= max(1, max_country_share * target):
+                if uploads.get(r["uploader"], 0) >= per_uploader or per_country.get(c, 0) >= country_cap:
                     continue
                 v = _unit(latlon[i:i + 1])[0]
                 if tree_points and np.min(np.linalg.norm(np.array(tree_points) - v, axis=1)) < gap:
@@ -291,6 +298,7 @@ def select(target: int, per_uploader: int, min_gap_km: float, max_country_share:
                 tree_points.append(v)
                 uploads[r["uploader"]] = uploads.get(r["uploader"], 0) + 1
                 per_country[c] = per_country.get(c, 0) + 1
+                per_region[region] = per_region.get(region, 0) + 1
                 break
             if len(picked) >= target:
                 break
@@ -424,11 +432,13 @@ README = """# commons26: an image geolocation benchmark
 - Tune / eval leakage: `split` is by uploader (dev {dev}, test {test}); no uploader is in both.
 - Coarse labels (album tags, city-level Flickr geotags): coordinates are the camera's EXIF GPS, within 50 m of the page's camera location.
 - Dead links: images are stored here, JPEG metadata (EXIF / XMP / IPTC) stripped without re-encoding.
-- Unlocatable photos (~25% of each old set): `tier` from Qwen3.6-27B, which does not see the location: landmark {landmark}, city {city},
-  region {region}, none {none}. The headline excludes `none`. Against one blind human reader on 198 photos the tiers agree exactly on
-  57% (landmark is over-called) and on locatable vs none on 88%: use tiers as coarse slices, not as ground truth.
-- Geographic skew: continents taken in turn and no country above 15% (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}); the score
-  also reports the mean over continents.
+- Unlocatable photos (~25% of each old set): nothing is dropped for looking unlocatable, since a model that sees no cue does not show that
+  there is none, and dropping such photos would inflate every score. `tier` from Qwen3.6-27B, which does not see the location (landmark
+  {landmark}, city {city}, region {region}, none {none}), is a diagnostic slice only. Against one blind human reader on 198 photos it agrees
+  exactly on 57% (landmark is over-called) and on locatable vs none on 88%.
+- Geographic skew (61% of the 227k candidate photos are in Europe, 2% in Africa): at most 1,000 photos per continent and 500 per country
+  (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}). Africa, Oceania and South America are limited by supply (Africa: ~120 uploaders
+  in three months), so the headline weights the six continents equally; the plain mean is reported too.
 - Dropped: {dropped}.
 
 ## Files
@@ -528,8 +538,9 @@ def release() -> None:
 
 
 def score(predictions: Path, split: str) -> None:
-    """Metrics for a predictions CSV (IMG_ID, LAT, LON): headline over locatable photos (tier != none), by tier, by continent and their mean, with
-    standard errors clustered by uploader group."""
+    """Metrics for a predictions CSV (IMG_ID, LAT, LON) over all photos. Headline: the mean over continents, each weighted equally (the set is
+    still 30% Europe and 6% Africa); then the plain mean, each continent, and the 27B's tiers as slices only (a model's "none" is not proof that a
+    photo holds no location cues, so no photo is excluded on it). Standard errors are clustered by uploader group."""
     import csv
 
     import numpy as np
@@ -543,32 +554,38 @@ def score(predictions: Path, split: str) -> None:
         print(f"warning: {missing} photos have no prediction; scored as (0, 0)")
     km = geodesic_km(np.array([pred.get(r["IMG_ID"], (0.0, 0.0)) for r in rows]), np.array([[float(r["LAT"]), float(r["LON"])] for r in rows]))
     groups = np.array([r["group"] for r in rows])
-
-    def line(mask: Any) -> str:
-        d, g = km[mask], groups[mask]
-        cells = []
-        for t in DISTANCE_THRESHOLDS_KM:
-            y = (d < t).astype(float)
-            sums = {}
-            for yi, gi in zip(y - y.mean(), g):
-                sums[gi] = sums.get(gi, 0.0) + yi
-            se = np.sqrt(sum(v * v for v in sums.values())) / len(y)
-            cells.append(f"{100 * y.mean():5.1f}±{100 * se:3.1f}")
-        geo = np.mean(np.round(5000 * np.exp(-d / GEOGUESSR_DECAY_KM)))
-        return f"{' '.join(cells)}  {geo:6.0f}  {np.median(d):8.1f}  n={mask.sum()}"
-
     tier = np.array([r["tier"] for r in rows])
     continent = np.array([r["continent"] for r in rows])
-    print(f"{'':16s} {'  '.join(f'<{t} km'.rjust(8) for t in DISTANCE_THRESHOLDS_KM)}  GeoScore  median km")
-    print(f"{'headline':16s} {line(tier != 'none')}")
-    print(f"{'all photos':16s} {line(np.ones(len(rows), bool))}")
+    continents = sorted(set(continent))
+    balanced = np.array([1 / (len(continents) * (continent == c).sum()) for c in continent])
+
+    def line(mask: Any, weight: Any = None) -> str:
+        """Weighted mean (weights normalised within each continent stratum) with an uploader-clustered SE: each photo adds w_i (y_i - stratum mean)."""
+        w = (np.where(mask, 1.0, 0.0) if weight is None else np.where(mask, weight, 0.0))
+        w = w / w.sum()
+        strata = continent if weight is not None else np.zeros(len(rows), dtype=str)
+        cells = []
+        for t in DISTANCE_THRESHOLDS_KM:
+            y = (km < t).astype(float)
+            centred = y.copy()
+            for s in set(strata[mask]):
+                m = mask & (strata == s)
+                centred[m] -= np.average(y[m], weights=w[m])
+            sums: dict[str, float] = {}
+            for v, g in zip(w * centred, groups):
+                sums[g] = sums.get(g, 0.0) + v
+            cells.append(f"{100 * (w * y).sum():5.1f}±{100 * np.sqrt(sum(v * v for v in sums.values())):3.1f}")
+        geo = (w * np.round(5000 * np.exp(-km / GEOGUESSR_DECAY_KM))).sum()
+        return f"{' '.join(cells)}  {geo:6.0f}  {np.median(km[mask]):8.1f}  n={mask.sum()}"
+
+    everything = np.ones(len(rows), bool)
+    print(f"{'':18s} {'  '.join(f'<{t} km'.rjust(8) for t in DISTANCE_THRESHOLDS_KM)}  GeoScore  median km")
+    print(f"{'continent-balanced':18s} {line(everything, balanced)}")
+    print(f"{'all photos':18s} {line(everything)}")
+    for c in continents:
+        print(f"{'continent ' + c:18s} {line(continent == c)}")
     for t in ("landmark", "city", "region", "none"):
-        print(f"{'tier ' + t:16s} {line(tier == t)}")
-    locatable = tier != "none"
-    for c in sorted(set(continent)):
-        print(f"{'continent ' + c:16s} {line(locatable & (continent == c))}")
-    means = [np.mean([(km[locatable & (continent == c)] < t).mean() for c in sorted(set(continent))]) for t in DISTANCE_THRESHOLDS_KM]
-    print(f"{'continent mean':16s} {' '.join(f'{100 * m:5.1f}    ' for m in means)}")
+        print(f"{'27B tier ' + t:18s} {line(tier == t)}")
 
 
 def _fetch(record: dict[str, Any], folder: Path) -> str:
@@ -610,7 +627,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--target", type=int, default=600, help="select: photos to pick")
     parser.add_argument("--per-uploader", type=int, default=2)
     parser.add_argument("--min-gap-km", type=float, default=2.0)
-    parser.add_argument("--max-country-share", type=float, default=0.15)
+    parser.add_argument("--max-country-share", type=float, default=0.15, help="select: of --per-continent if set, else of --target")
+    parser.add_argument("--per-continent", type=int, default=0, help="select: at most N photos per continent (0 = no cap)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--url", default="http://127.0.0.1:8766/v1/chat/completions", help="tiers: OpenAI-compatible VLM endpoint")
     parser.add_argument("--limit", type=int, default=0, help="tiers: label at most N new photos (0 = all)")
@@ -627,7 +645,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         end = utc(args.end) if args.end else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         search_scan(utc(args.start), end, utc(args.taken_after), args.workers)
     elif args.node == "select":
-        select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.seed)
+        select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.per_continent, args.seed)
     elif args.node == "release":
         release()
     elif args.node == "score":
