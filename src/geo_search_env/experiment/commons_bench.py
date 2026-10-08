@@ -17,7 +17,7 @@ search-scan: the same filters over every JPEG with a camera location (P1259) cre
           (resumable: finished days in search_days.txt). Shares candidates.jsonl with scan (deduplicated by page id).
 select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
           uploader, --min-gap-km between any two, at most --per-continent per continent, no country above --max-country-share of that cap.
-          Release: --target 100000 --per-uploader 3 --per-continent 1000 --max-country-share 0.5 (3,303 photos).
+          Release (v3): --taken-after 2026-01-01 --target 5100 --per-uploader 5 --min-gap-km 1 --max-country-share 0.1.
 download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present.
 dedup:    SigLIP2-giant embeddings of the downloaded photos on the CPU and each one's most similar MP16 and OSV-5M gallery photo (cosine, km);
           flags only, in near_duplicates.jsonl.
@@ -424,14 +424,15 @@ def tiers(url: str, workers: int, limit: int) -> None:
 RELEASE = OUT / "release"
 README = """# commons26: an image geolocation benchmark
 
-{n} photos from Wikimedia Commons, taken on or after 2026-07-01 (after the training data of current models), from {groups} uploaders in
-{countries} countries. Built by `src/geo_search_env/experiment/commons_bench.py` (pinpoint-rl).
+{n} photos from Wikimedia Commons, uploaded on or after 2026-07-01 and taken on or after 2026-01-01 (after the training data of current
+models), from {groups} uploaders in {countries} countries. Built by `src/geo_search_env/experiment/commons_bench.py` (pinpoint-rl).
 
 ## What it fixes in im2gps3k / yfcc4k
-- Few photographers (im2gps3k: 198, error bars ~2.5x too small): at most 3 photos per uploader, >= 2 km apart; standard errors are
-  clustered by `group` (anonymised uploader).
-- Overlap with training galleries (69% of yfcc4k photographers are in MP16): every photo was taken after 2026-07-01, so it cannot be in
-  MP16, YFCC100M or OSV-5M. `mp16_cos` / `osv5m_cos` give each photo's most similar gallery photo (cosine >= 0.95: rare; >= 0.90 is
+- Few photographers (im2gps3k: 198, error bars ~2.5x too small): at most 5 photos per uploader, >= 1 km apart from any other photo;
+  standard errors are clustered by `group` (anonymised uploader).
+- Overlap with training galleries (69% of yfcc4k photographers are in MP16): every photo was taken in 2026, so it cannot be in
+  MP16, YFCC100M or OSV-5M. {before_july} photos were taken in January-June 2026 and may have been posted elsewhere before their Commons
+  upload; slice on `taken` >= 2026-07-01 for the strictest check. `mp16_cos` / `osv5m_cos` give each photo's most similar gallery photo (cosine >= 0.95: rare; >= 0.90 is
   mostly look-alikes far away), for slicing.
 - Tune / eval leakage: `split` is by uploader (dev {dev}, test {test}); no uploader is in both.
 - Coarse labels (album tags, city-level Flickr geotags): coordinates are the camera's EXIF GPS, within 50 m of the page's camera location.
@@ -440,9 +441,10 @@ README = """# commons26: an image geolocation benchmark
   there is none, and dropping such photos would inflate every score. `tier` from Qwen3.6-27B, which does not see the location (landmark
   {landmark}, city {city}, region {region}, none {none}), is a diagnostic slice only. Against one blind human reader on 198 photos it agrees
   exactly on 57% (landmark is over-called) and on locatable vs none on 88%.
-- Geographic skew (61% of the 227k candidate photos are in Europe, 2% in Africa): at most 1,000 photos per continent and 500 per country
-  (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}). Africa, Oceania and South America are limited by supply (Africa: ~120 uploaders
-  in three months), so the headline weights the six continents equally; the plain mean is reported too.
+- Geographic skew (61% of Commons' recent geotagged photos are in Europe, 2% in Africa): continents are picked in turn, so each grows
+  until its supply runs out, and no country has more than 10% (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}). Africa, Oceania and
+  South America are limited by supply (Africa: ~200 uploaders in three months), so the headline weights the six continents equally; the
+  plain mean is reported too.
 - Dropped: {dropped}.
 
 ## Files
@@ -456,7 +458,7 @@ README = """# commons26: an image geolocation benchmark
 - Develop on `dev`; report `test` once. Do not train on either.
 - Score: `python -m geo_search_env.experiment.commons_bench score --predictions P.csv [--split test]` (CSV with IMG_ID, LAT, LON).
 """
-DEV_SHARE = 1000 / 5668  # ~1,000 public dev photos; the rest is the held-out test split
+DEV_SHARE = 0.2  # ~1,000 public dev photos (of ~5,000); the rest is the held-out test split
 
 
 def _strip_metadata(data: bytes) -> bytes:
@@ -536,7 +538,8 @@ def release() -> None:
     (RELEASE / "README.md").write_text(README.format(
         n=len(rows), groups=len({row["group"] for row in rows}), countries=len({row["country"] for row in rows}),
         dev=count("split", "dev"), test=count("split", "test"), **{k: count("tier", k) for k in ("landmark", "city", "region", "none")},
-        **{("as_" if k == "AS" else k.lower()): count("continent", k) for k in ("EU", "AS", "NA", "SA", "AF", "OC")}, dropped=dropped), encoding="utf-8")
+        **{("as_" if k == "AS" else k.lower()): count("continent", k) for k in ("EU", "AS", "NA", "SA", "AF", "OC")}, dropped=dropped,
+        before_july=sum(row["taken"] < "2026-07-01" for row in rows)), encoding="utf-8")
     print(f"{len(rows)} photos (dropped {dropped}); dev {count('split', 'dev')}, test {count('split', 'test')}; "
           f"tiers { {k: count('tier', k) for k in ('landmark', 'city', 'region', 'none')} }; groups {len({row['group'] for row in rows})}")
 
