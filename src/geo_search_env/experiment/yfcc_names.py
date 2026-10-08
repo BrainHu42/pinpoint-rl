@@ -217,7 +217,8 @@ def report(tag: str, min_accuracy: int = 0) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     table = json.loads((OUT / f"yfcc_phrases_{tag}.json").read_text(encoding="utf-8"))
-    m = np.load(OUT / f"yfcc_matches_{tag}_{GEO}.npz")
+    with np.load(OUT / f"yfcc_matches_{tag}_{GEO}.npz") as m:  # NpzFile re-reads an array on every key access: load once
+        m = {k: m[k] for k in m.files}
     index = {p: i for i, p in enumerate(m["phrases"])}
     z = np.load(YFCC / f"{GEO}.npz")
     photo_id, uid, lat, lon = z["photo_id"], z["uid"], z["lat"], z["lon"]
@@ -240,7 +241,9 @@ def report(tag: str, min_accuracy: int = 0) -> None:
                 continue
             sample = r if len(r) <= 400 else r[np.random.default_rng(0).choice(len(r), 400, replace=False)]
             pts = np.stack([lat[sample], lon[sample]], 1).astype(np.float64)
-            near = np.stack([_haversine_km(*q, pts) < 25 for q in pts])
+            la, lo = np.radians(pts[:, 0]), np.radians(pts[:, 1])  # pairwise distances in one go
+            h = np.sin((la[:, None] - la[None]) / 2) ** 2 + np.cos(la[:, None]) * np.cos(la[None]) * np.sin((lo[:, None] - lo[None]) / 2) ** 2
+            near = 2 * 6371.0088 * np.arcsin(np.sqrt(np.clip(h, 0, 1))) < 25
             j = int(near.sum(1).argmax())
             size, share = int(near[j].sum()), float(near[j].mean())
             centre = np.median(pts[near[j]], 0)
