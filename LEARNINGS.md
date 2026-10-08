@@ -68,9 +68,9 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
   readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
   pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
-- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26 v3, 5,029 Commons photos uploaded after 2026-07-01, taken in 2026). im2gps3k has 198 photographers
+- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 5,029 Commons photos uploaded after 2026-07-01, taken in 2026). im2gps3k has 198 photographers
   (design effect ~6: its error bars are ~2.5x too small) and our tune / eval split shares 97.5% of them. The same top-1 MP16 retrieval gets 37.6 / 38.1%
-  within 25 km on im2gps3k / yfcc4k but 10.4% on commons26 v3 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 2.8.
+  within 25 km on im2gps3k / yfcc4k but 10.4% on commons26 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 2.8.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -783,38 +783,33 @@ baseline for new evidence (10, 13).
       half, 47% a same-photographer tune photo within 1 km (yfcc4k 24% / 4%). Anything fitted on the tune halves can learn album locations.
     - Also: 19.5% of yfcc4k has Flickr accuracy <= 12 (city level or coarser; reranker < 1 km 27 vs 34%); US 26-33%, southern hemisphere 6-8%;
       Places365 says 18% of im2gps3k is indoor; Flickr placeholders not flagged by yfcc4k's `Placeholder` column.
-    - commons26: every geotagged JPEG uploaded to Commons 2026-07-01 to 10-06 (search `haswbstatement:P1259`, ~10k / day; 4 days hit the 20k read cap),
-      kept if EXIF GPS + capture date >= 2026-07-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of the page's camera
-      location, not bots / Mapillary: 227,086 photos from 3,935 uploaders. Pick: <= 3 per uploader (2 gives 4,780), >= 2 km apart, continents in turn,
-      no country > 15%: 5,668 -> 5,561 (v1, 52% Europe, 3% Africa; kept in `release_v1_5561/`). v2 (2026-10-08): Commons can't supply a balanced set
-      (Africa has ~120 uploaders in the window; even 10 per uploader and a 0.5 km gap give only 321 photos), so continents are capped at 1,000 and
-      countries at 500: 3,303 picked, 51 non-photos and 1 with printed coordinates dropped -> 3,251 from 1,909 uploaders (EU 981, AS 987, NA 678,
-      SA 274, AF 188, OC 143; dev 566, test 2,685). The headline weights the six continents equally (SE clustered by uploader).
-    - Gallery near-duplicates are not a problem by construction: 23 of 5,668 have an MP16 photo at cosine >= 0.95 (OSV-5M 1); >= 0.90 (527) are mostly
+    - commons26 construction: every geotagged JPEG uploaded to Commons 2026-07-01 to 10-06 (search `haswbstatement:P1259`, ~10k / day; 4 days hit the
+      20k read cap), kept if EXIF GPS + capture date >= 2026-01-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of
+      the page's camera location, not bots / Mapillary: 293,881 photos from 4,794 uploaders (61% Europe, 2.1% Africa). Pick: continents in turn to
+      5,100, <= 5 per uploader, >= 1 km from any other photo, no country > 10%; 3 photos gone from Commons before download, 65 non-photos and 3 with
+      printed coordinates dropped -> 5,029 from 2,347 uploaders (2.1 each; EU 1,565, AS 1,571, NA 832, SA 481, AF 333, OC 247; split by uploader,
+      dev 977, test 4,052). 1,257 were taken January-June 2026 (slice `taken` >= 2026-07-01 for the strict post-cutoff check). The headline weights
+      the six continents equally (SE clustered by uploader); the plain mean is reported too.
+    - Commons can't supply equal continents: Africa has 215 uploaders in the window, and 833 photos per continent would need ~3x that (Oceania ~4x).
+      Supply levers measured on sample days: capture date >= 2026-01 instead of >= 2026-07 (+45% Africa uploaders; adopted), <= 5 per uploader at
+      >= 1 km instead of 3 at >= 2 km (adopted), accepting page coordinates without EXIF GPS (+3 Africa uploaders over 3 days; most such photos are
+      older or undated, rejected). Uploaders, not photos, are the limit: 10 per uploader or no cap barely helps, since one person's photos come from
+      one trip. Reaching equal continents would take a second source (e.g. Flickr, needs an API key) or an earlier upload window (loses the
+      post-cutoff guarantee).
+    - Gallery near-duplicates are not a problem by construction: 15 of 5,097 have an MP16 photo at cosine >= 0.95 (OSV-5M 0); >= 0.90 (431) are mostly
       look-alikes hundreds of km away (clouds, altars, roads), so they are flagged, not dropped.
-    - Tiers (Qwen3.6-27B Q4, no location shown, JSON-schema output; without the schema it writes an analysis and runs out of tokens): landmark 1,794,
-      city 608, region 1,583, none 1,576. Against one blind reader (the agent) on 198 photos: exact 113 / 198, locatable vs none 175 / 198 with the v2
-      prompt (v1: 99, 159); the 27B over-calls landmark (59 vs 29). Tiers are slices only: v1's headline excluded `none`, which inflates scores
-      (a model that sees no cue doesn't show there is none); v2 scores all photos.
+    - Tiers (Qwen3.6-27B Q4, no location shown, JSON-schema output; without the schema it writes an analysis and runs out of tokens): landmark 1,581,
+      city 558, region 1,435, none 1,455. Against one blind reader (the agent) on 198 photos: exact 113 / 198, locatable vs none 175 / 198 (a first,
+      looser prompt: 99, 159; its non-photo flags still count, `tiers_prompt1.jsonl`); the 27B over-calls landmark (59 vs 29). Tiers are slices only:
+      excluding `none` from the headline, and not weighting continents, flattered Europe-heavy, locatable-looking photos by ~21 pts at 750 km.
     - Top-1 MP16 SigLIP2 retrieval, no photographer filter (the only baseline run so far), < 1 / 25 / 200 / 750 / 2500 km:
       | set | n | result |
       |---|---|---|
       | im2gps3k | 2,997 | 14.9 / 37.6 / 50.7 / 67.8 / 83.5 |
       | yfcc4k | 4,536 | 29.5 / 38.1 / 47.0 / 61.9 / 76.5 |
-      | commons26 v1 test, tier != none (old headline) | 3,307 | 4.2 / 13.0 / 33.4 / 68.3 / 88.7 |
-      | commons26 v2 test, continent-balanced (headline) | 2,685 | 3.2 / 10.6 / 21.9 / 45.4 / 68.0 (± 0.5 / 0.9 / 1.1 / 1.3 / 1.3) |
-      | commons26 v2 test, plain mean | 2,685 | 3.3 / 10.8 / 25.8 / 52.8 / 75.8 (AF 1.9 / 3.8 / 8.3 / 16.7 / 41.0; EU 3.2 / 8.6 / 31.2 / 69.7 / 90.8) |
-      Weighting and keeping `none` take ~21 pts off at 750 km: the v1 headline flattered Europe-heavy, locatable-looking photos.
+      | commons26 test, continent-balanced (headline) | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
+      | commons26 test, plain mean | 4,052 | 3.0 / 11.3 / 26.7 / 52.7 / 75.3 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268; EU 3.4 / 9.2 / 30.5 / 69.7 / 91.4) |
       Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
-    - v3 (2026-10-08, current release; v2 kept in `release_v2_3251/`): the user wanted >= 5,000 photos. Commons can't supply equal continents
-      (Africa: 215 uploaders, 2.1% of candidates even with 2026-01 capture dates; equal 833 per continent would need ~3x that). Levers measured
-      on sample days: capture date >= 2026-01 +45% Africa uploaders (taken), accepting page coordinates without EXIF GPS +3 uploaders on 3 days
-      (most such photos are older or undated; rejected), looser per-uploader caps (taken). Re-scan with taken >= 2026-01-01 -> 293,881
-      candidates; continents in turn to 5,100, <= 5 per uploader, >= 1 km apart, country <= 10%; 3 photos gone from Commons, 68 dropped by
-      the 27B flags -> 5,029 (EU 1,565, AS 1,571, NA 832, SA 481, AF 333, OC 247; dev 977, test 4,052; 2,347 uploaders, 2.1 photos each).
-      1,257 were taken January-June 2026 (slice `taken` for the strict post-cutoff check).
-      | commons26 v3 test, continent-balanced (headline) | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
-      | commons26 v3 test, plain mean | 4,052 | 3.0 / 11.3 / 26.7 / 52.7 / 75.3 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268) |
     - Not yet run on commons26: Pinpoint's attention reranker (the baseline) and our methods.
 
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1

@@ -17,7 +17,7 @@ search-scan: the same filters over every JPEG with a camera location (P1259) cre
           (resumable: finished days in search_days.txt). Shares candidates.jsonl with scan (deduplicated by page id).
 select:   country of each photo (nearest GeoNames place), then a greedy pick taking continents in turn: at most --per-uploader photos per
           uploader, --min-gap-km between any two, at most --per-continent per continent, no country above --max-country-share of that cap.
-          Release (v3): --taken-after 2026-01-01 --target 5100 --per-uploader 5 --min-gap-km 1 --max-country-share 0.1.
+          Release: --taken-after 2026-01-01 --target 5100 --per-uploader 5 --min-gap-km 1 --max-country-share 0.1.
 download: fetches the 1024 px thumbnail of every selected photo (or of --input) into images/<page id>.jpg, skipping files already present.
 dedup:    SigLIP2-giant embeddings of the downloaded photos on the CPU and each one's most similar MP16 and OSV-5M gallery photo (cosine, km);
           flags only, in near_duplicates.jsonl.
@@ -45,7 +45,7 @@ from typing import Any, Iterable, Sequence
 
 OUT = Path("/data/pinpoint/commons26")
 GEONAMES = Path("/data/pinpoint/geonames/allCountries.txt")
-TAKEN_AFTER = datetime(2026, 7, 1, tzinfo=timezone.utc)  # v2 release: capture dates on or after this
+TAKEN_AFTER = datetime(2026, 1, 1, tzinfo=timezone.utc)  # the release: capture dates on or after this
 API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "commons-recent-gps-photos/0.6 (research script; contact: kinghorton42@gmail.com)"
 MAX_GPS_GAP_M = 50.0
@@ -377,7 +377,8 @@ TIER_PROMPT = """Rate how precisely this photo alone lets an expert locate it.
 - "region": only country- or region-level cues (language, architecture style, vegetation, road markings, terrain).
 - "none": little or no geographic information (indoor scene, close-up, food, animal, plant, people, sky, generic nature).
 Answer only JSON: {"tier": "landmark|city|region|none", "place_text": true if visible text names the place, "gps_overlay": true if coordinates are printed on the image, "not_photo": true if it is a map, screenshot, scan, document or artwork}"""
-# v2 (stricter landmark, broader none). Against one blind reader on 198 photos: exact tier 113/198, none vs locatable 175/198 (v1: 99, 159).
+# Stricter landmark, broader none than the first prompt (its labels: tiers_prompt1.jsonl). Against one blind reader on 198 photos: exact tier
+# 113/198, none vs locatable 175/198 (first prompt: 99, 159).
 
 
 TIER_SCHEMA = {"type": "json_schema", "json_schema": {"name": "tier", "schema": {
@@ -495,8 +496,8 @@ def release() -> None:
 
     records = [json.loads(line) for line in (OUT / "selected.jsonl").open()]
     tier = {t["page_id"]: t for t in map(json.loads, (OUT / "tiers.jsonl").open()) if t.get("tier")}
-    if (OUT / "tiers_v1.jsonl").exists():  # a photo flagged as not a photo / with printed coordinates by either prompt is dropped
-        for t in map(json.loads, (OUT / "tiers_v1.jsonl").open()):
+    if (OUT / "tiers_prompt1.jsonl").exists():  # a photo flagged as not a photo / with printed coordinates by either prompt is dropped
+        for t in map(json.loads, (OUT / "tiers_prompt1.jsonl").open()):
             if t["page_id"] in tier:
                 for flag in ("not_photo", "gps_overlay"):
                     tier[t["page_id"]][flag] = bool(tier[t["page_id"]].get(flag)) or bool(t.get(flag))
