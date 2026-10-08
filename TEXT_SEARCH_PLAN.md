@@ -101,6 +101,20 @@ pick's region fixes clearly more than the pick's own coordinate (60), this desig
   sign, a plaque) or travels (a brand, clothing, a poster), and whether a landmark is recognised from its own visible
   name or only from appearance. An agent that sees the photo could judge this. Counts and match statistics can't.
 
+**With YFCC100M titles + tags added (48.5M geotagged photos, `yfcc.db`; same dev3k phrases):**
+
+| | GeoNames + Overture | + YFCC |
+|---|---|---|
+| Blind pick: search-fixable / traps | 60 / 328 | 65 / 337 |
+| Right place anywhere in the results, on Pinpoint's mistakes | 172 (5.7 pts) | **231 (7.7 pts)** |
+| Region differs from Pinpoint's: query right / Pinpoint right | 119 / 2,724 | 148 / 2,721 |
+| Best rule (2+ queries agree, share >= 0.9) | 33 / 106 | 47 / 195 |
+| Perfect region selector + restricted Pinpoint | 68 fixes (+2.3) | **82 fixes (+2.7)** |
+
+- **YFCC adds coverage:** events and informal names. "San Silvestre Toledana", absent before, now points to Toledo.
+- **It doesn't add precision:** no rule beats Pinpoint where they disagree; the best is about 1 to 3.
+- **The 147 wins:** 53 luck, 39 read in the photo, 55 recalled by the model.
+
 ## Plan
 
 ### Step 1. Finish the tool (about half a day, CPU)
