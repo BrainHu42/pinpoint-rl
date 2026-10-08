@@ -153,11 +153,15 @@ def match(tag: str) -> None:
         auto.add_word(p, (i, len(p)))
     auto.make_automaton()
     z = np.load(YFCC / "geo.npz")
-    blob, offsets = z["blob"].tobytes(), z["offsets"]
+    fields = [(z["blob"].tobytes(), z["offsets"])]  # title + tags
+    if "desc_blob" in z.files:  # descriptions and machine tags (normalised here)
+        fields += [(z["desc_blob"].tobytes(), z["desc_offsets"]), (z["mtags_blob"].tobytes(), z["mtags_offsets"])]
+    offsets = fields[0][1]
     counts = np.zeros(len(phrase_list), np.int64)
     rows: list[list[int]] = [[] for _ in phrase_list]
     for d in range(len(offsets) - 1):
-        doc = " " + blob[offsets[d]:offsets[d + 1] - 1].decode("utf-8", "replace") + " "
+        parts = [b[o[d]:o[d + 1] - 1].decode("utf-8", "replace") for b, o in fields]
+        doc = " " + " ".join([parts[0]] + [norm(x) for x in parts[1:]]) + " "
         seen = set()
         for end, (i, length) in auto.iter(doc):
             if i in seen or doc[end - length] != " " or doc[end + 1] != " ":
@@ -190,7 +194,7 @@ def _mp16_authors(image_ids: set[str]) -> dict[str, str]:
     return out
 
 
-def report(tag: str) -> None:
+def report(tag: str, min_accuracy: int = 0) -> None:
     from .pinpoint_reference import load_pools
     from .strategy_search import _bootstrap, _haversine_km
 
@@ -200,6 +204,7 @@ def report(tag: str) -> None:
     index = {p: i for i, p in enumerate(m["phrases"])}
     z = np.load(YFCC / "geo.npz")
     photo_id, uid, lat, lon = z["photo_id"], z["uid"], z["lat"], z["lon"]
+    accuracy = z["accuracy"] if "accuracy" in z.files else np.full(len(photo_id), 16, np.int8)
     vocab = {u: i for i, u in enumerate(json.loads((YFCC / "uid_vocab.json").read_text(encoding="utf-8")))}
     authors = _mp16_authors({e["image_id"] for e in photos})
     pools = load_pools("mp16")
@@ -213,7 +218,7 @@ def report(tag: str) -> None:
         for phrase in table.get(e["image_id"], {}):
             i = index[phrase]
             r = m["rows"][m["starts"][i]:m["starts"][i + 1]]
-            r = r[(photo_id[r] != own_id) & (uid[r] != own_uid)]  # never the photo itself or its photographer
+            r = r[(photo_id[r] != own_id) & (uid[r] != own_uid) & (accuracy[r] >= min_accuracy)]  # never the photo itself or its photographer
             if len(r) < 2:
                 continue
             sample = r if len(r) <= 400 else r[np.random.default_rng(0).choice(len(r), 400, replace=False)]
@@ -226,7 +231,8 @@ def report(tag: str) -> None:
                 best = (p, centre[0], centre[1], size, share, len(r))
         if best:
             proposals.append(best)
-    print(f"{tag}: n={len(photos)}, Pinpoint top-1 < 25 km {(base < 25).mean():.1%}; photos with a name proposal {len(proposals)}")
+    print(f"{tag} (matches with GPS accuracy >= {min_accuracy}): n={len(photos)}, Pinpoint top-1 < 25 km {(base < 25).mean():.1%}; "
+          f"photos with a name proposal {len(proposals)}")
     right = [(_haversine_km(*photos[p]["truth"], np.asarray([[la, lo]]))[0] < 25) for p, la, lo, *_ in proposals]
     mist = [base[p] >= 25 for p, *_ in proposals]
     print(f"  proposals right (< 25 km): {np.mean(right):.1%}; on Pinpoint's mistakes {np.mean([r for r, w in zip(right, mist) if w]):.1%} "
@@ -256,8 +262,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
     parser.add_argument("--parts", type=int, default=16)
+    parser.add_argument("--min-accuracy", type=int, default=0, help="report: ignore matches with Flickr GPS accuracy below this (1 world - 16 street)")
     args = parser.parse_args(argv)
-    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag)}[args.node]()
+    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
     return 0
 
 
