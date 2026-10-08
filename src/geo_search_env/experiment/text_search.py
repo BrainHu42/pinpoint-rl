@@ -61,7 +61,7 @@ OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 
 CLUSTER_KM = 25.0
-MAX_MATCHES = 50_000  # matches fetched per source and query; more means the phrase is too common to place anything
+MAX_MATCHES = 10_000  # matches fetched per source and query; more means the phrase is too common to place anything
 SAMPLE = 2_000  # matches clustered per source (a fixed random sample beyond that)
 TOP = 8  # clusters returned
 MIN_ACCURACY = 11  # Flickr GPS accuracy (1 world .. 16 street); below city level a photo can't place a 25 km cluster
@@ -188,7 +188,7 @@ def build_places(memory: str = "8GB") -> None:
     duck.execute(f"SET memory_limit = '{memory}'")
     cursor = duck.execute(f"""
         SELECT names."primary", (bbox.ymin + bbox.ymax) / 2, (bbox.xmin + bbox.xmax) / 2, addresses[1].country, basic_category,
-               brand IS NOT NULL, websites, phones
+               brand.names."primary" IS NOT NULL, websites, phones
         FROM read_parquet('{OVERTURE}/*.parquet') WHERE names."primary" IS NOT NULL""")
     count = 0
     while batch := cursor.fetchmany(200_000):
@@ -341,25 +341,29 @@ class TextSearch:
         rng = np.random.default_rng(int(hashlib.md5(key.encode()).hexdigest()[:8], 16))
         return [ids[i] for i in sorted(rng.choice(len(ids), SAMPLE, replace=False))]
 
-    def _fts(self, con: sqlite3.Connection, table: str, match: str, box: tuple | None, meta: str) -> list[int]:
-        if box is None:
-            sql, args = f"SELECT rowid FROM {table} WHERE {table} MATCH ? LIMIT {MAX_MATCHES}", [match]
-        else:
-            sql = (f"SELECT m.rowid FROM {table} JOIN {meta} m ON m.rowid = {table}.rowid WHERE {table} MATCH ? "
-                   f"AND m.lat BETWEEN ? AND ? AND m.lon BETWEEN ? AND ? LIMIT {MAX_MATCHES}")
-            args = [match, *box]
+    def _fts(self, con: sqlite3.Connection, table: str, match: str, box: tuple | None, meta: str, cc: str | None = None) -> list[int]:
+        where, args = [], [match]
+        if box is not None:
+            where.append("m.lat BETWEEN ? AND ? AND m.lon BETWEEN ? AND ?")
+            args += list(box)
+        if cc is not None:
+            where.append("m.cc = ?")
+            args.append(cc)
+        if not where:
+            return [r[0] for r in con.execute(f"SELECT rowid FROM {table} WHERE {table} MATCH ? LIMIT {MAX_MATCHES}", args)]
+        sql = f"SELECT m.rowid FROM {table} JOIN {meta} m ON m.rowid = {table}.rowid WHERE {table} MATCH ? AND {' AND '.join(where)} LIMIT {MAX_MATCHES}"
         return [r[0] for r in con.execute(sql, args)]
 
-    def _names(self, words: list[str], box: tuple | None, exclude: tuple[int, str] | None) -> tuple[list, list, dict[str, int], bool]:
+    def _names(self, words: list[str], box: tuple | None, exclude: tuple[int, str] | None, cc: str | None = None) -> tuple[list, list, dict[str, int], bool]:
         places, photos, counts = [], [], {}
         for loose in (False, True):
             if loose and len(words) < 2:
                 break
             match = " ".join(words) if loose else '"' + " ".join(words) + '"'
-            ids = self._fts(self.places, "names", match, box, "places")
+            ids = self._fts(self.places, "names", match, box, "places", cc)
             counts["places"] = len(ids)
             places = self._place_rows(self._sample(ids, match))
-            if self.yfcc is not None:
+            if self.yfcc is not None and cc is None:  # Flickr rows carry no country
                 ids = self._fts(self.yfcc, "titles", match, box, "meta")
                 rows = []
                 for s in range(0, len(ids), 900):
@@ -407,8 +411,8 @@ class TextSearch:
             cc = self.tld.get(domain.rsplit(".", 1)[-1])
             if cc:
                 hint = f"domain .{domain.rsplit('.', 1)[-1]} = {self.country_names.get(cc, cc)} ({cc})"
-            if not places:  # also search the name part as words ("porsche.lu" -> "porsche")
-                name_places, photos, counts2, loose = self._names(norm(domain.rsplit(".", 1)[0]).split(), None, exclude)
+            if not places:  # also search the name part as words ("porsche.lu" -> "porsche"), inside the domain's country if it has one
+                name_places, photos, counts2, loose = self._names(norm(domain.rsplit(".", 1)[0]).split(), None, exclude, cc)
                 places, counts = name_places, {"places (domain not listed; name words)": counts2.get("places", 0)} | {
                     k: v for k, v in counts2.items() if k != "places"}
         else:
@@ -454,9 +458,8 @@ class TextSearch:
             alive[members] = False
             pm = members[members < n_places]
             ph = members[members >= n_places] - n_places
-            exact = sorted(pm, key=lambda i: (norm(places[i][0]) != qn, places[i][6], places[i][5]))  # exact names, non-chains, Overture first
-            examples = [f"{places[i][0]} ({places[i][4] or '?'}, {'Overture' if places[i][5] else 'GeoNames'}{', chain' if places[i][6] else ''})"
-                        for i in exact[:3]]
+            exact = sorted(pm, key=lambda i: (norm(places[i][0]) != qn, -places[i][5]))  # exact names first, then Overture
+            examples = [f"{places[i][0]} ({places[i][4] or '?'}, {'Overture' if places[i][5] else 'GeoNames'})" for i in exact[:3]]
             c = idx[j]
             out.append(Cluster(float(lat[c]), float(lon[c]), self.label(float(lat[c]), float(lon[c])), float(w[members].sum()),
                                float(w[members].sum() / total), len(pm), len(ph), len({photos[i][1] for i in ph}), examples))
