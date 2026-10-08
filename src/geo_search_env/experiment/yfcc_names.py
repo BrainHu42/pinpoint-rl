@@ -144,7 +144,10 @@ def phrases(tag: str) -> None:
     print(f"{tag}: phrases for {len(out)} of {len(photos)} photos, {len({p for v in out.values() for p in v})} distinct -> {OUT / f'yfcc_phrases_{tag}.json'}")
 
 
-def match(tag: str) -> None:
+def match(tag: str, chunk_bytes: int = 256_000_000) -> None:
+    """All phrases, whole-word, in each text field: the automaton runs over ~256 MB chunks of a field's blob at a time (C speed) and each hit is
+    mapped back to its photo through the offsets; a photo counts once per phrase however many fields match."""
+
     import ahocorasick
 
     table = json.loads((OUT / f"yfcc_phrases_{tag}.json").read_text(encoding="utf-8"))
@@ -154,26 +157,39 @@ def match(tag: str) -> None:
         auto.add_word(p, (i, len(p)))
     auto.make_automaton()
     z = np.load(YFCC / f"{GEO}.npz")
-    fields = [(z["blob"].tobytes(), z["offsets"])]  # title + tags
-    if "desc_blob" in z.files:  # descriptions and machine tags (normalised here)
-        fields += [(z["desc_blob"].tobytes(), z["desc_offsets"]), (z["mtags_blob"].tobytes(), z["mtags_offsets"])]
-    offsets = fields[0][1]
-    counts = np.zeros(len(phrase_list), np.int64)
-    rows: list[list[int]] = [[] for _ in phrase_list]
-    for d in range(len(offsets) - 1):
-        parts = [b[o[d]:o[d + 1] - 1].decode("utf-8", "replace") for b, o in fields]
-        doc = " " + " ".join([parts[0]] + [norm(x) for x in parts[1:]]) + " "
-        seen = set()
-        for end, (i, length) in auto.iter(doc):
-            if i in seen or doc[end - length] != " " or doc[end + 1] != " ":
-                continue  # whole words only, once per photo
-            seen.add(i)
-            counts[i] += 1
-            if len(rows[i]) < MAX_ROWS:
-                rows[i].append(d)
-        if d % 5_000_000 == 0:
-            print(f"  {d} / {len(offsets) - 1} photos", flush=True)
-    flat = np.asarray([r for rs in rows for r in rs], np.int64)
+    fields = [("text", "blob", "offsets")]
+    if "desc_blob" in z.files:
+        fields += [("desc", "desc_blob", "desc_offsets"), ("mtags", "mtags_blob", "mtags_offsets")]
+    counts = np.zeros(len(phrase_list), np.int64)  # approximate beyond MAX_ROWS (a photo matching in two fields may count twice there)
+    rows: list[set[int]] = [set() for _ in phrase_list]
+    for name, blob_key, off_key in fields:
+        blob, offsets = z[blob_key], z[off_key]
+        start, n_before = 0, int(counts.sum())
+        while start < len(blob):
+            end = min(len(blob), start + chunk_bytes)
+            if end < len(blob):  # cut at a photo boundary
+                end = int(offsets[np.searchsorted(offsets, end, side="right") - 1])
+                if end <= start:
+                    end = int(offsets[np.searchsorted(offsets, start, side="right")])
+            raw = blob[start:end].tobytes().decode("utf-8", "replace")
+            text = raw.replace("\n", " ") if name != "mtags" else re.sub(r"[\W_]+", " ", raw.replace("\n", "\x00")).replace("\x00", " ")
+            # character offsets of photo starts within this chunk (bytes != characters for non-ASCII text, so recompute from the decoded string)
+            line_starts = np.concatenate([[0], np.flatnonzero(np.frombuffer(raw.encode("utf-32-le"), np.uint32) == 10) + 1])
+            first_row = int(np.searchsorted(offsets, start, side="right") - 1)
+            padded = " " + text + " "
+            for stop, (i, length) in auto.iter(padded):
+                if padded[stop - length] != " " or padded[stop + 1] != " ":
+                    continue  # whole words only
+                r = first_row + int(np.searchsorted(line_starts, stop - length, side="right") - 1)
+                if len(rows[i]) < MAX_ROWS:
+                    if r not in rows[i]:
+                        rows[i].add(r)
+                        counts[i] += 1
+                else:
+                    counts[i] += 1
+            start = end
+        print(f"  {name}: {int(counts.sum()) - n_before} new (phrase, photo) hits", flush=True)
+    flat = np.asarray([r for rs in rows for r in sorted(rs)], np.int64)
     starts = np.cumsum([0] + [len(rs) for rs in rows])
     np.savez(OUT / f"yfcc_matches_{tag}_{GEO}.npz", phrases=np.asarray(phrase_list), counts=counts, rows=flat, starts=starts)
     print(f"{tag}: {len(phrase_list)} phrases, {np.count_nonzero(counts)} found -> {OUT / f'yfcc_matches_{tag}_{GEO}.npz'}", flush=True)
