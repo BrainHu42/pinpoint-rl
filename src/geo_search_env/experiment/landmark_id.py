@@ -41,7 +41,7 @@ def _box(box: list[float], w: int, h: int, coords: str) -> tuple[int, int, int, 
     return int(max(0, x1 - px)), int(max(0, y1 - py)), int(min(w, x2 + px)), int(min(h, y2 + py))
 
 
-def search(tag: str, clues: str, coords: str) -> None:
+def search(tag: str, clues: str, coords: str, top_k: int = TOP_K, verify_hits: bool = True) -> None:
     import torch
     import torch.nn.functional as F
     from lightglue import LightGlue, SuperPoint
@@ -75,7 +75,11 @@ def search(tag: str, clues: str, coords: str) -> None:
     queries = F.normalize(torch.as_tensor(np.concatenate(feats), dtype=torch.float32), dim=-1).half().cuda()
     world = load_world()
     q_author = np.asarray([int(world.mp16["author"][photos[p]["row"]]) for p in keep], dtype=np.int64)
-    rows, sims = _stream_topk(world.mp16["embeddings"], queries, q_author, world.mp16["author"], TOP_K, normalize=True)
+    rows, sims = _stream_topk(world.mp16["embeddings"], queries, q_author, world.mp16["author"], top_k, normalize=True)
+    if not verify_hits:
+        np.savez(OUT / f"lmid_{tag}_k{top_k}.npz", photo=np.asarray(keep), rows=rows, sims=sims)
+        print(f"{tag}: crop search (top {top_k}, no verification) for {len(keep)} photos -> {OUT / f'lmid_{tag}_k{top_k}.npz'}", flush=True)
+        return
     ids = (GALLERY / "image_ids.txt").read_text(encoding="utf-8").split("\n")
     extractor = SuperPoint(max_num_keypoints=1024).eval().cuda()
     matcher = LightGlue(features="superpoint").eval().cuda()
@@ -157,6 +161,106 @@ def verify(tag: str, clues: str, coords: str) -> None:
             print(f"  verified {i} / {len(z['photo'])}", flush=True)
     np.savez(OUT / f"lmid_inliers_{tag}.npz", inliers=inliers)
     print(f"{tag}: RANSAC inliers for {len(z['photo'])} photos x {z['rows'].shape[1]} hits -> {OUT / f'lmid_inliers_{tag}.npz'}", flush=True)
+
+
+def rescore(tag: str, clues: str, coords: str, top_k: int = 100, size: int = 336) -> None:
+    """Re-score each crop's top-k SigLIP2 hits with DINOv2-large (instance-retrieval features): CLS token and GeM-pooled patch tokens, both
+    L2-normalised, crop vs gallery photo at size x size -> artifacts/agent/lmid_dino_{tag}.npz (cls, gem: [photos, top_k] cosine)."""
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    import torch
+    import torch.nn.functional as F
+    from PIL import Image
+    from transformers import AutoModel
+
+    photos = load_photos(tag)
+    objects = json.loads((OUT / f"objects_{tag}_{clues}.json").read_text(encoding="utf-8"))
+    z = np.load(OUT / f"lmid_{tag}_k{top_k}.npz")
+    ids = (GALLERY / "image_ids.txt").read_text(encoding="utf-8").split("\n")
+    images = MP16Images()
+    model = AutoModel.from_pretrained("facebook/dinov2-large", dtype=torch.float16).cuda().eval()
+    mean = torch.tensor([0.485, 0.456, 0.406], device="cuda").view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225], device="cuda").view(1, 3, 1, 1)
+
+    def tensor(im) -> np.ndarray:
+        return np.asarray(im.convert("RGB").resize((size, size), Image.BICUBIC), dtype=np.uint8)
+
+    def embed(batch: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+        x = torch.as_tensor(np.stack(batch), device="cuda").permute(0, 3, 1, 2).float() / 255
+        x = ((x - mean) / std).half()
+        with torch.inference_mode():
+            h = model(pixel_values=x).last_hidden_state.float()
+        cls = F.normalize(h[:, 0], dim=-1)
+        gem = F.normalize(h[:, 1:].clamp(min=1e-6).pow(3).mean(1).pow(1 / 3), dim=-1)
+        return cls.cpu().numpy(), gem.cpu().numpy()
+
+    def gallery(row: int):
+        data = images.read(ids[int(row)])
+        return None if data is None else tensor(Image.open(io.BytesIO(data)))
+
+    cls_out = np.zeros(z["rows"].shape, np.float32)
+    gem_out = np.zeros(z["rows"].shape, np.float32)
+    with ThreadPoolExecutor(16) as pool:
+        for i, p in enumerate(z["photo"]):
+            e = photos[p]
+            im = Image.open(io.BytesIO(images.read(e["image_id"]))).convert("RGB")
+            qc, qg = embed([tensor(im.crop(_box(objects[e["image_id"]]["bbox"], *im.size, coords)))])
+            hits = list(pool.map(gallery, z["rows"][i]))
+            ok = [j for j, h in enumerate(hits) if h is not None]
+            gc, gg = embed([hits[j] for j in ok])
+            cls_out[i, ok] = gc @ qc[0]
+            gem_out[i, ok] = gg @ qg[0]
+            if i % 100 == 0:
+                print(f"  re-scored {i} / {len(z['photo'])}", flush=True)
+    np.savez(OUT / f"lmid_dino_{tag}.npz", cls=cls_out, gem=gem_out)
+    print(f"{tag}: DINOv2 re-scores for {len(z['photo'])} photos x {top_k} hits -> {OUT / f'lmid_dino_{tag}.npz'}", flush=True)
+
+
+def report_rescore(tag: str, top_k: int = 100) -> None:
+    """On Pinpoint's mistakes: is a right hit (< 25 km) among the top-k at all, and does each score put a right hit first? Then the switch rule per
+    score: the top hit replaces Pinpoint's top-1 (snapped to a pool candidate within 25 km) if its score >= threshold and >= V of the score's
+    top-5 hits lie within 25 km of it."""
+
+    from .strategy_search import _bootstrap, _haversine_km
+
+    photos = load_photos(tag)
+    z = np.load(OUT / f"lmid_{tag}_k{top_k}.npz")
+    d = np.load(OUT / f"lmid_dino_{tag}.npz")
+    latlon = np.fromfile(GALLERY / "latlon_deg.f32.bin", dtype=np.float32).reshape(-1, 2).astype(np.float64)
+    base = np.asarray([_haversine_km(*e["truth"], np.asarray(e["pool"][:1]))[0] for e in photos])
+    scores = {"siglip": z["sims"], "dino cls": d["cls"], "dino gem": d["gem"]}
+    right = np.stack([_haversine_km(*photos[p]["truth"], latlon[z["rows"][i]]) < 25 for i, p in enumerate(z["photo"])])
+    mist = base[z["photo"]] >= 25
+    print(f"{tag}: Pinpoint mistakes searched {mist.sum()}; a right hit among the top {top_k}: {right[mist].any(1).mean():.1%}")
+    for name, sc in scores.items():
+        order = np.argsort(-sc, axis=1)
+        top1_right = right[np.arange(len(order)), order[:, 0]]
+        print(f"  {name:9s}: top-1 hit right on mistakes {top1_right[mist].mean():.1%}; on photos Pinpoint gets right {top1_right[~mist].mean():.1%}")
+    for name, sc in scores.items():
+        order = np.argsort(-sc, axis=1)
+        best = sc[np.arange(len(order)), order[:, 0]]
+        for q in (0.5, 0.8, 0.9, 0.95, 0.99):
+            T = float(np.quantile(best, q))
+            for V in (1, 2, 3):
+                chosen, switched = base.copy(), 0
+                for i, p in enumerate(z["photo"]):
+                    if best[i] < T:
+                        continue
+                    target = latlon[z["rows"][i, order[i, 0]]]
+                    if (_haversine_km(*target, latlon[z["rows"][i, order[i, :5]]]) < 25).sum() < V:
+                        continue
+                    e = photos[p]
+                    if _haversine_km(*target, np.asarray(e["pool"][:1]))[0] < 25:
+                        continue
+                    d_pool = _haversine_km(*target, np.asarray(e["pool"]))
+                    answer = np.asarray(e["pool"][int(d_pool.argmin())]) if d_pool.min() < 25 else target
+                    chosen[p] = _haversine_km(*e["truth"], answer[None])[0]
+                    switched += 1
+                c = _bootstrap((chosen < 25) * 1.0 - (base < 25))
+                fixes, breaks = ((chosen < 25) & (base >= 25)).sum(), ((chosen >= 25) & (base < 25)).sum()
+                print(f"  {name:9s} score >= q{q:.2f} ({T:.3f}), top-5 agreeing >= {V}: switched {switched:4d}; < 25 km {100 * c[0]:+.1f} "
+                      f"[{100 * c[1]:+.1f}, {100 * c[2]:+.1f}]; fixes {fixes}, breaks {breaks}")
 
 
 def report(tag: str) -> None:
@@ -245,15 +349,21 @@ def report_inliers(tag: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("search", "verify", "report", "report-inliers"))
+    parser.add_argument("node", choices=("search", "verify", "rescore", "report", "report-inliers", "report-rescore"))
+    parser.add_argument("--top-k", type=int, default=TOP_K)
+    parser.add_argument("--no-verify", action="store_true", help="search: keep the top-k hits without LightGlue")
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--clues", default="9b")
     parser.add_argument("--coords", choices=("norm1000", "pixels"), default="norm1000")
     args = parser.parse_args(argv)
     if args.node == "search":
-        search(args.tag, args.clues, args.coords)
+        search(args.tag, args.clues, args.coords, args.top_k, not args.no_verify)
     elif args.node == "verify":
         verify(args.tag, args.clues, args.coords)
+    elif args.node == "rescore":
+        rescore(args.tag, args.clues, args.coords, args.top_k)
+    elif args.node == "report-rescore":
+        report_rescore(args.tag, args.top_k)
     elif args.node == "report-inliers":
         report_inliers(args.tag)
     else:
