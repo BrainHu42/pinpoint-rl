@@ -68,6 +68,9 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
   readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
   pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
+- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 5,561 Commons photos taken after 2026-07-01). im2gps3k has 198 photographers
+  (design effect ~6: its error bars are ~2.5x too small) and our tune / eval split shares 97.5% of them. The same top-1 MP16 retrieval gets 37.6 / 38.1%
+  within 25 km on im2gps3k / yfcc4k but 10.0% on commons26 test (13.0% on locatable photos); 1 km 14.9 / 29.5 vs 3.2.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -772,7 +775,34 @@ baseline for new evidence (10, 13).
       had a right answer among the 12 candidates, so verification against candidates (terrain, skyline, a found landmark) could fix about half; the rest need
       new places. Unaided, by eye: 8. Roughly 10 pts at 25 km over all photos (~12 im2gps3k, ~8 yfcc4k) is the expert ceiling on these error types.
 
-## Data and leakage rules we established
+53. **The old benchmarks are flawed; commons26 is a replacement built to fix them (2026-10-07/08; `commons_bench.py`, data `/data/pinpoint/commons26/`).**
+    - im2gps3k (n = 2,997): 198 photographers, 85% of photos from photographers with >= 10; 51% share an exact coordinate with another photo (43 at one
+      point); 62% have a same-photographer photo within 1 km. Errors cluster by photographer: attention-reranker SE at 25 km 2.25 pts clustered vs
+      0.91 iid (design effect 6.1; effective n ~500). yfcc4k: 3,481 photographers, design effect 1.3.
+    - Our tune / eval halves hash each photo alone (`strategy_search.py:102`): 97.5% of im2gps3k eval-half photos have their photographer in the tune
+      half, 47% a same-photographer tune photo within 1 km (yfcc4k 24% / 4%). Anything fitted on the tune halves can learn album locations.
+    - Also: 19.5% of yfcc4k has Flickr accuracy <= 12 (city level or coarser; reranker < 1 km 27 vs 34%); US 26-33%, southern hemisphere 6-8%;
+      Places365 says 18% of im2gps3k is indoor; Flickr placeholders not flagged by yfcc4k's `Placeholder` column.
+    - commons26: every geotagged JPEG uploaded to Commons 2026-07-01 to 10-06 (search `haswbstatement:P1259`, ~10k / day; 4 days hit the 20k read cap),
+      kept if EXIF GPS + capture date >= 2026-07-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of the page's camera
+      location, not bots / Mapillary: 227,086 photos from 3,935 uploaders. Pick: <= 3 per uploader (2 gives 4,780), >= 2 km apart, continents in turn,
+      no country > 15%: 5,668; 101 non-photos and 6 with printed coordinates dropped -> 5,561 from 3,241 uploaders, 140 countries; split by uploader
+      (dev 935, test 4,626). Still 52% Europe, 3% Africa: Commons is European.
+    - Gallery near-duplicates are not a problem by construction: 23 of 5,668 have an MP16 photo at cosine >= 0.95 (OSV-5M 1); >= 0.90 (527) are mostly
+      look-alikes hundreds of km away (clouds, altars, roads), so they are flagged, not dropped.
+    - Tiers (Qwen3.6-27B Q4, no location shown, JSON-schema output; without the schema it writes an analysis and runs out of tokens): landmark 1,794,
+      city 608, region 1,583, none 1,576. Against one blind reader (the agent) on 198 photos: exact 113 / 198, locatable vs none 175 / 198 with the v2
+      prompt (v1: 99, 159); the 27B over-calls landmark (59 vs 29). Use tiers as coarse slices; the headline excludes `none`.
+    - Top-1 MP16 SigLIP2 retrieval, no photographer filter (the only baseline run so far), < 1 / 25 / 200 / 750 / 2500 km:
+      | set | n | result |
+      |---|---|---|
+      | im2gps3k | 2,997 | 14.9 / 37.6 / 50.7 / 67.8 / 83.5 |
+      | yfcc4k | 4,536 | 29.5 / 38.1 / 47.0 / 61.9 / 76.5 |
+      | commons26 test, all | 4,626 | 3.2 / 10.0 / 26.5 / 57.5 / 80.1 |
+      | commons26 test, headline (tier != none) | 3,307 | 4.2 / 13.0 / 33.4 / 68.3 / 88.7 (landmark 7.9 / 18.5; none 0.5 / 2.4) |
+      Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
+    - Not yet run on commons26: Pinpoint's attention reranker (the baseline) and our methods.
+
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1
   <25 km 40.6% vs 30.4% held out). Train only on the bucket-99 pool (38k; 34.5k train / 3.8k val split by
   photographer); its candidate quality matches yfcc4k eval.
