@@ -49,10 +49,11 @@ def _memmap_gallery(root: Path) -> dict[str, np.ndarray]:
     }
 
 
-def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, Any]] | None = None) -> SimpleNamespace:
+def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, Any]] | None = None, benchmarks: Sequence[str] | None = None) -> SimpleNamespace:
     """Galleries, shared admin labels and both benchmarks' queries (with a stable tune/eval split).
 
-    With `mp16_queries` (dicts with "row", a position in MP16 embedding order), those MP16 photos are the queries instead.
+    With `mp16_queries` (dicts with "row", a position in MP16 embedding order), those MP16 photos are the queries instead; `benchmarks` picks other benchmark
+    names than the default pair (e.g. ("wikimedia",)).
     """
 
     print("loading MP16-Pro metadata", flush=True)
@@ -89,7 +90,7 @@ def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, 
         queries = [dict(q, benchmark="mp16", author=int(mp16["author"][q["row"]])) for q in mp16_queries]
         embeddings.append(np.asarray(mp16["embeddings"][rows], dtype=np.float32))
         latlon.append(mp16["latlon"][rows])
-    for name in BENCHMARK_NAMES if mp16_queries is None else ():
+    for name in (benchmarks or BENCHMARK_NAMES) if mp16_queries is None else ():
         bench = load_benchmark(name)
         for i, image_id in enumerate(bench.image_ids):
             digest = int(hashlib.sha256(f"{name}:{image_id}".encode()).hexdigest()[:8], 16)

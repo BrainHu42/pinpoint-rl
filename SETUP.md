@@ -37,13 +37,19 @@ constants listed here.
 | `/data/pinpoint/geonames` | GeoNames dump | `llm_advantage.py`, `evidence_test.py` |
 | `/data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
 | `$PINPOINT_ROOT` | Pinpoint checkpoint + retrieval index | `models/pinpoint.py` |
-| `~/.venvs/{vllm,sft,grpo}` | serving and training environments | `scripts/*.sh` |
+| `/data/pinpoint/wikimedia` | third test set (images, embeddings) | `experiment/wikimedia_eval.py` |
+| `/data/pinpoint/overture` | Overture places (`places.sqlite`) and division polygons | `overture_text.py`, `place_labels.py` |
+| `/data/pinpoint/wikipedia` | offline geotagged Wikipedia (SQLite BM25 + dense) | `wiki_backend.py` |
+| `/data/pinpoint/geo` | WorldClim + ETOPO rasters | `candidate_attributes.py` |
+| `~/.venvs/{vllm,sft,grpo,geo,overture,match}` | serving, training and standalone tool environments (`envs/*.txt`) | `scripts/*.sh`, module usage lines |
 
 Copy `.env.example` to `.env`, fill it in, and load it with `set -a; . ./.env; set +a` before running anything.
 
 ## 3. Python environments
 
-Four environments, because training, serving and analysis pin different torch versions.
+Four main environments, because training, serving and analysis pin different torch versions, plus three small tool
+environments (`~/.venvs/geo`: rasterio; `~/.venvs/overture`: duckdb + shapely; `~/.venvs/match`: kornia / LightGlue).
+`envs/<name>.txt` lists the exact packages each one had on the development machine (`uv pip install -r envs/<name>.txt`).
 
 ```bash
 # (a) Repo env: analysis, retrieval caches, dataset building, evaluation clients. Python 3.11, torch 2.14 (CUDA 13).
@@ -162,12 +168,14 @@ curl -LO https://download.geonames.org/export/dump/countryInfo.txt
 
 ### Optional
 - `/data/pinpoint/yfcc26k`: reserve training data (no photo overlap with MP16 or the benchmarks; lat/lon only).
-- `/data/pinpoint/wikimedia`: planned third test set; not yet wired into `data/benchmarks.py`.
+- `/data/pinpoint/wikimedia`: third test set (`wikimedia/test.csv`, `images/`, `image_embeddings/`; author column `artist`), loaded by
+  `data/benchmarks.py`; candidates and the baseline report come from `experiment/wikimedia_eval.py`.
 
 ## 6. Build the caches (in order)
 
 Run from the repo root as `.venv/bin/python -m geo_search_env.experiment.<module> <node>`; the first lines of each
-module document its nodes. Everything is written under `artifacts/`, which is git-ignored.
+module document its nodes. Everything is written under `artifacts/`, which is git-ignored. A snapshot
+(2026-10-06) is on Hugging Face: `hf download kinghorton42/geo-benchmarks --repo-type dataset --include "artifacts/*" --local-dir .`
 
 Benchmark side (`--root artifacts/strategy_search`, the default):
 1. `strategy_search neighbors`: top-1000 MP16/OSV photo matches and top-500 Pinpoint GPS neighbours per benchmark

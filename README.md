@@ -3,7 +3,7 @@
 Research code for training a vision-language model (Qwen3.5-4B, LoRA, thinking off) to geolocate photos with
 supervised fine-tuning and reinforcement learning (GRPO), on top of a retrieval baseline (Pinpoint: SigLIP2 embeddings
 of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves with same-photographer gallery images
-excluded; wikimedia is the planned third test set.
+excluded; wikimedia is the third test set.
 
 - **`LEARNINGS.md`**: results so far and what they rule out (read first).
 - **`CLAUDE.md`**: current research plan, project rules, environment notes and code map.
