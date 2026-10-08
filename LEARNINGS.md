@@ -68,9 +68,9 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
   readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
   pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
-- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 3,251 Commons photos taken after 2026-07-01). im2gps3k has 198 photographers
+- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26 v3, 5,029 Commons photos uploaded after 2026-07-01, taken in 2026). im2gps3k has 198 photographers
   (design effect ~6: its error bars are ~2.5x too small) and our tune / eval split shares 97.5% of them. The same top-1 MP16 retrieval gets 37.6 / 38.1%
-  within 25 km on im2gps3k / yfcc4k but 10.6% on commons26 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 3.2.
+  within 25 km on im2gps3k / yfcc4k but 10.4% on commons26 v3 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 2.8.
 
 **Directions as ranked on 2026-10-05.** Status 2026-10-06: 1 and 2 were tested and failed (lessons 47-49), 3 waits for a tool with a strong
 signal, 4 is open. The open experiment is knowledge SFT (lesson 50).
@@ -806,6 +806,15 @@ baseline for new evidence (10, 13).
       | commons26 v2 test, plain mean | 2,685 | 3.3 / 10.8 / 25.8 / 52.8 / 75.8 (AF 1.9 / 3.8 / 8.3 / 16.7 / 41.0; EU 3.2 / 8.6 / 31.2 / 69.7 / 90.8) |
       Weighting and keeping `none` take ~21 pts off at 750 km: the v1 headline flattered Europe-heavy, locatable-looking photos.
       Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
+    - v3 (2026-10-08, current release; v2 kept in `release_v2_3251/`): the user wanted >= 5,000 photos. Commons can't supply equal continents
+      (Africa: 215 uploaders, 2.1% of candidates even with 2026-01 capture dates; equal 833 per continent would need ~3x that). Levers measured
+      on sample days: capture date >= 2026-01 +45% Africa uploaders (taken), accepting page coordinates without EXIF GPS +3 uploaders on 3 days
+      (most such photos are older or undated; rejected), looser per-uploader caps (taken). Re-scan with taken >= 2026-01-01 -> 293,881
+      candidates; continents in turn to 5,100, <= 5 per uploader, >= 1 km apart, country <= 10%; 3 photos gone from Commons, 68 dropped by
+      the 27B flags -> 5,029 (EU 1,565, AS 1,571, NA 832, SA 481, AF 333, OC 247; dev 977, test 4,052; 2,347 uploaders, 2.1 photos each).
+      1,257 were taken January-June 2026 (slice `taken` for the strict post-cutoff check).
+      | commons26 v3 test, continent-balanced (headline) | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
+      | commons26 v3 test, plain mean | 4,052 | 3.0 / 11.3 / 26.7 / 52.7 / 75.3 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268) |
     - Not yet run on commons26: Pinpoint's attention reranker (the baseline) and our methods.
 
 - Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99; its photos get inflated candidates (Pinpoint top-1

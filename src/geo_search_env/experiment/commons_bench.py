@@ -443,13 +443,14 @@ models), from {groups} uploaders in {countries} countries. Built by `src/geo_sea
   exactly on 57% (landmark is over-called) and on locatable vs none on 88%.
 - Geographic skew (61% of Commons' recent geotagged photos are in Europe, 2% in Africa): continents are picked in turn, so each grows
   until its supply runs out, and no country has more than 10% (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}). Africa, Oceania and
-  South America are limited by supply (Africa: ~200 uploaders in three months), so the headline weights the six continents equally; the
+  South America are limited by supply (Africa: 215 uploaders in three months), so the headline weights the six continents equally; the
   plain mean is reported too.
 - Dropped: {dropped}.
 
 ## Files
 - `benchmark.csv`: IMG_ID, LAT, LON, split, tier, place_text (visible text names the place), group, country, continent, taken (date),
-  mp16_cos, osv5m_cos. No titles, captions or categories: on Commons these usually name the place.
+  mp16_cos, osv5m_cos. No titles, captions or categories: on Commons these usually name the place. `continent` writes North America as
+  `NA`: read with `keep_default_na=False` in pandas, or those rows come back as missing.
 - `attribution.csv`: author, licence and source page of every photo (CC licences require it). Never give it to a model: the source page
   names the place.
 - `images/<page id>.jpg`; `image_embeddings/google_siglip2-giant-opt-patch16-384/` (raw SigLIP2-giant features, as for the other benchmarks).
