@@ -272,6 +272,7 @@ class Cluster:
     photos: int = 0
     users: int = 0
     examples: list[str] = field(default_factory=list)  # matched place names with kind / source
+    exact: int = 0  # places whose whole name equals the query
 
 
 @dataclass
@@ -464,7 +465,8 @@ class TextSearch:
             exact = sorted(pm, key=lambda i: (norm(places[i][0]) != qn, -places[i][5]))  # exact names first, then Overture
             examples = [f"{places[i][0]} ({places[i][4] or '?'}, {'Overture' if places[i][5] else 'GeoNames'})" for i in exact[:3]]
             out.append(Cluster(float(lat[c]), float(lon[c]), self.label(float(lat[c]), float(lon[c])), float(w[members].sum()),
-                               float(w[members].sum() / total), len(pm), len(ph), len({photos[i][1] for i in ph}), examples))
+                               float(w[members].sum() / total), len(pm), len(ph), len({photos[i][1] for i in ph}), examples,
+                               sum(norm(places[i][0]) == qn for i in pm)))
         return out
 
 

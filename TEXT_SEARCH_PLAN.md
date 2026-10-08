@@ -66,6 +66,25 @@ pick's region fixes clearly more than the pick's own coordinate (60), this desig
 - **So the bottleneck is reliable region evidence.** Next, find the subset of clues whose region is right more often than
   Pinpoint's (by clue type, specificity, agreement), and let the agent learn when to trust them.
 
+**Region-evidence breakdown (`region_evidence.py`, dev3k).**
+- **Setup:** 13,510 searches of the 9B / 27B phrases (GeoNames + Overture, no YFCC). Pinpoint's top-1 region is right on
+  42.8% of photos.
+- **No group of clues beats Pinpoint where they disagree.** Counted on (photo, region) pairs that differ from Pinpoint's region:
+
+| Clue group | Query right | Pinpoint right |
+|---|---|---|
+| all | 119 | 2,724 |
+| landmark names (27B) | 20 | 153 |
+| text read (9B) | 83 | 1,971 (region right on only 8% of searches) |
+| exact name, <= 5 matches, share >= 0.9 | 28 | 124 |
+| 2+ queries agree, share >= 0.9 (best) | 33 | 106 |
+| domain or phone | 4 | 36 |
+
+- **Clues are right mostly where Pinpoint is already right:** with 3+ agreeing queries the region is right 56% of the time,
+  but on disagreements Pinpoint still wins 124 to 23. This is the same pattern as lessons 17-19.
+- **Upper bound with a perfect selector:** a query names the true region while Pinpoint's region is wrong on 119 photos;
+  restricting Pinpoint there fixes 68 (+2.3 pts). That's the most these clues can give, and no simple rule gets near it.
+
 ## Plan
 
 ### Step 1. Finish the tool (about half a day, CPU)
