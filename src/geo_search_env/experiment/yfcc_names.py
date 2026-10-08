@@ -6,8 +6,9 @@
 #        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.yfcc_names match --tag dev3k   (needs pyahocorasick)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.yfcc_names report --tag dev3k
 
-"""extract: every geotagged row of data/yfcc100m/yfcc100m_dataset.sql -> data/yfcc100m/geo.npz: photo id, user (code + vocab), lat, lon, and
-         'title tags' normalised (URL-decoded, casefolded, accents stripped, non-letters -> space) as one blob with offsets.
+"""extract: one photoid range of the geotagged rows of data/yfcc100m/yfcc100m_dataset.sql; merge -> data/yfcc100m/geo.npz: photo id, user (code +
+         vocab), lat, lon, GPS accuracy (1-16), year taken, video flag, image URL parts (farm, server, secret), and three normalised text blobs with
+         offsets: 'title tags' (blob / offsets), description (first 300 chars), machine tags (first 300 chars).
 phrases: per photo of a set, the names the models produced: the 27B / 9B landmark names (observe.py landmarks) and the 9B's read text and place
          names (observe.py extract) -> artifacts/agent/yfcc_phrases_{tag}.json.
 match:   all phrases (whole-word) in every title + tags -> artifacts/agent/yfcc_matches_{tag}.npz: per phrase, the number of matching photos and up to
@@ -43,65 +44,73 @@ def norm(text: str) -> str:
 ID_RANGE = (28_605, 14_068_203_844)  # min / max photoid (the table's integer primary key)
 
 
-def extract(part: int | None = None, parts: int = 16) -> None:
+TEXTS = ("text", "desc", "mtags")  # title + user tags; description (first DESC_CHARS); machine tags (first DESC_CHARS)
+DESC_CHARS = 300
+
+
+def extract(part: int, parts: int = 16) -> None:
+    """One photoid range of the geotagged rows -> data/yfcc100m/geo_part{part}.npz (run all parts in parallel, then merge)."""
+
     from array import array
     import sqlite3
 
     con = sqlite3.connect(f"file:{YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)
     con.execute("PRAGMA mmap_size = 80000000000")  # 1 KB pages: memory-map so the OS reads ahead (plain reads ran at ~3 MB/s)
-    table = con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone()[0]
-    cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
-    print(f"table {table}: {cols}", flush=True)
-    pick = lambda *keys: next(c for c in cols if any(k == c.lower() for k in keys))
-    c_id, c_uid = pick("photoid", "id", "photo_id"), pick("uid", "userid", "user_nsid", "usernsid")
-    c_lat, c_lon = pick("latitude", "lat"), pick("longitude", "lon")
-    c_title, c_tags = pick("title"), pick("usertags", "user_tags", "tags")
-    ids, uids, lat, lon, offsets = array("q"), array("i"), array("f"), array("f"), array("q", [0])  # compact: ~48M rows
-    blob, vocab = bytearray(), {}
-    query = f"SELECT {c_id}, {c_uid}, {c_lat}, {c_lon}, {c_title}, {c_tags} FROM {table} WHERE {c_lat} IS NOT NULL AND {c_lat} != ''"
-    if part is not None:  # one photoid range: parallel parts keep several reads in flight (one sequential stream is latency-bound)
-        lo = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * part // parts
-        hi = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * (part + 1) // parts
-        query += f" AND {c_id} >= {lo} AND {c_id} < {hi}"
-    for n, (pid, uid, la, lo, title, tags) in enumerate(con.execute(query)):
+    lo = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * part // parts
+    hi = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * (part + 1) // parts
+    query = ("SELECT photoid, uid, latitude, longitude, title, usertags, description, machinetags, accuracy, datetaken, marker, farmid, serverid, secret "
+             f"FROM yfcc100m_dataset WHERE latitude IS NOT NULL AND latitude != '' AND photoid >= {lo} AND photoid < {hi}")
+    ids, uids, lat, lon = array("q"), array("i"), array("f"), array("f")
+    accuracy, year, video, farm, server = array("b"), array("h"), array("b"), array("h"), array("i")
+    secrets, vocab = [], {}
+    blobs = {k: bytearray() for k in TEXTS}
+    offsets = {k: array("q", [0]) for k in TEXTS}
+    for n, (pid, uid, la, lon_, title, tags, desc, mtags, acc, taken, marker, farm_, server_, secret) in enumerate(con.execute(query)):
         try:
-            la, lo = float(la), float(lo)
+            la, lon_ = float(la), float(lon_)
         except (TypeError, ValueError):
             continue
-        text = norm(unquote_plus(title or "") + " " + unquote_plus(tags or "").replace(",", " "))
-        ids.append(int(pid)); uids.append(vocab.setdefault(uid, len(vocab))); lat.append(la); lon.append(lo)
-        blob += text.encode("utf-8") + b"\n"
-        offsets.append(len(blob))
-        if n % 5_000_000 == 0:
-            print(f"  {n} geotagged rows", flush=True)
-    name = "geo.npz" if part is None else f"geo_part{part:02d}.npz"
-    if part is not None:
-        np.savez(YFCC / name, photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32), lat=np.frombuffer(lat, np.float32),
-                 lon=np.frombuffer(lon, np.float32), offsets=np.frombuffer(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8),
-                 vocab=np.asarray(sorted(vocab, key=vocab.get)))
-        print(f"part {part}: {len(ids)} geotagged photos -> {YFCC / name}", flush=True)
-        return
-    np.savez(YFCC / "geo.npz", photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32), lat=np.frombuffer(lat, np.float32),
-             lon=np.frombuffer(lon, np.float32), offsets=np.frombuffer(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8))
-    (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
-    print(f"{len(ids)} geotagged photos, {len(vocab)} users, {len(blob) / 1e9:.2f} GB of text -> {YFCC / 'geo.npz'}", flush=True)
+        texts = {"text": norm(unquote_plus(title or "") + " " + unquote_plus(tags or "").replace(",", " ")),
+                 "desc": norm(unquote_plus(desc or "")[:DESC_CHARS * 2])[:DESC_CHARS],
+                 "mtags": unquote_plus(mtags or "").casefold()[:DESC_CHARS].replace("\n", " ")}
+        for k in TEXTS:
+            blobs[k] += texts[k].encode("utf-8") + b"\n"
+            offsets[k].append(len(blobs[k]))
+        ids.append(int(pid)); uids.append(vocab.setdefault(uid, len(vocab))); lat.append(la); lon.append(lon_)
+        accuracy.append(int(acc or 0)); year.append(int(str(taken)[:4]) if taken and str(taken)[:4].isdigit() else 0)
+        video.append(int(marker or 0)); farm.append(int(farm_ or 0)); server.append(int(server_ or 0)); secrets.append(str(secret or ""))
+        if n % 1_000_000 == 0:
+            print(f"  part {part}: {n} geotagged rows", flush=True)
+    np.savez(YFCC / f"geo_part{part:02d}.npz", photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32),
+             lat=np.frombuffer(lat, np.float32), lon=np.frombuffer(lon, np.float32), accuracy=np.frombuffer(accuracy, np.int8),
+             year=np.frombuffer(year, np.int16), video=np.frombuffer(video, np.int8), farm=np.frombuffer(farm, np.int16),
+             server=np.frombuffer(server, np.int32), secret=np.asarray(secrets, dtype="S16"), vocab=np.asarray(sorted(vocab, key=vocab.get)),
+             **{f"{k}_blob": np.frombuffer(bytes(blobs[k]), np.uint8) for k in TEXTS}, **{f"{k}_offsets": np.frombuffer(offsets[k], np.int64) for k in TEXTS})
+    print(f"part {part}: {len(ids)} geotagged photos -> {YFCC / f'geo_part{part:02d}.npz'}", flush=True)
 
 
 def merge(parts: int = 16) -> None:
-    """The parts of a parallel extract -> geo.npz + uid_vocab.json (one user vocabulary)."""
+    """The parts of a parallel extract -> geo.npz + uid_vocab.json (one user vocabulary). The title + tags blob keeps the names blob / offsets."""
 
     vocab: dict[str, int] = {}
-    cols = {k: [] for k in ("photo_id", "uid", "lat", "lon")}
-    blobs, offsets, total = [], [np.zeros(1, np.int64)], 0
+    arrays = ("photo_id", "uid", "lat", "lon", "accuracy", "year", "video", "farm", "server", "secret")
+    cols = {k: [] for k in arrays}
+    blobs = {k: [] for k in TEXTS}
+    offsets = {k: [np.zeros(1, np.int64)] for k in TEXTS}
+    totals = {k: 0 for k in TEXTS}
     for part in range(parts):
         z = np.load(YFCC / f"geo_part{part:02d}.npz")
         remap = np.asarray([vocab.setdefault(u, len(vocab)) for u in z["vocab"]], np.int32)
-        cols["photo_id"].append(z["photo_id"]); cols["lat"].append(z["lat"]); cols["lon"].append(z["lon"])
-        cols["uid"].append(remap[z["uid"]] if len(z["uid"]) else z["uid"])
-        blobs.append(z["blob"]); offsets.append(z["offsets"][1:] + total); total += len(z["blob"])
-    np.savez(YFCC / "geo.npz", **{k: np.concatenate(v) for k, v in cols.items()}, offsets=np.concatenate(offsets), blob=np.concatenate(blobs))
+        for k in arrays:
+            cols[k].append(remap[z["uid"]] if k == "uid" and len(z["uid"]) else z[k])
+        for k in TEXTS:
+            blobs[k].append(z[f"{k}_blob"]); offsets[k].append(z[f"{k}_offsets"][1:] + totals[k]); totals[k] += len(z[f"{k}_blob"])
+    out = {k: np.concatenate(v) for k, v in cols.items()}
+    out |= {("blob" if k == "text" else f"{k}_blob"): np.concatenate(blobs[k]) for k in TEXTS}
+    out |= {("offsets" if k == "text" else f"{k}_offsets"): np.concatenate(offsets[k]) for k in TEXTS}
+    np.savez(YFCC / "geo.npz", **out)
     (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
-    print(f"merged {parts} parts: {sum(len(v) for v in cols['photo_id'])} geotagged photos, {len(vocab)} users, {total / 1e9:.2f} GB of text")
+    print(f"merged {parts} parts: {len(out['photo_id'])} geotagged photos, {len(vocab)} users; text " + ", ".join(f"{k} {totals[k] / 1e9:.2f} GB" for k in TEXTS))
 
 
 def phrases(tag: str) -> None:
@@ -248,7 +257,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
     parser.add_argument("--parts", type=int, default=16)
     args = parser.parse_args(argv)
-    {"extract": lambda: extract(args.part, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag)}[args.node]()
+    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag)}[args.node]()
     return 0
 
 
