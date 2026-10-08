@@ -749,3 +749,33 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Same ceiling as the text-search tool's region evidence (branch `worktree-text-search`, `region_evidence.py`): YFCC adds descriptions and
       photographer-written names but not reliable selection. The clue-selection problem is visual (does the text belong to the place?), which is
       the case for the agent in the target design (`TEXT_SEARCH_PLAN.md`). Count-based selection is not worth more work.
+
+64. **Pinpoint restricted to the right region is the large lever: 33.4 -> 61.3% within 25 km (2026-10-08; dev3k; `pinpoint_constrained.py`,
+    region filter in `models/pinpoint_reranker.py`).** Pinpoint's retrieval + reranker rerun with each query restricted to index photos of one
+    area (Overture division labels of every MP16 photo, `artifacts/place_labels`); unrestricted, the rerun equals the saved top-1 on 99.9%.
+    - True country: 41.2% < 25 km, +7.8 [+6.7, +8.9] (255 fixes / 21 breaks). True (country, region): 61.3%, **+27.9** [+26.2, +29.5]
+      (859 / 23). Above the oracle over Pinpoint's own pool (50.3%): restricted search finds candidates the original <= 12 never held.
+    - So a clue only has to name the region; visual retrieval finds the place inside it. This is the target design in `TEXT_SEARCH_PLAN.md`:
+      the agent keeps Pinpoint's answer by default and calls Pinpoint as a tool, restricted to the area its clues point to.
+    - Caveat: a perfect-region upper bound; regions are first-level divisions (a US state), so in large ones part of the gain is still
+      Pinpoint's ordering. The question becomes where right-region evidence comes from on the photos where Pinpoint's region is wrong.
+
+65. **Text search gives the right region too rarely; a VLM judge fixes its precision but leaves +0.3 pts (2026-10-08; dev3k; `text_search.py`,
+    `region_evidence.py`, `clue_judge.py`, `scripts/clue_judge.sh`).** The text-search tool (SQLite FTS5 over 24.7M GeoNames names, 81.5M
+    Overture places with websites and phones, 48.5M YFCC100M titles + tags; 8-190 ms per search) on the 9B / 27B phrases of dev3k (landmark
+    names, text read on the full image + 4 crops, read place names, search queries; 13,510 searches).
+    - Blind pick (heaviest top cluster holding >= half its query's matches): right on 65 of Pinpoint's mistakes, 337 traps; shuffled phrases 4 /
+      415. The right place is somewhere in the results for 231 mistakes (7.7 pts; 172 without YFCC).
+    - Region evidence, on (photo, region) pairs that differ from Pinpoint's region: query right 148 vs Pinpoint right 2,721; no group beats
+      Pinpoint (best: 2+ queries agree and share >= 0.9, 47 / 195; websites / phones 5 / 36). Clues are right where Pinpoint is right (with 3+
+      agreeing queries the region is right 53%, yet loses 39 / 193 on disagreements), as in lessons 17-19. A perfect selector + restricted
+      Pinpoint: 82 fixes (+2.7).
+    - Eye check of the 147 photos where a query names the true region and Pinpoint's region is wrong: 53 luck (a generic word), 39 read in the
+      photo (a shop shutter, a kiosk sign, a battlefield plaque), 55 recalled (Glastonbury, VDNKh). Specific traps outnumber them: read text
+      354 vs 89 (brands, clothing, posters for other cities), recalled names 953 vs 107 (look-alikes: Atlanta airport for San Jose's).
+    - VLM judge (photo + clue + where it points: is the name on a sign / building / plaque or a recognised landmark, or could it refer to
+      somewhere else?), on 4,591 specific clues: 4B at P(Yes) >= 0.8 clue right 14 vs Pinpoint right 6 (threshold chosen on the other half: 14 / 6),
+      >= 0.9 8 / 1; the 9B is no better. End to end (4B, >= 0.8, 25 photos): the clue's own coordinate +0.3 [+0.0, +0.5] (12 / 4); Pinpoint
+      restricted to the clue's region +0.1 (7 / 4); at >= 0.5 -0.1 to -0.3.
+    - Judging clues by looking at the photo is the right mechanism, but right clues are few: text search with these readers and offline sources
+      is worth about +0.3 pts on dev3k (ceiling +2.7), not enough to carry the agent. Named places are better answered by their own coordinate.

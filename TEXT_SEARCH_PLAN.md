@@ -211,3 +211,18 @@ seed with step 4.
 - **The 4B reads less than the 9B / 27B** (lesson 56: 13.9 vs 16.8% right region): its queries may lower the ceiling (step 2 measures this).
 - **Coverage:** small businesses and events missing from the offline sources (YFCC and, later, web search address this).
 - **Infrastructure:** multi-turn GRPO with images is new here: `environment_factory` is experimental, and prompts grow with each tool turn.
+
+## Options: where right-region evidence could come from (draft for discussion, 2026-10-08)
+Knowing the region is worth +27.9 pts and the country +7.8 (lesson 64). Text supplies the right region on only ~150 dev3k photos, which is
+about +0.3 pts in practice (lesson 65). Each option below has a cheap first check on dev3k.
+
+| # | Option | Ceiling / why | First check (dev3k) | Risk |
+|---|---|---|---|---|
+| 1 | **Country first.** Restrict Pinpoint to the country the photo's clues imply: the VLM's country guess, script / language, driving side, plates, domain and phone prefixes | True country +7.8 with only 21 breaks; country cues are far commoner and easier than region cues | Pinpoint restricted to the 9B's country guess (already in `observe_dev3k_9b*.json`), gated by the judge's confidence; one GPU pass, ~15 min | Lesson 55 found country rules ~0 *as candidate scores*; restriction is a different use but the VLM's country may be wrong exactly where Pinpoint's is |
+| 2 | **Choose among the pool's regions with restricted search.** For each region in Pinpoint's pool, restricted Pinpoint gives that region's best candidate; the agent compares them | Restricted search per pool region raises the oracle beyond the pool's 50.3% | Oracle over pool regions with per-region restricted top-1; whether any signal (reranker score, the VLM, a comparator) picks better than Pinpoint | Choosing between look-alike regions is the visual-similarity problem lessons 22-29 hit (comparator +0.9) |
+| 3 | **Region-level rule clues:** regional plate codes, area codes, route shields, regional chains (`GEOLOCATION_CLUES.md` sections 1, 5, 8) | Constraints that don't depend on appearance | VLM reads plates / route numbers / area codes on Pinpoint's dev3k mistakes; count how often present and right | Lesson 57: most hard photos show nothing place-specific; regional codes rarer still |
+| 4 | **Build the agent now** with Pinpoint-as-tool + text search + the judge, and let RL combine them | Tools are complementary; the judge shows the visual decision is learnable | Base-4B headroom (best of 8 vs Pinpoint) in the multi-turn loop | No tool clears the bar alone, and GRPO sharpens rather than discovers (lesson 3) |
+| 5 | **Live web search** for the deployed agent | Coverage of right clues is the limit lesson 65 found | Needs a search API key; on Flickr-based dev the photo's own page can leak | Can't be measured cleanly offline |
+
+**Recommendation:** 1 first. It's the cheapest, uses data already on disk, and has the largest clean ceiling with few breaks. If
+it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt on dev3k by itself.

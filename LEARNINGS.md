@@ -81,6 +81,10 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   answers outside Pinpoint's pool + a Pinpoint-confidence gate: +0.2 (8 fixes / 2 breaks); 27B naming caps at +1.0 pt even with perfect gating.
 - 63: YFCC100M extracted (48.5M geotagged photos, titles / tags / descriptions; data/yfcc100m/geo.npz). Its names locate 68 of Pinpoint's dev3k
   mistakes (ceiling +2.3, same as region_evidence) but count-based gates give +0.1: clue selection needs the agent that sees the photo.
+- 64: Pinpoint restricted to the true region reaches 61.3% < 25 km on dev3k (+27.9 pts, 859 fixes / 23 breaks; true country +7.8), above its own
+  pool oracle (50.3%): a clue only has to name the region. Target design: the agent calls Pinpoint as a tool, restricted to where clues point.
+- 65: text search (GeoNames, Overture, YFCC; `text_search.py`) gives the right region where Pinpoint's is wrong on only ~150 dev3k photos and
+  loses 1:18 on disagreements; a 4B judge looking at the photo flips accepted clues to 14:6, but end to end only +0.3 pts.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

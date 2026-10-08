@@ -74,8 +74,11 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   landmarks, crops), `geo_tools.py` (GeoNames / Overture tools, CV combiner), `poi_query.py` / `poi_near.py` (Overture places,
   env `.venvs/overture`), `landmark_match.py` (keypoints, env `.venvs/sft`), `agent_capacity.py`, `agent_vote.py`.
 - Landmark / name lookups (lessons 58-63): `landmark_id.py` (VLM object box -> crop search -> keypoint / DINOv2 checks), `landmark_vote.py`,
-  `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`, README there; name -> place proposals). The text-search tool and the
-  agent plan (Pinpoint as a tool) live on branch `worktree-text-search` (`TEXT_SEARCH_PLAN.md`).
+  `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`, README there; name -> place proposals). 
+- Text search and Pinpoint as a tool (lessons 64-65; plan and target design in `TEXT_SEARCH_PLAN.md`): `text_search.py` (SQLite FTS5 over
+  GeoNames, Overture places / websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a
+  restart), `pinpoint_constrained.py` (Pinpoint restricted to a country / region), `region_evidence.py`, `clue_judge.py` + `scripts/clue_judge.sh`.
+  Expert clue catalogue: `GEOLOCATION_CLUES.md`.
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).
