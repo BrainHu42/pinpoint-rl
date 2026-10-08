@@ -49,13 +49,13 @@ TEXTS = ("text", "desc", "mtags")  # title + user tags; description (first DESC_
 DESC_CHARS = 300
 
 
-def extract(part: int, parts: int = 16) -> None:
+def extract(part: int, parts: int = 16, db: Path | None = None) -> None:
     """One photoid range of the geotagged rows -> data/yfcc100m/geo_part{part}.npz (run all parts in parallel, then merge)."""
 
     from array import array
     import sqlite3
 
-    con = sqlite3.connect(f"file:{YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db or YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)  # a copy on local NVMe is far faster (1 KB pages)
     con.execute("PRAGMA mmap_size = 80000000000")  # 1 KB pages: memory-map so the OS reads ahead (plain reads ran at ~3 MB/s)
     lo = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * part // parts
     hi = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * (part + 1) // parts
@@ -263,13 +263,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
     parser.add_argument("--parts", type=int, default=16)
+    parser.add_argument("--db", type=Path, default=None, help="extract: the SQLite to read (default data/yfcc100m/yfcc100m_dataset.sql)")
     parser.add_argument("--only", type=int, nargs="+", default=None, help="merge: only these parts (an early, partial merge)")
     parser.add_argument("--geo", default="geo", help="merged file stem to write (merge) or read (match, report), e.g. geo_first8")
     parser.add_argument("--min-accuracy", type=int, default=0, help="report: ignore matches with Flickr GPS accuracy below this (1 world - 16 street)")
     args = parser.parse_args(argv)
     global GEO
     GEO = args.geo
-    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts, args.only), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
+    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts, args.db), "merge": lambda: merge(args.parts, args.only), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
     return 0
 
 
