@@ -33,6 +33,7 @@ YFCC = Path("data/yfcc100m")
 OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 MIN_CHARS, MAX_ROWS = 5, 20_000
+GEO = "geo"  # the merged file stem (geo.npz / geo_uid_vocab.json); --geo picks a partial merge
 
 
 def norm(text: str) -> str:
@@ -89,7 +90,7 @@ def extract(part: int, parts: int = 16) -> None:
     print(f"part {part}: {len(ids)} geotagged photos -> {YFCC / f'geo_part{part:02d}.npz'}", flush=True)
 
 
-def merge(parts: int = 16) -> None:
+def merge(parts: int = 16, only: Sequence[int] | None = None) -> None:
     """The parts of a parallel extract -> geo.npz + uid_vocab.json (one user vocabulary). The title + tags blob keeps the names blob / offsets."""
 
     vocab: dict[str, int] = {}
@@ -98,7 +99,7 @@ def merge(parts: int = 16) -> None:
     blobs = {k: [] for k in TEXTS}
     offsets = {k: [np.zeros(1, np.int64)] for k in TEXTS}
     totals = {k: 0 for k in TEXTS}
-    for part in range(parts):
+    for part in (only if only is not None else range(parts)):
         z = np.load(YFCC / f"geo_part{part:02d}.npz")
         remap = np.asarray([vocab.setdefault(u, len(vocab)) for u in z["vocab"]], np.int32)
         for k in arrays:
@@ -108,8 +109,8 @@ def merge(parts: int = 16) -> None:
     out = {k: np.concatenate(v) for k, v in cols.items()}
     out |= {("blob" if k == "text" else f"{k}_blob"): np.concatenate(blobs[k]) for k in TEXTS}
     out |= {("offsets" if k == "text" else f"{k}_offsets"): np.concatenate(offsets[k]) for k in TEXTS}
-    np.savez(YFCC / "geo.npz", **out)
-    (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
+    np.savez(YFCC / f"{GEO}.npz", **out)
+    (YFCC / f"{GEO}_uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
     print(f"merged {parts} parts: {len(out['photo_id'])} geotagged photos, {len(vocab)} users; text " + ", ".join(f"{k} {totals[k] / 1e9:.2f} GB" for k in TEXTS))
 
 
@@ -152,7 +153,7 @@ def match(tag: str) -> None:
     for i, p in enumerate(phrase_list):
         auto.add_word(p, (i, len(p)))
     auto.make_automaton()
-    z = np.load(YFCC / "geo.npz")
+    z = np.load(YFCC / f"{GEO}.npz")
     fields = [(z["blob"].tobytes(), z["offsets"])]  # title + tags
     if "desc_blob" in z.files:  # descriptions and machine tags (normalised here)
         fields += [(z["desc_blob"].tobytes(), z["desc_offsets"]), (z["mtags_blob"].tobytes(), z["mtags_offsets"])]
@@ -174,8 +175,8 @@ def match(tag: str) -> None:
             print(f"  {d} / {len(offsets) - 1} photos", flush=True)
     flat = np.asarray([r for rs in rows for r in rs], np.int64)
     starts = np.cumsum([0] + [len(rs) for rs in rows])
-    np.savez(OUT / f"yfcc_matches_{tag}.npz", phrases=np.asarray(phrase_list), counts=counts, rows=flat, starts=starts)
-    print(f"{tag}: {len(phrase_list)} phrases, {np.count_nonzero(counts)} found -> {OUT / f'yfcc_matches_{tag}.npz'}", flush=True)
+    np.savez(OUT / f"yfcc_matches_{tag}_{GEO}.npz", phrases=np.asarray(phrase_list), counts=counts, rows=flat, starts=starts)
+    print(f"{tag}: {len(phrase_list)} phrases, {np.count_nonzero(counts)} found -> {OUT / f'yfcc_matches_{tag}_{GEO}.npz'}", flush=True)
 
 
 def _mp16_authors(image_ids: set[str]) -> dict[str, str]:
@@ -200,12 +201,12 @@ def report(tag: str, min_accuracy: int = 0) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     table = json.loads((OUT / f"yfcc_phrases_{tag}.json").read_text(encoding="utf-8"))
-    m = np.load(OUT / f"yfcc_matches_{tag}.npz")
+    m = np.load(OUT / f"yfcc_matches_{tag}_{GEO}.npz")
     index = {p: i for i, p in enumerate(m["phrases"])}
-    z = np.load(YFCC / "geo.npz")
+    z = np.load(YFCC / f"{GEO}.npz")
     photo_id, uid, lat, lon = z["photo_id"], z["uid"], z["lat"], z["lon"]
     accuracy = z["accuracy"] if "accuracy" in z.files else np.full(len(photo_id), 16, np.int8)
-    vocab = {u: i for i, u in enumerate(json.loads((YFCC / "uid_vocab.json").read_text(encoding="utf-8")))}
+    vocab = {u: i for i, u in enumerate(json.loads((YFCC / f"{GEO}_uid_vocab.json").read_text(encoding="utf-8")))}
     authors = _mp16_authors({e["image_id"] for e in photos})
     pools = load_pools("mp16")
     score = np.asarray([np.where(pools["valid"][e["index"]], pools["scores"][e["index"]], -np.inf)[0] for e in photos])
@@ -262,9 +263,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
     parser.add_argument("--parts", type=int, default=16)
+    parser.add_argument("--only", type=int, nargs="+", default=None, help="merge: only these parts (an early, partial merge)")
+    parser.add_argument("--geo", default="geo", help="merged file stem to write (merge) or read (match, report), e.g. geo_first8")
     parser.add_argument("--min-accuracy", type=int, default=0, help="report: ignore matches with Flickr GPS accuracy below this (1 world - 16 street)")
     args = parser.parse_args(argv)
-    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
+    global GEO
+    GEO = args.geo
+    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts, args.only), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
     return 0
 
 
