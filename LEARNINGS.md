@@ -79,6 +79,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - 61: deciding by place doesn't help: location voting over crop hits best -0.0; crop-hit features on Pinpoint's candidates +0.1 [-0.4, +0.5].
 - 62: by eye, dev3k mistakes: 5% clear landmark / object, 7.5% searchable text (matches the user's test estimate). Models recognise only some;
   answers outside Pinpoint's pool + a Pinpoint-confidence gate: +0.2 (8 fixes / 2 breaks); 27B naming caps at +1.0 pt even with perfect gating.
+- 63: YFCC100M extracted (48.5M geotagged photos, titles / tags / descriptions; data/yfcc100m/geo.npz). Its names locate 68 of Pinpoint's dev3k
+  mistakes (ceiling +2.3, same as region_evidence) but count-based gates give +0.1: clue selection needs the agent that sees the photo.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

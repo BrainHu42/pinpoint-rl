@@ -33,6 +33,7 @@ YFCC = Path("data/yfcc100m")
 OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 MIN_CHARS, MAX_ROWS = 5, 20_000
+GEO = "geo"  # the merged file stem (geo.npz / geo_uid_vocab.json); --geo picks a partial merge
 
 
 def norm(text: str) -> str:
@@ -48,13 +49,13 @@ TEXTS = ("text", "desc", "mtags")  # title + user tags; description (first DESC_
 DESC_CHARS = 300
 
 
-def extract(part: int, parts: int = 16) -> None:
+def extract(part: int, parts: int = 16, db: Path | None = None) -> None:
     """One photoid range of the geotagged rows -> data/yfcc100m/geo_part{part}.npz (run all parts in parallel, then merge)."""
 
     from array import array
     import sqlite3
 
-    con = sqlite3.connect(f"file:{YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db or YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)  # a copy on local NVMe is far faster (1 KB pages)
     con.execute("PRAGMA mmap_size = 80000000000")  # 1 KB pages: memory-map so the OS reads ahead (plain reads ran at ~3 MB/s)
     lo = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * part // parts
     hi = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * (part + 1) // parts
@@ -89,7 +90,7 @@ def extract(part: int, parts: int = 16) -> None:
     print(f"part {part}: {len(ids)} geotagged photos -> {YFCC / f'geo_part{part:02d}.npz'}", flush=True)
 
 
-def merge(parts: int = 16) -> None:
+def merge(parts: int = 16, only: Sequence[int] | None = None) -> None:
     """The parts of a parallel extract -> geo.npz + uid_vocab.json (one user vocabulary). The title + tags blob keeps the names blob / offsets."""
 
     vocab: dict[str, int] = {}
@@ -98,7 +99,7 @@ def merge(parts: int = 16) -> None:
     blobs = {k: [] for k in TEXTS}
     offsets = {k: [np.zeros(1, np.int64)] for k in TEXTS}
     totals = {k: 0 for k in TEXTS}
-    for part in range(parts):
+    for part in (only if only is not None else range(parts)):
         z = np.load(YFCC / f"geo_part{part:02d}.npz")
         remap = np.asarray([vocab.setdefault(u, len(vocab)) for u in z["vocab"]], np.int32)
         for k in arrays:
@@ -108,8 +109,8 @@ def merge(parts: int = 16) -> None:
     out = {k: np.concatenate(v) for k, v in cols.items()}
     out |= {("blob" if k == "text" else f"{k}_blob"): np.concatenate(blobs[k]) for k in TEXTS}
     out |= {("offsets" if k == "text" else f"{k}_offsets"): np.concatenate(offsets[k]) for k in TEXTS}
-    np.savez(YFCC / "geo.npz", **out)
-    (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
+    np.savez(YFCC / f"{GEO}.npz", **out)
+    (YFCC / f"{GEO}_uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
     print(f"merged {parts} parts: {len(out['photo_id'])} geotagged photos, {len(vocab)} users; text " + ", ".join(f"{k} {totals[k] / 1e9:.2f} GB" for k in TEXTS))
 
 
@@ -143,7 +144,10 @@ def phrases(tag: str) -> None:
     print(f"{tag}: phrases for {len(out)} of {len(photos)} photos, {len({p for v in out.values() for p in v})} distinct -> {OUT / f'yfcc_phrases_{tag}.json'}")
 
 
-def match(tag: str) -> None:
+def match(tag: str, chunk_bytes: int = 256_000_000) -> None:
+    """All phrases, whole-word, in each text field: the automaton runs over ~256 MB chunks of a field's blob at a time (C speed) and each hit is
+    mapped back to its photo through the offsets; a photo counts once per phrase however many fields match."""
+
     import ahocorasick
 
     table = json.loads((OUT / f"yfcc_phrases_{tag}.json").read_text(encoding="utf-8"))
@@ -152,30 +156,43 @@ def match(tag: str) -> None:
     for i, p in enumerate(phrase_list):
         auto.add_word(p, (i, len(p)))
     auto.make_automaton()
-    z = np.load(YFCC / "geo.npz")
-    fields = [(z["blob"].tobytes(), z["offsets"])]  # title + tags
-    if "desc_blob" in z.files:  # descriptions and machine tags (normalised here)
-        fields += [(z["desc_blob"].tobytes(), z["desc_offsets"]), (z["mtags_blob"].tobytes(), z["mtags_offsets"])]
-    offsets = fields[0][1]
-    counts = np.zeros(len(phrase_list), np.int64)
-    rows: list[list[int]] = [[] for _ in phrase_list]
-    for d in range(len(offsets) - 1):
-        parts = [b[o[d]:o[d + 1] - 1].decode("utf-8", "replace") for b, o in fields]
-        doc = " " + " ".join([parts[0]] + [norm(x) for x in parts[1:]]) + " "
-        seen = set()
-        for end, (i, length) in auto.iter(doc):
-            if i in seen or doc[end - length] != " " or doc[end + 1] != " ":
-                continue  # whole words only, once per photo
-            seen.add(i)
-            counts[i] += 1
-            if len(rows[i]) < MAX_ROWS:
-                rows[i].append(d)
-        if d % 5_000_000 == 0:
-            print(f"  {d} / {len(offsets) - 1} photos", flush=True)
-    flat = np.asarray([r for rs in rows for r in rs], np.int64)
+    z = np.load(YFCC / f"{GEO}.npz")
+    fields = [("text", "blob", "offsets")]
+    if "desc_blob" in z.files:
+        fields += [("desc", "desc_blob", "desc_offsets"), ("mtags", "mtags_blob", "mtags_offsets")]
+    counts = np.zeros(len(phrase_list), np.int64)  # approximate beyond MAX_ROWS (a photo matching in two fields may count twice there)
+    rows: list[set[int]] = [set() for _ in phrase_list]
+    for name, blob_key, off_key in fields:
+        blob, offsets = z[blob_key], z[off_key]
+        start, n_before = 0, int(counts.sum())
+        while start < len(blob):
+            end = min(len(blob), start + chunk_bytes)
+            if end < len(blob):  # cut at a photo boundary
+                end = int(offsets[np.searchsorted(offsets, end, side="right") - 1])
+                if end <= start:
+                    end = int(offsets[np.searchsorted(offsets, start, side="right")])
+            raw = blob[start:end].tobytes().decode("utf-8", "replace")
+            text = raw.replace("\n", " ") if name != "mtags" else re.sub(r"[\W_]+", " ", raw.replace("\n", "\x00")).replace("\x00", " ")
+            # character offsets of photo starts within this chunk (bytes != characters for non-ASCII text, so recompute from the decoded string)
+            line_starts = np.concatenate([[0], np.flatnonzero(np.frombuffer(raw.encode("utf-32-le"), np.uint32) == 10) + 1])
+            first_row = int(np.searchsorted(offsets, start, side="right") - 1)
+            padded = " " + text + " "
+            for stop, (i, length) in auto.iter(padded):
+                if padded[stop - length] != " " or padded[stop + 1] != " ":
+                    continue  # whole words only
+                r = first_row + int(np.searchsorted(line_starts, stop - length, side="right") - 1)
+                if len(rows[i]) < MAX_ROWS:
+                    if r not in rows[i]:
+                        rows[i].add(r)
+                        counts[i] += 1
+                else:
+                    counts[i] += 1
+            start = end
+        print(f"  {name}: {int(counts.sum()) - n_before} new (phrase, photo) hits", flush=True)
+    flat = np.asarray([r for rs in rows for r in sorted(rs)], np.int64)
     starts = np.cumsum([0] + [len(rs) for rs in rows])
-    np.savez(OUT / f"yfcc_matches_{tag}.npz", phrases=np.asarray(phrase_list), counts=counts, rows=flat, starts=starts)
-    print(f"{tag}: {len(phrase_list)} phrases, {np.count_nonzero(counts)} found -> {OUT / f'yfcc_matches_{tag}.npz'}", flush=True)
+    np.savez(OUT / f"yfcc_matches_{tag}_{GEO}.npz", phrases=np.asarray(phrase_list), counts=counts, rows=flat, starts=starts)
+    print(f"{tag}: {len(phrase_list)} phrases, {np.count_nonzero(counts)} found -> {OUT / f'yfcc_matches_{tag}_{GEO}.npz'}", flush=True)
 
 
 def _mp16_authors(image_ids: set[str]) -> dict[str, str]:
@@ -200,12 +217,13 @@ def report(tag: str, min_accuracy: int = 0) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     table = json.loads((OUT / f"yfcc_phrases_{tag}.json").read_text(encoding="utf-8"))
-    m = np.load(OUT / f"yfcc_matches_{tag}.npz")
+    with np.load(OUT / f"yfcc_matches_{tag}_{GEO}.npz") as m:  # NpzFile re-reads an array on every key access: load once
+        m = {k: m[k] for k in m.files}
     index = {p: i for i, p in enumerate(m["phrases"])}
-    z = np.load(YFCC / "geo.npz")
+    z = np.load(YFCC / f"{GEO}.npz")
     photo_id, uid, lat, lon = z["photo_id"], z["uid"], z["lat"], z["lon"]
     accuracy = z["accuracy"] if "accuracy" in z.files else np.full(len(photo_id), 16, np.int8)
-    vocab = {u: i for i, u in enumerate(json.loads((YFCC / "uid_vocab.json").read_text(encoding="utf-8")))}
+    vocab = {u: i for i, u in enumerate(json.loads((YFCC / f"{GEO}_uid_vocab.json").read_text(encoding="utf-8")))}
     authors = _mp16_authors({e["image_id"] for e in photos})
     pools = load_pools("mp16")
     score = np.asarray([np.where(pools["valid"][e["index"]], pools["scores"][e["index"]], -np.inf)[0] for e in photos])
@@ -223,7 +241,9 @@ def report(tag: str, min_accuracy: int = 0) -> None:
                 continue
             sample = r if len(r) <= 400 else r[np.random.default_rng(0).choice(len(r), 400, replace=False)]
             pts = np.stack([lat[sample], lon[sample]], 1).astype(np.float64)
-            near = np.stack([_haversine_km(*q, pts) < 25 for q in pts])
+            la, lo = np.radians(pts[:, 0]), np.radians(pts[:, 1])  # pairwise distances in one go
+            h = np.sin((la[:, None] - la[None]) / 2) ** 2 + np.cos(la[:, None]) * np.cos(la[None]) * np.sin((lo[:, None] - lo[None]) / 2) ** 2
+            near = 2 * 6371.0088 * np.arcsin(np.sqrt(np.clip(h, 0, 1))) < 25
             j = int(near.sum(1).argmax())
             size, share = int(near[j].sum()), float(near[j].mean())
             centre = np.median(pts[near[j]], 0)
@@ -262,9 +282,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
     parser.add_argument("--parts", type=int, default=16)
+    parser.add_argument("--db", type=Path, default=None, help="extract: the SQLite to read (default data/yfcc100m/yfcc100m_dataset.sql)")
+    parser.add_argument("--only", type=int, nargs="+", default=None, help="merge: only these parts (an early, partial merge)")
+    parser.add_argument("--geo", default="geo", help="merged file stem to write (merge) or read (match, report), e.g. geo_first8")
     parser.add_argument("--min-accuracy", type=int, default=0, help="report: ignore matches with Flickr GPS accuracy below this (1 world - 16 street)")
     args = parser.parse_args(argv)
-    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
+    global GEO
+    GEO = args.geo
+    {"extract": lambda: extract(args.part if args.part is not None else 0, args.parts, args.db), "merge": lambda: merge(args.parts, args.only), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag, args.min_accuracy)}[args.node]()
     return 0
 
 

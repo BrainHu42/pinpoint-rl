@@ -734,3 +734,18 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Gate on Pinpoint's confidence: top-1 reranker score median 0.46 when right, 0.31 when wrong (margin to the 2nd candidate doesn't separate).
       Switching only when Pinpoint's score is in its bottom 20%: +0.2 [+0.0, +0.4] (8 fixes / 2 breaks); bottom 50%: +0.2 (18 / 13). Even perfect
       gating caps 27B naming at 30 fixes = +1.0 pt: more correct recognitions are needed.
+
+63. **YFCC100M as a name source: extracted, and its names locate the same few photos (2026-10-08; dev3k, Pinpoint's pool; `yfcc_names.py`,
+    `scripts/yfcc_extract.sh`, `scripts/yfcc_extract_nvme.sh`).** YFCC100M metadata (official SQLite, 65.6 GB) -> `data/yfcc100m/geo.npz`: 48,469,829
+    geotagged photos from 214,600 users, with title + tags (4.1 GB), description (first 300 chars, 2.0 GB), machine tags (0.2 GB), GPS accuracy,
+    year, video flag, image URL parts (README next to the data).
+    - Extraction: the SQLite's 1 KB pages make a scan IOPS-bound on EBS (~12-15 MB/s, parallel readers don't help: 3+ h projected). Copying the
+      file to the local NVMe instance store (/opt/dlami/nvme, 89 MB/s, 12 min) and extracting there with 4 processes: 37 min.
+    - Name lookup on dev3k: phrases from the 27B / 9B landmark names, 9B search phrases (observe `queries`) and 9B full-image + crop text: 10,168
+      phrases, 5,756 found (83.2M title/tag, 29.7M description, 1.7M machine-tag hits). The photo itself and its photographer are excluded.
+      Proposals (densest 25 km cluster of the best phrase) on 1,567 photos, right on 26.5%; right on 68 of Pinpoint's mistakes (ceiling ~+2.3 pts).
+      Gated switch rules (cluster share / size, Pinpoint's top-1 score): best +0.1 [-0.1, +0.3] (6 fixes / 2 breaks); ungated 61 / 328 (-8.9).
+      Dropping coarse-GPS matches (accuracy < 11) changes nothing.
+    - Same ceiling as the text-search tool's region evidence (branch `worktree-text-search`, `region_evidence.py`): YFCC adds descriptions and
+      photographer-written names but not reliable selection. The clue-selection problem is visual (does the text belong to the place?), which is
+      the case for the agent in the target design (`TEXT_SEARCH_PLAN.md`). Count-based selection is not worth more work.
