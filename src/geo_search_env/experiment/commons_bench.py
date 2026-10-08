@@ -304,7 +304,8 @@ def select(target: int, per_uploader: int, min_gap_km: float, max_country_share:
 
 def dedup(batch_size: int, chunk: int) -> None:
     """SigLIP2-giant embeddings of the downloaded photos on the CPU (same model and preprocessing as embed_cache), then each photo's most similar
-    MP16 and OSV-5M gallery photo (cosine) and its distance in km. Writes embeddings.f16.npy and near_duplicates.jsonl; drops nothing."""
+    MP16 and OSV-5M gallery photo (cosine), its distance in km and its coordinates
+    (the top-1 retrieval baseline). Writes embeddings.f16.npy and near_duplicates.jsonl; drops nothing."""
     import numpy as np
     import torch
     from transformers import AutoModel, AutoProcessor
@@ -349,12 +350,13 @@ def dedup(batch_size: int, chunk: int) -> None:
             sim[better], idx[better] = s[np.arange(len(queries)), j][better], start + j[better]
         where = np.memmap(root / manifest["files"]["latlon_deg"], dtype=np.float32, mode="r").reshape(-1, 2)[idx]
         km = [_haversine_m(a, b, float(c), float(d)) / 1000 for (a, b), (c, d) in zip(latlon, where)]
-        best[name] = (sim, km)
+        best[name] = (sim, km, where)
         print(f"{name}: max cosine >= 0.90 {int((sim >= 0.90).sum())}, >= 0.95 {int((sim >= 0.95).sum())} of {len(sim)}; median max cosine {np.median(sim):.3f}", flush=True)
     with (OUT / "near_duplicates.jsonl").open("w", encoding="utf-8") as f:
         for i, r in enumerate(records):
             f.write(json.dumps({"page_id": r["page_id"], **{f"{n}_cos": round(float(best[n][0][i]), 4) for n in best},
-                                **{f"{n}_km": round(best[n][1][i], 2) for n in best}}) + "\n")
+                                **{f"{n}_km": round(best[n][1][i], 2) for n in best},
+                                **{f"{n}_latlon": [round(float(v), 6) for v in best[n][2][i]] for n in best}}) + "\n")
 
 
 TIER_PROMPT = """Rate how precisely this photo alone lets an expert locate it.
