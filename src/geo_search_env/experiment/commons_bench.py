@@ -45,6 +45,7 @@ from typing import Any, Iterable, Sequence
 
 OUT = Path("/data/pinpoint/commons26")
 GEONAMES = Path("/data/pinpoint/geonames/allCountries.txt")
+TAKEN_AFTER = datetime(2026, 7, 1, tzinfo=timezone.utc)  # v2 release: capture dates on or after this
 API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "commons-recent-gps-photos/0.6 (research script; contact: kinghorton42@gmail.com)"
 MAX_GPS_GAP_M = 50.0
@@ -213,9 +214,11 @@ def _search_titles(day: str) -> list[str]:
 
 
 def search_scan(start: datetime, end: datetime, taken_after: datetime, workers: int) -> None:
-    """All geotagged JPEGs created in [start, end), day by day, through the same filters as scan."""
+    """All geotagged JPEGs created in [start, end), day by day, through the same filters as scan. Finished days are recorded per capture-date
+    cut-off, so a scan with an earlier --taken-after re-reads every day and appends only the photos the stricter scan skipped."""
     OUT.mkdir(parents=True, exist_ok=True)
-    done_path, out_path = OUT / "search_days.txt", OUT / "candidates.jsonl"
+    suffix = "" if taken_after == TAKEN_AFTER else f"_taken{taken_after:%Y%m%d}"
+    done_path, out_path = OUT / f"search_days{suffix}.txt", OUT / "candidates.jsonl"
     done = set(done_path.read_text().split()) if done_path.exists() else set()
     seen = {json.loads(line)["page_id"] for line in out_path.open()} if out_path.exists() else set()
     day = start
@@ -258,14 +261,15 @@ def _unit(latlon: Any) -> Any:
     return np.c_[np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]
 
 
-def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, per_continent: int, seed: int) -> None:
+def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, per_continent: int, seed: int,
+           taken_after: datetime) -> None:
     """Greedy pick over continents in turn: at most `per_uploader` photos per uploader, `min_gap_km` between any two, at most `per_continent` per
     continent (0 = no cap) and no country above `max_country_share` of that cap (of `target` without one). Commons is European and the thin
     continents run out early (Africa ~190 photos from ~120 uploaders in 2026-07 to 10), so the cap is what limits the skew; `score` reweights the rest."""
     import numpy as np
     from scipy.spatial import cKDTree
 
-    records = [json.loads(line) for line in (OUT / "candidates.jsonl").open()]
+    records = [r for line in (OUT / "candidates.jsonl").open() if (r := json.loads(line))["taken"] >= f"{taken_after:%Y-%m-%d}"]
     latlon = np.array([[r["lat"], r["lon"]] for r in records])
     vectors, codes = _places()
     countries = codes[cKDTree(vectors).query(_unit(latlon))[1]]
@@ -620,7 +624,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("node", choices=("scan", "search-scan", "select", "download", "dedup", "tiers", "release", "score"))
     parser.add_argument("--start", default="2026-07-01", help="scan: oldest upload time")
     parser.add_argument("--end", default=None, help="scan: newest upload time (default now)")
-    parser.add_argument("--taken-after", default="2026-07-01", help="scan: earliest capture date")
+    parser.add_argument("--taken-after", default=f"{TAKEN_AFTER:%Y-%m-%d}", help="scan, search-scan, select: earliest capture date")
     parser.add_argument("--windows", type=int, default=100)
     parser.add_argument("--per-window", type=int, default=1000, help="scan: uploads read per window")
     parser.add_argument("--workers", type=int, default=2)
@@ -645,7 +649,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         end = utc(args.end) if args.end else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         search_scan(utc(args.start), end, utc(args.taken_after), args.workers)
     elif args.node == "select":
-        select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.per_continent, args.seed)
+        select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.per_continent, args.seed,
+               datetime.fromisoformat(args.taken_after).replace(tzinfo=timezone.utc))
     elif args.node == "release":
         release()
     elif args.node == "score":
