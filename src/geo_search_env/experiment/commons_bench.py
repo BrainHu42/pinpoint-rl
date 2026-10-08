@@ -304,21 +304,26 @@ def dedup(batch_size: int, chunk: int) -> None:
     from .strategy_search import MP16_EMBED, OSV_EMBED
 
     records = [json.loads(line) for line in (OUT / "selected.jsonl").open()]
-    emb_path = OUT / "embeddings.f16.npy"
-    if emb_path.exists():
-        queries = np.load(emb_path).astype(np.float32)
-    else:
+    emb_path, ids_path = OUT / "embeddings.f16.npy", OUT / "embedding_ids.txt"
+    cached: dict[int, Any] = {}
+    if emb_path.exists() and ids_path.exists():
+        cached = dict(zip(map(int, ids_path.read_text().split()), np.load(emb_path)))
+    missing = [r for r in records if r["page_id"] not in cached]
+    if missing:
         torch.set_num_threads(16)
         model, processor = AutoModel.from_pretrained(MODEL, dtype=torch.float32).eval(), AutoProcessor.from_pretrained(MODEL)
-        rows = []
-        for start in range(0, len(records), batch_size):
-            pixels = torch.stack([_pixels(processor, (OUT / "images" / f"{r['page_id']}.jpg").read_bytes()) for r in records[start:start + batch_size]])
+        for start in range(0, len(missing), batch_size):
+            batch = missing[start:start + batch_size]
+            pixels = torch.stack([_pixels(processor, (OUT / "images" / f"{r['page_id']}.jpg").read_bytes()) for r in batch])
             with torch.inference_mode():
                 out = model.get_image_features(pixel_values=pixels)
-            rows.append((out.pooler_output if hasattr(out, "pooler_output") else out).numpy())
-            print(f"embedded {start + len(pixels)}/{len(records)}", flush=True)
-        queries = np.concatenate(rows)
-        np.save(emb_path, queries.astype(np.float16))
+            for r, e in zip(batch, (out.pooler_output if hasattr(out, "pooler_output") else out).numpy()):
+                cached[r["page_id"]] = e.astype(np.float16)
+            if (start // batch_size) % 50 == 0 or start + batch_size >= len(missing):
+                print(f"embedded {start + len(batch)}/{len(missing)}", flush=True)
+        np.save(emb_path, np.stack(list(cached.values())))
+        ids_path.write_text("\n".join(map(str, cached)) + "\n")
+    queries = np.stack([cached[r["page_id"]] for r in records]).astype(np.float32)
     queries /= np.linalg.norm(queries, axis=1, keepdims=True)
     latlon = np.array([[r["lat"], r["lon"]] for r in records])
     best: dict[str, tuple[Any, Any]] = {}
