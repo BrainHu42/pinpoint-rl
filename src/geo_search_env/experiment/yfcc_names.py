@@ -41,6 +41,7 @@ def norm(text: str) -> str:
 
 
 def extract() -> None:
+    from array import array
     import sqlite3
 
     con = sqlite3.connect(f"file:{YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)
@@ -51,7 +52,8 @@ def extract() -> None:
     c_id, c_uid = pick("photoid", "id", "photo_id"), pick("uid", "userid", "user_nsid", "usernsid")
     c_lat, c_lon = pick("latitude", "lat"), pick("longitude", "lon")
     c_title, c_tags = pick("title"), pick("usertags", "user_tags", "tags")
-    ids, uids, lat, lon, offsets, blob, vocab = [], [], [], [], [0], bytearray(), {}
+    ids, uids, lat, lon, offsets = array("q"), array("i"), array("f"), array("f"), array("q", [0])  # compact: ~48M rows
+    blob, vocab = bytearray(), {}
     query = f"SELECT {c_id}, {c_uid}, {c_lat}, {c_lon}, {c_title}, {c_tags} FROM {table} WHERE {c_lat} IS NOT NULL AND {c_lat} != ''"
     for n, (pid, uid, la, lo, title, tags) in enumerate(con.execute(query)):
         try:
@@ -64,8 +66,8 @@ def extract() -> None:
         offsets.append(len(blob))
         if n % 5_000_000 == 0:
             print(f"  {n} geotagged rows", flush=True)
-    np.savez(YFCC / "geo.npz", photo_id=np.asarray(ids, np.int64), uid=np.asarray(uids, np.int32), lat=np.asarray(lat, np.float32),
-             lon=np.asarray(lon, np.float32), offsets=np.asarray(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8))
+    np.savez(YFCC / "geo.npz", photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32), lat=np.frombuffer(lat, np.float32),
+             lon=np.frombuffer(lon, np.float32), offsets=np.frombuffer(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8))
     (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
     print(f"{len(ids)} geotagged photos, {len(vocab)} users, {len(blob) / 1e9:.2f} GB of text -> {YFCC / 'geo.npz'}", flush=True)
 
@@ -80,7 +82,9 @@ def phrases(tag: str) -> None:
     searches = OUT / f"queries_{tag}_9b.json"  # observe.py queries: up to 5 searchable names per photo
     if searches.exists():
         sources["queries 9b"] = {k: v or [] for k, v in json.loads(searches.read_text(encoding="utf-8")).items()}
-    clues = OUT / f"observe_{tag}_9b.json"
+    clues = OUT / f"observe_{tag}_9bcrop.json"  # observe.py crops: full-image clues + text read on 4 tiles
+    if not clues.exists():
+        clues = OUT / f"observe_{tag}_9b.json"
     if clues.exists():
         sources["text 9b"] = {k: ((v.get("parsed") or {}).get("text") or []) + ((v.get("parsed") or {}).get("place_names") or [])
                               for k, v in json.loads(clues.read_text(encoding="utf-8")).items()}
