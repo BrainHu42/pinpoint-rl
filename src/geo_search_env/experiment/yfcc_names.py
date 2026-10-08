@@ -77,6 +77,9 @@ def phrases(tag: str) -> None:
         path = OUT / f"landmark_{tag}_{name}.json"
         if path.exists():
             sources[f"landmark {name}"] = {k: [v["landmark"]] for k, v in json.loads(path.read_text(encoding="utf-8")).items() if v and v.get("landmark")}
+    searches = OUT / f"queries_{tag}_9b.json"  # observe.py queries: up to 5 searchable names per photo
+    if searches.exists():
+        sources["queries 9b"] = {k: v or [] for k, v in json.loads(searches.read_text(encoding="utf-8")).items()}
     clues = OUT / f"observe_{tag}_9b.json"
     if clues.exists():
         sources["text 9b"] = {k: ((v.get("parsed") or {}).get("text") or []) + ((v.get("parsed") or {}).get("place_names") or [])

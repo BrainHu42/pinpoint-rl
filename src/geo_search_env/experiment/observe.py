@@ -256,6 +256,39 @@ def objects(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers:
     print(f"{tag}: {len(answers)} answers, {sum(a is None for a in answers)} failed, object with box on {boxed} -> {path}")
 
 
+QUERY_PROMPT = ('You are a professional geolocator. List up to 5 specific names or phrases you could search for to find where this photo was taken: '
+                'names of landmarks, buildings, monuments or natural features you recognise, business or shop names, event names, street or place '
+                'names, website domains on signs. Only specific, searchable names (not generic words like "church" or "beach"). Answer with JSON only: '
+                '{"queries": ["...", "..."]}, or {"queries": []} if there is nothing specific.')
+
+
+def queries(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
+    """Per photo: up to 5 searchable names (for yfcc_names.py) -> artifacts/agent/queries_{tag}_{name}.json."""
+
+    photos = load_photos(tag)
+    images = MP16Images()
+
+    def run(e: dict) -> list[str] | None:
+        body = {"model": "vlm", "temperature": 0.0, "max_tokens": 160, "repetition_penalty": 1.05, "chat_template_kwargs": {"enable_thinking": False},
+                "messages": [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(_read(e, images)).decode()}},
+                    {"type": "text", "text": QUERY_PROMPT}]}]}
+        request = urllib.request.Request(f"{server}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=900) as response:
+                raw = json.loads(response.read())["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+        obj = _salvage(raw) or {}
+        return [str(q) for q in (obj.get("queries") or []) if str(q).strip()][:5]
+
+    with ThreadPoolExecutor(workers) as pool:
+        answers = list(pool.map(run, photos))
+    path = OUT / f"queries_{tag}_{name}.json"
+    path.write_text(json.dumps({e["image_id"]: a for e, a in zip(photos, answers)}) + "\n", encoding="utf-8")
+    print(f"{tag}: {len(answers)} answers, {sum(a is None for a in answers)} failed, queries on {sum(bool(a) for a in answers)} -> {path}")
+
+
 def report(tag: str, name: str) -> None:
     obs = json.loads((OUT / f"observe_{tag}_{name}.json").read_text(encoding="utf-8"))
     targets = {r["image_id"]: r for r in json.loads((OUT / f"targets_{tag}.json").read_text(encoding="utf-8"))}
@@ -277,7 +310,7 @@ def report(tag: str, name: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("extract", "crops", "landmarks", "objects", "report"))
+    parser.add_argument("node", choices=("extract", "crops", "landmarks", "objects", "queries", "report"))
     parser.add_argument("--tag", default="dev")
     parser.add_argument("--name", default="base")
     parser.add_argument("--base", default="9b", help="crops: the clues the crop text is merged into")
@@ -291,6 +324,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         landmarks(args.tag, args.name, args.server)
     elif args.node == "objects":
         objects(args.tag, args.name, args.server)
+    elif args.node == "queries":
+        queries(args.tag, args.name, args.server)
     else:
         report(args.tag, args.name)
     return 0
