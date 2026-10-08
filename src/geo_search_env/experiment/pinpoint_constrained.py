@@ -1,6 +1,7 @@
 # Pinpoint as a constrained tool (TEXT_SEARCH_PLAN.md, target design): rerun Pinpoint's retrieval + reranker restricted to one area and see what it
 # fixes. Ceilings restrict each photo to its true country / region; the realistic arms restrict it to the country / region of the text search tool's
-# blind pick (text_search report), photos without a pick keeping Pinpoint's answer. dev sets only.
+# blind pick (text_search report) or of another picks file (--picks, e.g. clue_judge picks), photos without a pick keeping Pinpoint's answer.
+# dev sets only.
 # Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.pinpoint_constrained labels   (once; parquet -> npz)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.pinpoint_constrained run --tag dev3k      (GPU, one pass over the index)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.pinpoint_constrained report --tag dev3k
@@ -53,7 +54,7 @@ def _index_labels(cache_rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return country[cache_rows], region[cache_rows]
 
 
-def run(tag: str) -> None:
+def run(tag: str, picks_name: str = "") -> None:
     from scipy.spatial import cKDTree
 
     from ..models.pinpoint_reranker import PinpointReranker, _unit_xyz
@@ -61,7 +62,8 @@ def run(tag: str) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     truth_labels = {p["image_id"]: p["truth"] for p in json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))}
-    picks = json.loads((OUT / f"text_search_picks_{tag}.json").read_text(encoding="utf-8"))
+    suffix = f"_{picks_name}" if picks_name else ""
+    picks = json.loads((OUT / f"text_search_picks_{tag}{suffix}.json").read_text(encoding="utf-8"))
     queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
     world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
@@ -105,17 +107,17 @@ def run(tag: str) -> None:
             found_latlon[i] = found.top1[k * n:(k + 1) * n]
             restricted[i] = q[k * n:(k + 1) * n] >= 0
         print(f"{level}: {names} done", flush=True)
-    np.savez(OUT / f"constrained_{tag}.npz", arms=np.asarray(ARMS), latlon=found_latlon, restricted=restricted,
+    np.savez(OUT / f"constrained_{tag}{suffix}.npz", arms=np.asarray(ARMS), latlon=found_latlon, restricted=restricted,
              truth=np.asarray([e["truth"] for e in photos]), pinpoint=np.asarray([e["pool"][0] for e in photos]),
              pick=np.asarray([[picks[e["image_id"]]["lat"], picks[e["image_id"]]["lon"]] if e["image_id"] in picks else [np.nan, np.nan] for e in photos]))
-    print(f"-> {OUT / f'constrained_{tag}.npz'}")
-    report(tag)
+    print(f"-> {OUT / f'constrained_{tag}{suffix}.npz'}")
+    report(tag, picks_name)
 
 
-def report(tag: str) -> None:
+def report(tag: str, picks_name: str = "") -> None:
     from .strategy_search import _bootstrap, _haversine_km
 
-    z = np.load(OUT / f"constrained_{tag}.npz", allow_pickle=True)
+    z = np.load(OUT / f"constrained_{tag}{'_' + picks_name if picks_name else ''}.npz", allow_pickle=True)
     truth, base_ll = z["truth"], z["pinpoint"]
     km = lambda ll: np.asarray([_haversine_km(*t, np.asarray([p]))[0] if np.isfinite(p).all() else np.inf for t, p in zip(truth, ll)])
     base = km(base_ll)
@@ -144,8 +146,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("cmd", choices=("labels", "run", "report"))
     parser.add_argument("--tag", default="dev3k")
+    parser.add_argument("--picks", default="", help="picks file suffix: text_search_picks_{tag}_{picks}.json (e.g. clue_judge picks)")
     args = parser.parse_args(argv)
-    {"labels": lambda: labels(), "run": lambda: run(args.tag), "report": lambda: report(args.tag)}[args.cmd]()
+    {"labels": lambda: labels(), "run": lambda: run(args.tag, args.picks), "report": lambda: report(args.tag, args.picks)}[args.cmd]()
     return 0
 
 

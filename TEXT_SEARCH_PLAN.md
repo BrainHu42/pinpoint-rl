@@ -115,6 +115,29 @@ pick's region fixes clearly more than the pick's own coordinate (60), this desig
 - **It doesn't add precision:** no rule beats Pinpoint where they disagree; the best is about 1 to 3.
 - **The 147 wins:** 53 luck, 39 read in the photo, 55 recalled by the model.
 
+**VLM clue judge (`clue_judge.py`, dev3k).**
+- **Setup:** for each of the 4,591 specific clues (cluster share >= 0.3), the VLM sees the photo, the clue and where the search
+  points, and is asked: is the name on a sign / building / plaque, or a landmark it recognises (Yes), or could it refer to
+  somewhere else, such as a brand, clothing, a poster or a look-alike (No)?
+- **Precision flips at high confidence:** counted on (photo, region) pairs that differ from Pinpoint's region:
+
+| P(Yes) >= | 4B: clue right / Pinpoint right | 9B: clue right / Pinpoint right |
+|---|---|---|
+| 0 (all) | 95 / 896 | 95 / 896 |
+| 0.5 | 26 / 36 | 27 / 49 |
+| 0.7 | 17 / 14 | 13 / 15 |
+| 0.8 | 14 / 6 | 11 / 9 |
+| 0.9 | 8 / 1 | 8 / 1 |
+
+  With the threshold chosen on one half and counted on the other: 4B 14 / 6, 9B 9 / 7. The 9B is no better than the 4B.
+- **End to end (4B, P(Yes) >= 0.8, 25 photos switched):**
+  - answering with the clue's own coordinate: **+0.3 pts** [+0.0, +0.5], 12 fixes / 4 breaks;
+  - restricting Pinpoint to the clue's region: +0.1 (7 / 4).
+- **At P(Yes) >= 0.5 (74 photos):** -0.1 to -0.3.
+- **Conclusion:** the judge works: on accepted clues it turns about 1 right to 9 wrong into about 3 to 1. But few right clues
+  exist. Specific named places are better answered by their own coordinate than by a region restriction. Text search with
+  these readers adds about +0.3 pts on dev3k, far below the 1-pt bar.
+
 ## Plan
 
 ### Step 1. Finish the tool (about half a day, CPU)
