@@ -357,12 +357,13 @@ def dedup(batch_size: int, chunk: int) -> None:
                                 **{f"{n}_km": round(best[n][1][i], 2) for n in best}}) + "\n")
 
 
-TIER_PROMPT = """How well could an expert tell where this photo was taken, from the photo alone?
-- "landmark": a specific, recognisable place (famous building, monument, unique view) or text naming the place; within ~1 km.
-- "city": enough distinctive detail to name the city or town.
-- "region": only country- or region-level cues (language, architecture style, vegetation, road signs, terrain).
-- "none": no geographic cues (indoor, close-up, food, animal, sky, people only).
+TIER_PROMPT = """Rate how precisely this photo alone lets an expert locate it.
+- "landmark": a famous or uniquely identifiable place (named monument, well-known building or view), or visible text naming the exact site or street. Ordinary churches, houses, shops, chain-store signs, or just a city name are NOT landmark.
+- "city": details that pin the city or town (its name in text, its transit vehicles, a known skyline), but not the exact site.
+- "region": only country- or region-level cues (language, architecture style, vegetation, road markings, terrain).
+- "none": little or no geographic information (indoor scene, close-up, food, animal, plant, people, sky, generic nature).
 Answer only JSON: {"tier": "landmark|city|region|none", "place_text": true if visible text names the place, "gps_overlay": true if coordinates are printed on the image, "not_photo": true if it is a map, screenshot, scan, document or artwork}"""
+# v2 (stricter landmark, broader none). Against one blind reader on 198 photos: exact tier 113/198, none vs locatable 175/198 (v1: 99, 159).
 
 
 TIER_SCHEMA = {"type": "json_schema", "json_schema": {"name": "tier", "schema": {
@@ -443,6 +444,11 @@ def release() -> None:
 
     records = [json.loads(line) for line in (OUT / "selected.jsonl").open()]
     tier = {t["page_id"]: t for t in map(json.loads, (OUT / "tiers.jsonl").open()) if t.get("tier")}
+    if (OUT / "tiers_v1.jsonl").exists():  # a photo flagged as not a photo / with printed coordinates by either prompt is dropped
+        for t in map(json.loads, (OUT / "tiers_v1.jsonl").open()):
+            if t["page_id"] in tier:
+                for flag in ("not_photo", "gps_overlay"):
+                    tier[t["page_id"]][flag] = bool(tier[t["page_id"]].get(flag)) or bool(t.get(flag))
     near = {n["page_id"]: n for n in map(json.loads, (OUT / "near_duplicates.jsonl").open())}
     cached = dict(zip(map(int, (OUT / "embedding_ids.txt").read_text().split()), np.load(OUT / "embeddings.f16.npy")))
     dropped = {"no tier": 0, "not a photo": 0, "printed coordinates": 0}
