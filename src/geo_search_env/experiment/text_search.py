@@ -16,6 +16,7 @@ query:        one search, printed as the agent would see it.
 report:       every model-produced phrase of a photo set (yfcc_names phrases + observe queries) searched with the photo and its photographer excluded;
               the tool's own top place per photo (picked without the truth) vs the truth and Pinpoint's top-1: search-fixable photos (Pinpoint
               >= 25 km off, pick < 25 km), traps (Pinpoint right, pick >= 25 km off), and a shuffled-phrase control for lucky matches (dev sets only).
+              Saves the fixable ids and every photo's pick (text_search_{fixable,picks}_{tag}.json).
 
 Search: the query is classified as a domain / URL, a phone number or a name. Names are matched as a phrase (all words, in order, whole words,
 accents and case ignored; if nothing matches, all words in any order). Matches are grouped into 25 km clusters, weighting each Overture / GeoNames
@@ -521,11 +522,13 @@ def report(tag: str, limit: int | None = None) -> None:
     base = np.asarray([haversine_km(*e["truth"], np.asarray([e["pool"][0][0]]), np.asarray([e["pool"][0][1]]))[0] for e in photos])
     perm = np.random.default_rng(0).permutation(len(photos))
     rows = {"real": [], "shuffled": []}
-    any_hit = []
+    any_hit, picks = [], {}
     for p, e in enumerate(photos):
         for name, source in (("real", e), ("shuffled", photos[perm[p]])):
             res = results(e, phrases.get(source["image_id"], []))
             pick = _pick(res)
+            if name == "real" and pick is not None:
+                picks[e["image_id"]] = {"lat": pick.lat, "lon": pick.lon, "weight": pick.weight, "share": pick.share, "label": pick.label}
             rows[name].append(np.inf if pick is None else haversine_km(*truth[p], np.asarray([pick.lat]), np.asarray([pick.lon]))[0])
             if name == "real":
                 any_hit.append(any((haversine_km(*truth[p], np.asarray([c.lat for c in r.clusters]), np.asarray([c.lon for c in r.clusters])) < 25).any()
@@ -548,6 +551,7 @@ def report(tag: str, limit: int | None = None) -> None:
     fixable = [photos[p]["image_id"] for p in np.flatnonzero((np.asarray(rows["real"]) < 25) & mistakes)]
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"text_search_fixable_{tag}.json").write_text(json.dumps(fixable) + "\n", encoding="utf-8")
+    (OUT / f"text_search_picks_{tag}.json").write_text(json.dumps(picks) + "\n", encoding="utf-8")  # the blind pick per photo (pinpoint_constrained)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

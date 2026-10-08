@@ -30,6 +30,42 @@ What it shows:
 - The decision (when to trust a search) and choosing among results are where the gain is.
 - The ceiling is above the 1-pt bar.
 
+## Target design: Pinpoint as a tool (agreed 2026-10-08)
+- **Pinpoint runs once:** its pool (<= 12 candidates) and scores go into the prompt.
+- **The agent decides:** Qwen3.5-4B with LoRA sees the photo, the pool and Pinpoint's confidence. Its default answer is
+  Pinpoint's top-1, so on photos without a clue the system is Pinpoint.
+- **Tools:**
+  - `pinpoint_search(country / region / box)`: Pinpoint's retrieval and reranker restricted to an area. This is the key one:
+    a clue only has to give the region, and visual retrieval finds the place inside it, beyond the original pool. 62% of
+    Pinpoint's far misses are the right country but the wrong region (lessons 52-54, measured with the old reranker).
+    Restricting retrieval to the true region raised it from 38.4 to 64.4% < 25 km on im2gps3k (lesson 5, old retrieval).
+  - `text_search(query, near=)`: built.
+  - `zoom(crop)`.
+  - Later: landmark tools, map features, rule tables, live web search when deployed.
+- **The answer must come from a tool result** (a candidate or a text-search place). Free guesses are almost always wrong
+  (lesson 4: 11 of 270).
+- **Not a replacement for the reranker:** every LLM chooser so far landed near parity.
+
+**Check before building the agent (step 0):** rerun Pinpoint on dev3k restricted to the true country / region (the ceiling) and
+to the country / region of the text tool's blind pick (realistic); count fixes and breaks (`pinpoint_constrained.py`). If the
+pick's region fixes clearly more than the pick's own coordinate (60), this design is the one.
+
+**Step 0 results (2026-10-08, dev3k; Pinpoint 33.4% < 25 km):**
+
+| Pinpoint restricted to | Photos | < 25 km | Change | Fixes / breaks |
+|---|---|---|---|---|
+| true country | 2,914 | 41.2% | **+7.8** [+6.7, +8.9] | 255 / 21 |
+| true region | 2,901 | **61.3%** | **+27.9** [+26.2, +29.5] | 859 / 23 |
+| text pick's country | 1,126 | 27.7% | -5.8 | 14 / 187 |
+| text pick's region | 1,122 | 25.7% | -7.7 | 38 / 270 |
+| (text pick's own coordinate) | 1,155 | 24.5% | -8.9 | 60 / 328 |
+
+- **The ceiling is large:** knowing the region and letting Pinpoint search inside it reaches 61.3%, above the oracle over
+  Pinpoint's own pool (50.3%), with almost no breaks. So the design is right.
+- **The text picks don't supply right regions yet:** gating them on Pinpoint's confidence never turns positive (best -0.1).
+- **So the bottleneck is reliable region evidence.** Next, find the subset of clues whose region is right more often than
+  Pinpoint's (by clue type, specificity, agreement), and let the agent learn when to trust them.
+
 ## Plan
 
 ### Step 1. Finish the tool (about half a day, CPU)

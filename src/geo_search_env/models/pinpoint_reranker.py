@@ -10,7 +10,9 @@ Matches pinpoint-yogi `attention_reranker.AttentionInterpolateLightningModule` i
 
 Differences from the original are confined to how the index is read: it is streamed from disk a chunk at a time
 (same float32 dequantization, same fp16 search) instead of being made GPU-resident, so it fits beside other jobs.
-Optionally, index photos by the query's photographer are excluded from all three searches (our benchmark rule).
+Optionally, index photos by the query's photographer are excluded from all three searches (our benchmark rule), and a query
+can be restricted to index photos of one area (a region id per index row; the agent's constrained search). Unrestricted, the
+results are the original's.
 
 Checked against the original code (pinpoint-yogi 27a9bfe, Lightning stubbed, index fed lazily) on 320 benchmark photos:
 identical query encodings, candidate rows and rank/flag features on the full index, and identical bf16 scores given
@@ -183,7 +185,8 @@ class PinpointReranker:
         return raw, F.normalize(torch.nan_to_num(projected.float(), nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-8)
 
     @torch.inference_mode()
-    def _search(self, raw: torch.Tensor, projected: torch.Tensor, query_author: np.ndarray | None, index_author: np.ndarray | None):
+    def _search(self, raw: torch.Tensor, projected: torch.Tensor, query_author: np.ndarray | None, index_author: np.ndarray | None,
+                query_region: np.ndarray | None = None, index_region: np.ndarray | None = None):
         """Top hits per modality, streaming the index once; returns {modality: (rows [Q, k], scores [Q, k])}.
 
         Many index scores tie exactly (photos at one coordinate share a GPS embedding; near-duplicates share an fp16
@@ -200,6 +203,7 @@ class PinpointReranker:
             for m in MODALITIES
         }
         q_author = None if query_author is None else torch.as_tensor(query_author, device=self.device)
+        q_region = None if query_region is None else torch.as_tensor(query_region, device=self.device)
         count = len(self.latlon)
         for start in range(0, count, self.chunk):
             end = min(start + self.chunk, count)
@@ -209,11 +213,15 @@ class PinpointReranker:
                 "gps": torch.as_tensor(np.asarray(self.gps[start:end]), device=self.device),
             }
             excluded = None if q_author is None else torch.as_tensor(index_author[start:end], device=self.device)
+            region = None if q_region is None else torch.as_tensor(index_region[start:end], device=self.device)
             for m in MODALITIES:
                 for b in range(0, len(raw), self.query_batch):
                     scores = queries[m][b : b + self.query_batch] @ blocks[m].T
                     if excluded is not None:
                         scores.masked_fill_(excluded.unsqueeze(0) == q_author[b : b + self.query_batch].unsqueeze(1), float("-inf"))
+                    if region is not None:  # region id -1: no restriction for that query
+                        qr = q_region[b : b + self.query_batch].unsqueeze(1)
+                        scores.masked_fill_((region.unsqueeze(0) != qr) & (qr >= 0), float("-inf"))
                     top_values, top_indices = torch.topk(scores, min(pools[m], end - start), dim=-1)
                     values, indices = best[m][0][b : b + self.query_batch], best[m][1][b : b + self.query_batch]
                     merged_values, keep = torch.topk(torch.cat((values, top_values), dim=-1), pools[m], dim=-1)
@@ -330,14 +338,16 @@ class PinpointReranker:
             all_features.append(features.cpu().numpy())
         return np.concatenate(all_scores), np.concatenate(all_features)
 
-    def rank(self, embeddings: np.ndarray, *, query_author: np.ndarray | None = None, index_author: np.ndarray | None = None) -> RerankedCandidates:
+    def rank(self, embeddings: np.ndarray, *, query_author: np.ndarray | None = None, index_author: np.ndarray | None = None,
+             query_region: np.ndarray | None = None, index_region: np.ndarray | None = None) -> RerankedCandidates:
         """Rerank each query's pool. `embeddings`: raw SigLIP2 [Q, 1536]. With `query_author` and `index_author`
-        (an author id per index row, e.g. `mp16_author[cache_indices]`), index photos by the same author are excluded."""
+        (an author id per index row, e.g. `mp16_author[cache_indices]`), index photos by the same author are excluded.
+        With `query_region` and `index_region` (int ids), a query only searches index rows of its region (-1: anywhere)."""
 
-        if (query_author is None) != (index_author is None):
-            raise ValueError("pass both query_author and index_author, or neither")
+        if (query_author is None) != (index_author is None) or (query_region is None) != (index_region is None):
+            raise ValueError("pass both query_author and index_author (query_region and index_region), or neither")
         raw, projected = self.encode_queries(embeddings)
-        rows, ranks, flags = self._union(self._search(raw, projected, query_author, index_author))
+        rows, ranks, flags = self._union(self._search(raw, projected, query_author, index_author, query_region, index_region))
         scores, features = self._score(raw, projected, rows, ranks, flags)
         order = np.argsort(-scores, axis=1, kind="stable")
         rows, scores, features = np.take_along_axis(rows, order, 1), np.take_along_axis(scores, order, 1), np.take_along_axis(features, order[..., None], 1)
