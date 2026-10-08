@@ -62,7 +62,7 @@ PHOTO_SETS = Path("artifacts/photo_sets")
 
 CLUSTER_KM = 25.0
 MAX_MATCHES = 10_000  # matches fetched per source and query; more means the phrase is too common to place anything
-SAMPLE = 2_000  # matches clustered per source (a fixed random sample beyond that)
+SAMPLE = 1_000  # matches clustered per source (a fixed random sample beyond that)
 TOP = 8  # clusters returned
 MIN_ACCURACY = 11  # Flickr GPS accuracy (1 world .. 16 street); below city level a photo can't place a 25 km cluster
 SECOND_LEVEL = {"co", "com", "net", "org", "gov", "ac", "edu", "ne", "or", "go", "gob", "nic", "mil"}  # co.uk, com.au, ...
@@ -445,22 +445,23 @@ class TextSearch:
         for p in photos:
             per_user[p[1]] = per_user.get(p[1], 0) + 1
         w = np.asarray([1.0] * n_places + [1.0 / per_user[p[1]] for p in photos])
-        rad = np.radians(np.stack([lat, lon], 1))
+        rad = np.radians(np.stack([lat, lon], 1)).astype(np.float32)
+        la, lo = rad[:, 0], rad[:, 1]
+        a = np.sin((la[:, None] - la[None]) / 2) ** 2 + np.cos(la[:, None]) * np.cos(la[None]) * np.sin((lo[:, None] - lo[None]) / 2) ** 2
+        within = 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1))) < CLUSTER_KM  # all pairs once
+        del a
         alive = np.ones(len(lat), bool)
         total, qn, out = w.sum(), norm(query), []
         while alive.any() and len(out) < TOP:
-            idx = np.flatnonzero(alive)
-            la, lo = rad[idx, 0], rad[idx, 1]
-            a = (np.sin((la[:, None] - la[None]) / 2) ** 2 + np.cos(la[:, None]) * np.cos(la[None]) * np.sin((lo[:, None] - lo[None]) / 2) ** 2)
-            near_m = 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1))) < CLUSTER_KM
-            j = int((near_m * w[idx][None]).sum(1).argmax())
-            members = idx[near_m[j]]
+            score = within @ (w * alive)
+            score[~alive] = -1
+            c = int(score.argmax())
+            members = np.flatnonzero(within[c] & alive)
             alive[members] = False
             pm = members[members < n_places]
             ph = members[members >= n_places] - n_places
             exact = sorted(pm, key=lambda i: (norm(places[i][0]) != qn, -places[i][5]))  # exact names first, then Overture
             examples = [f"{places[i][0]} ({places[i][4] or '?'}, {'Overture' if places[i][5] else 'GeoNames'})" for i in exact[:3]]
-            c = idx[j]
             out.append(Cluster(float(lat[c]), float(lon[c]), self.label(float(lat[c]), float(lon[c])), float(w[members].sum()),
                                float(w[members].sum() / total), len(pm), len(ph), len({photos[i][1] for i in ph}), examples))
         return out
@@ -509,10 +510,11 @@ def report(tag: str, limit: int | None = None) -> None:
         own = (int(e["image_id"].split("_")[-1].split(".")[0]), authors.get(e["image_id"], ""))
         out = []
         for q in queries:
-            if (q, own) not in cache:
-                cache[(q, own)] = tool.search(q, exclude=own)
+            key = (q, own if tool.yfcc is not None else None)  # exclusions only change Flickr matches
+            if key not in cache:
+                cache[key] = tool.search(q, exclude=own)
                 n_queries += 1
-            out.append(cache[(q, own)])
+            out.append(cache[key])
         return out
 
     truth = np.asarray([e["truth"] for e in photos], np.float64)
