@@ -40,11 +40,15 @@ def norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", text).strip()
 
 
-def extract() -> None:
+ID_RANGE = (28_605, 14_068_203_844)  # min / max photoid (the table's integer primary key)
+
+
+def extract(part: int | None = None, parts: int = 16) -> None:
     from array import array
     import sqlite3
 
     con = sqlite3.connect(f"file:{YFCC / 'yfcc100m_dataset.sql'}?mode=ro", uri=True)
+    con.execute("PRAGMA mmap_size = 80000000000")  # 1 KB pages: memory-map so the OS reads ahead (plain reads ran at ~3 MB/s)
     table = con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone()[0]
     cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
     print(f"table {table}: {cols}", flush=True)
@@ -55,6 +59,10 @@ def extract() -> None:
     ids, uids, lat, lon, offsets = array("q"), array("i"), array("f"), array("f"), array("q", [0])  # compact: ~48M rows
     blob, vocab = bytearray(), {}
     query = f"SELECT {c_id}, {c_uid}, {c_lat}, {c_lon}, {c_title}, {c_tags} FROM {table} WHERE {c_lat} IS NOT NULL AND {c_lat} != ''"
+    if part is not None:  # one photoid range: parallel parts keep several reads in flight (one sequential stream is latency-bound)
+        lo = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * part // parts
+        hi = ID_RANGE[0] + (ID_RANGE[1] - ID_RANGE[0]) * (part + 1) // parts
+        query += f" AND {c_id} >= {lo} AND {c_id} < {hi}"
     for n, (pid, uid, la, lo, title, tags) in enumerate(con.execute(query)):
         try:
             la, lo = float(la), float(lo)
@@ -66,10 +74,34 @@ def extract() -> None:
         offsets.append(len(blob))
         if n % 5_000_000 == 0:
             print(f"  {n} geotagged rows", flush=True)
+    name = "geo.npz" if part is None else f"geo_part{part:02d}.npz"
+    if part is not None:
+        np.savez(YFCC / name, photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32), lat=np.frombuffer(lat, np.float32),
+                 lon=np.frombuffer(lon, np.float32), offsets=np.frombuffer(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8),
+                 vocab=np.asarray(sorted(vocab, key=vocab.get)))
+        print(f"part {part}: {len(ids)} geotagged photos -> {YFCC / name}", flush=True)
+        return
     np.savez(YFCC / "geo.npz", photo_id=np.frombuffer(ids, np.int64), uid=np.frombuffer(uids, np.int32), lat=np.frombuffer(lat, np.float32),
              lon=np.frombuffer(lon, np.float32), offsets=np.frombuffer(offsets, np.int64), blob=np.frombuffer(bytes(blob), np.uint8))
     (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
     print(f"{len(ids)} geotagged photos, {len(vocab)} users, {len(blob) / 1e9:.2f} GB of text -> {YFCC / 'geo.npz'}", flush=True)
+
+
+def merge(parts: int = 16) -> None:
+    """The parts of a parallel extract -> geo.npz + uid_vocab.json (one user vocabulary)."""
+
+    vocab: dict[str, int] = {}
+    cols = {k: [] for k in ("photo_id", "uid", "lat", "lon")}
+    blobs, offsets, total = [], [np.zeros(1, np.int64)], 0
+    for part in range(parts):
+        z = np.load(YFCC / f"geo_part{part:02d}.npz")
+        remap = np.asarray([vocab.setdefault(u, len(vocab)) for u in z["vocab"]], np.int32)
+        cols["photo_id"].append(z["photo_id"]); cols["lat"].append(z["lat"]); cols["lon"].append(z["lon"])
+        cols["uid"].append(remap[z["uid"]] if len(z["uid"]) else z["uid"])
+        blobs.append(z["blob"]); offsets.append(z["offsets"][1:] + total); total += len(z["blob"])
+    np.savez(YFCC / "geo.npz", **{k: np.concatenate(v) for k, v in cols.items()}, offsets=np.concatenate(offsets), blob=np.concatenate(blobs))
+    (YFCC / "uid_vocab.json").write_text(json.dumps(sorted(vocab, key=vocab.get)) + "\n", encoding="utf-8")
+    print(f"merged {parts} parts: {sum(len(v) for v in cols['photo_id'])} geotagged photos, {len(vocab)} users, {total / 1e9:.2f} GB of text")
 
 
 def phrases(tag: str) -> None:
@@ -211,10 +243,12 @@ def report(tag: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("node", choices=("extract", "phrases", "match", "report"))
+    parser.add_argument("node", choices=("extract", "merge", "phrases", "match", "report"))
     parser.add_argument("--tag", default="dev3k")
+    parser.add_argument("--part", type=int, default=None, help="extract: one of --parts photoid ranges (run in parallel, then merge)")
+    parser.add_argument("--parts", type=int, default=16)
     args = parser.parse_args(argv)
-    {"extract": lambda: extract(), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag)}[args.node]()
+    {"extract": lambda: extract(args.part, args.parts), "merge": lambda: merge(args.parts), "phrases": lambda: phrases(args.tag), "match": lambda: match(args.tag), "report": lambda: report(args.tag)}[args.node]()
     return 0
 
 
