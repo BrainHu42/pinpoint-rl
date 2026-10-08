@@ -704,3 +704,11 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     On the 1,003 photos Pinpoint gets right it names a city away from Pinpoint's top-1 189 times, never right: following every answer would cost
     ~-5 pts. Switching only to a pool candidate near the named city: +0.2 pts at 25 km (16 fixes / 10 breaks at "high" confidence; nearly every
     answer is "high"). Recognition triples from 9B to 27B, but precision and coverage stay far below the >= 1 pt target.
+
+60. **A specialised instance-retrieval descriptor (DINOv2-large) barely helps landmark / object identification (2026-10-08; dev3k, Pinpoint's pool;
+    `landmark_id.py rescore`, `scripts/landmark_rescore.sh`).** Lesson 58's crop search kept to SigLIP2's top 100 MP16 hits, re-scored with DINOv2-large
+    (CLS token; GeM over patch tokens; 336 px). On Pinpoint's 1,587 searched mistakes a hit within 25 km of the truth is among the top 100 for 34.2%,
+    mostly nearby photos rather than the same object. Top-1 hit right on mistakes: SigLIP 2.3%, DINOv2 CLS 3.3%, GeM 2.8% (on photos Pinpoint gets
+    right 36.8 / 39.6 / 33.1%). Best switch rule (DINOv2 CLS score >= median and 3 of its top 5 hits within 25 km): +0.2 [-0.0, +0.5] at 25 km
+    (12 fixes / 5 breaks); every other rule +0.2 or worse. No GLDv2-trained descriptor (CVNet, SuperGlobal) is on Hugging Face. With lessons 58-59,
+    the landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.

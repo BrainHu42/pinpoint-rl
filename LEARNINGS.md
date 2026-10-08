@@ -74,6 +74,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   verification prefers wrong hits (right wins 12% with RANSAC inliers). Needs real recognition, not crop retrieval.
 - 59: Qwen3.6-27B landmark naming: city right on 1.7% of Pinpoint's mistakes (9B 0.6%, user's estimate ~6% identifiable); as a pool-restricted
   switch rule +0.2 pts (16 fixes / 10 breaks). Larger open VLMs don't close the recognition gap.
+- 60: DINOv2-large re-scoring of the crop search's top 100: top-1 right on 3.3% of Pinpoint's mistakes (SigLIP 2.3%); best rule +0.2 pts.
+  The landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
