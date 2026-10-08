@@ -410,6 +410,38 @@ def tiers(url: str, workers: int, limit: int) -> None:
 
 
 RELEASE = OUT / "release"
+README = """# commons26: an image geolocation benchmark
+
+{n} photos from Wikimedia Commons, taken on or after 2026-07-01 (after the training data of current models), from {groups} uploaders in
+{countries} countries. Built by `src/geo_search_env/experiment/commons_bench.py` (pinpoint-rl).
+
+## What it fixes in im2gps3k / yfcc4k
+- Few photographers (im2gps3k: 198, error bars ~2.5x too small): at most 3 photos per uploader, >= 2 km apart; standard errors are
+  clustered by `group` (anonymised uploader).
+- Overlap with training galleries (69% of yfcc4k photographers are in MP16): every photo was taken after 2026-07-01, so it cannot be in
+  MP16, YFCC100M or OSV-5M. `mp16_cos` / `osv5m_cos` give each photo's most similar gallery photo (cosine >= 0.95: rare; >= 0.90 is
+  mostly look-alikes far away), for slicing.
+- Tune / eval leakage: `split` is by uploader (dev {dev}, test {test}); no uploader is in both.
+- Coarse labels (album tags, city-level Flickr geotags): coordinates are the camera's EXIF GPS, within 50 m of the page's camera location.
+- Dead links: images are stored here, JPEG metadata (EXIF / XMP / IPTC) stripped without re-encoding.
+- Unlocatable photos (~25% of each old set): `tier` from Qwen3.6-27B, which does not see the location: landmark {landmark}, city {city},
+  region {region}, none {none}. The headline excludes `none`. Against one blind human reader on 198 photos the tiers agree exactly on
+  57% (landmark is over-called) and on locatable vs none on 88%: use tiers as coarse slices, not as ground truth.
+- Geographic skew: continents taken in turn and no country above 15% (EU {eu}, AS {as_}, NA {na}, SA {sa}, AF {af}, OC {oc}); the score
+  also reports the mean over continents.
+- Dropped: {dropped}.
+
+## Files
+- `benchmark.csv`: IMG_ID, LAT, LON, split, tier, place_text (visible text names the place), group, country, continent, taken (date),
+  mp16_cos, osv5m_cos. No titles, captions or categories: on Commons these usually name the place.
+- `attribution.csv`: author, licence and source page of every photo (CC licences require it). Never give it to a model: the source page
+  names the place.
+- `images/<page id>.jpg`; `image_embeddings/google_siglip2-giant-opt-patch16-384/` (raw SigLIP2-giant features, as for the other benchmarks).
+
+## Rules
+- Develop on `dev`; report `test` once. Do not train on either.
+- Score: `python -m geo_search_env.experiment.commons_bench score --predictions P.csv [--split test]` (CSV with IMG_ID, LAT, LON).
+"""
 DEV_SHARE = 1000 / 5668  # ~1,000 public dev photos; the rest is the held-out test split
 
 
@@ -487,6 +519,10 @@ def release() -> None:
                                                      "embedding_dim": len(embeddings[0]), "num_samples": len(rows),
                                                      "files": {"embeddings": "embeddings.f16.bin", "image_ids": "image_ids.txt"}}, indent=2))
     count = lambda key, value: sum(row[key] == value for row in rows)
+    (RELEASE / "README.md").write_text(README.format(
+        n=len(rows), groups=len({row["group"] for row in rows}), countries=len({row["country"] for row in rows}),
+        dev=count("split", "dev"), test=count("split", "test"), **{k: count("tier", k) for k in ("landmark", "city", "region", "none")},
+        **{("as_" if k == "AS" else k.lower()): count("continent", k) for k in ("EU", "AS", "NA", "SA", "AF", "OC")}, dropped=dropped), encoding="utf-8")
     print(f"{len(rows)} photos (dropped {dropped}); dev {count('split', 'dev')}, test {count('split', 'test')}; "
           f"tiers { {k: count('tier', k) for k in ('landmark', 'city', 'region', 'none')} }; groups {len({row['group'] for row in rows})}")
 
