@@ -529,3 +529,24 @@ region; 123 right):**
   - Calibration: agreement measured +1.0 on train against +2.0 on dev3k. The judge can't be checked on train (it was trained
     there). A realistic combined gain is about +1.5 pts.
   - Confirming it would take a held-out MP16 set for the judge, or a one-time test-set run if you ask.
+
+## Extending agreement (2026-10-09): gating, coarse-to-fine, deeper votes (`area_rules.py`, `deep_votes.py`)
+
+| Variant | train (35,359) < 25 km | dev3k < 25 km | Note |
+|---|---|---|---|
+| **pool agreement at 25 km (lesson 68)** | **+1.0** [+0.7, +1.2] | **+2.0** [+1.2, +2.8] | < 1 km -0.8 / -0.7 |
+| best-in-area variant | +0.7 | +1.7 | keeps 1 km |
+| top country by mass, then agreement inside | +0.7 | +1.4 | |
+| top region by mass, then agreement inside | +0.7 | +1.1 | |
+| country -> region -> agreement | +0.5 | +0.8 | |
+| + top-100 neighbour votes (beta 1, tau 0.1, chosen on train) | +1.2 [+1.0, +1.5] | +1.3 [+0.4, +2.2] | < 1 km -2.3 / -2.8 |
+| + neighbour votes, best-in-area | +0.8 | +0.9 | |
+| agreement + clue judge, gated by area support (dev3k only) | | +2.5 [+1.7, +3.4] | ungated +2.6 |
+
+- **Reading:**
+  - Plain pool agreement at 25 km stays the best rule.
+  - Coarse-to-fine aggregation loses: grouping by region or country lets a large but wrong region win.
+  - Deeper retrieval votes add about +0.2 on train, lose on dev3k and cost 1 km accuracy. The 12 reranked candidates already
+    carry the useful agreement.
+  - Gating the clue judge by agreement confidence changes nothing.
+- **Kept:** pool agreement (support pick, or best-in-area when 1 km matters) + the read-text clue judge.
