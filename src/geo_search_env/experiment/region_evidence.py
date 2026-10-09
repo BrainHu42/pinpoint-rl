@@ -129,6 +129,7 @@ def _search_chunk(args: tuple[list[dict], dict[str, dict[str, str]], dict[str, s
 
 def search(tag: str, clues: str = "9b", workers: int = 8) -> None:
     import multiprocessing
+    import os
     import time
 
     from .yfcc_names import _mp16_authors
@@ -138,6 +139,8 @@ def search(tag: str, clues: str = "9b", workers: int = 8) -> None:
     photos = [e for e in photos if e["image_id"] in phrases]
     authors = _mp16_authors({e["image_id"] for e in photos})
     chunks = [photos[i:i + 200] for i in range(0, len(photos), 200)]
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):  # one BLAS thread per worker: clustering is 2x faster
+        os.environ.setdefault(var, "1")
     start, rows = time.time(), []
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
         for k, part in enumerate(pool.imap(_search_chunk, [(c, {e["image_id"]: phrases[e["image_id"]] for e in c}, authors) for c in chunks])):

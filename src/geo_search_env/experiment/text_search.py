@@ -63,7 +63,7 @@ PHOTO_SETS = Path("artifacts/photo_sets")
 
 CLUSTER_KM = 25.0
 MAX_MATCHES = 10_000  # matches fetched per source and query; more means the phrase is too common to place anything
-SAMPLE = 1_000  # matches clustered per source (a fixed random sample beyond that)
+SAMPLE = 500  # matches clustered per source (a fixed random sample beyond that; clustering is quadratic in it)
 TOP = 8  # clusters returned
 MIN_ACCURACY = 11  # Flickr GPS accuracy (1 world .. 16 street); below city level a photo can't place a 25 km cluster
 SECOND_LEVEL = {"co", "com", "net", "org", "gov", "ac", "edu", "ne", "or", "go", "gob", "nic", "mil"}  # co.uk, com.au, ...
@@ -353,9 +353,9 @@ class TextSearch:
             where.append("m.cc = ?")
             args.append(cc)
         if not where:
-            return [r[0] for r in con.execute(f"SELECT rowid FROM {table} WHERE {table} MATCH ? LIMIT {MAX_MATCHES}", args)]
+            return [r for (r,) in con.execute(f"SELECT rowid FROM {table} WHERE {table} MATCH ? LIMIT {MAX_MATCHES}", args).fetchall()]
         sql = f"SELECT m.rowid FROM {table} JOIN {meta} m ON m.rowid = {table}.rowid WHERE {table} MATCH ? AND {' AND '.join(where)} LIMIT {MAX_MATCHES}"
-        return [r[0] for r in con.execute(sql, args)]
+        return [r for (r,) in con.execute(sql, args).fetchall()]
 
     def _names(self, words: list[str], box: tuple | None, exclude: tuple[int, str] | None, cc: str | None = None) -> tuple[list, list, dict[str, int], bool]:
         places, photos, counts = [], [], {}
