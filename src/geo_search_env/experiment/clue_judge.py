@@ -146,15 +146,15 @@ def report(tag: str, name: str, clues: str = "9b") -> None:
     print(f"  held-out total: clue right {total[0]}, Pinpoint right {total[1]}")
 
 
-def picks(tag: str, name: str, threshold: float) -> None:
-
-    rows = [r for r in _joined(tag, name) if r["differs"] and r["p_yes"] >= threshold]
+def picks(tag: str, name: str, threshold: float, clues: str = "9b", sources: Sequence[str] = ()) -> None:
+    rows = [r for r in _joined(tag, name, clues) if r["differs"] and r["p_yes"] >= threshold and (not sources or r["source"].rsplit(" ", 1)[0] in sources)]
     best: dict[str, dict] = {}
     for r in rows:
         if r["image_id"] not in best or r["p_yes"] > best[r["image_id"]]["p_yes"]:
             best[r["image_id"]] = r
     out = {k: {"lat": r["lat"], "lon": r["lon"], "weight": r["weight"], "share": r["share"], "query": r["query"], "p_yes": r["p_yes"]} for k, r in best.items()}
-    path = OUT / f"text_search_picks_{tag}_{name}{'' if clues == '9b' else '_' + clues}_t{int(round(threshold * 100))}.json"
+    kinds = "_" + "-".join(s.replace(" ", "") for s in sources) if sources else ""
+    path = OUT / f"text_search_picks_{tag}_{name}{'' if clues == '9b' else '_' + clues}{kinds}_t{int(round(threshold * 100))}.json"
     path.write_text(json.dumps(out) + "\n", encoding="utf-8")
     print(f"{len(out)} photos with an accepted clue (P(Yes) >= {threshold}) -> {path}")
 
@@ -185,6 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--clues", default="9b", help="clue set (region_evidence --clues)")
     parser.add_argument("--out", type=Path, default=OUT / "clue_judge_sft.jsonl")
     parser.add_argument("--max-examples", type=int, default=24_000)
+    parser.add_argument("--sources", nargs="*", default=(), help="picks: only these clue kinds (text, place name, query, landmark)")
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--name", default="4b")
     parser.add_argument("--threshold", type=float, default=0.5)
@@ -194,7 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.cmd == "report":
         report(args.tag, args.name, args.clues)
     elif args.cmd == "picks":
-        picks(args.tag, args.name, args.threshold, args.clues)
+        picks(args.tag, args.name, args.threshold, args.clues, args.sources)
     else:
         sft_data(args.tag, args.clues, args.out, args.max_examples)
     return 0

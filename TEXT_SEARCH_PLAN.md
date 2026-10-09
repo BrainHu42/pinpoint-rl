@@ -282,3 +282,35 @@ it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt 
    retriever was trained on OSV-5M, so a held-out street-level set would be needed.
 3. **Look for region evidence that isn't explicit and isn't appearance:** the open research question (e.g. co-occurring map
    features near each candidate). Earlier tries (lessons 51, 55) added about 0, because they re-encoded retrieval.
+
+**Fine-tuned clue judge (2026-10-09, `clue_judge sft-data` + `sft_train`, run `clue-judge-4b`; dev3k, 4B clues):**
+- **Setup:**
+  - Train clues: the base 4B read text / place names and wrote search queries for the 35,359 train photos (169,734 clues).
+  - Searched (`region_evidence --clues 4b`), keeping the 60,617 specific clues; 17,036 point within 25 km of the truth.
+  - LoRA SFT of the 4B on 30,000 of them (natural 28% Yes; target Yes = the clue's top place < 25 km from the photo's GPS),
+    1 epoch, eval loss 0.18 -> 0.12.
+- **Ceilings with a perfect judge (clue's own coordinate):** all clues 87 fixes (+2.9 pts), read text + place names 52 (+1.7),
+  text 43 (+1.4), recalled queries 59 (+2.0).
+- **Region pairs that differ from Pinpoint's, threshold chosen on one half and counted on the other (clue right / Pinpoint right):**
+
+| Clues | Zero-shot 4B | Fine-tuned 4B |
+|---|---|---|
+| all | 14 / 7 | 15 / 19 |
+| read (text + place name) | 15 / 15 | 20 / 11 |
+| text only | 11 / 2 | **19 / 8** (at P(Yes) >= 0.8: 15 / 1, zero-shot 5 / 1) |
+| queries only | 8 / 4 | 10 / 9 |
+
+- **End to end** (Pinpoint 33.4%; source and threshold chosen on dev3k, so optimistic):
+
+| Rule | Switched | Change < 25 km | Fixes / breaks |
+|---|---|---|---|
+| text, P(Yes) >= 0.5, clue's coordinate | 40 | **+0.5** [+0.2, +0.9] | 21 / 5 |
+| text, P(Yes) >= 0.8, clue's coordinate | 18 | +0.4 [+0.2, +0.7] | 14 / 1 |
+| text + place names, >= 0.8, clue's coordinate | 31 | +0.5 [+0.2, +0.8] | 18 / 3 |
+| text, >= 0.5, Pinpoint restricted to the clue's region | 37 | +0.4 | 16 / 4 |
+
+- **Reading:**
+  - Fine-tuning helps on read text: about half the text ceiling (21 of 43) with few breaks, against about a third zero-shot.
+  - It doesn't help on recalled names. The target ("is the clue's place right?") isn't conditioned on disagreeing with Pinpoint,
+    so the judge learns "recognisable place", which is right mostly where Pinpoint is right.
+  - The best rule is +0.5 pts, still below the 1-pt bar. The read-clue ceiling itself is only +1.7.
