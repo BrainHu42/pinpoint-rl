@@ -158,3 +158,30 @@ and as the "is it just a better reranker?" control.
   - **Gallery density (the popularity correction) wasn't selected.**
   - **Prior work is weaker on our hypotheses:** the PIGEON-style fixed product gets +0.8 and kNN density -1.0.
   - The oracle (46-48%) leaves a lot for a learned comparator (E3).
+
+## E3 results: learned comparator (2026-10-09; `hypothesis_learn.py`)
+- **Model:** a DeepSets-style scorer over a photo's (up to 5) Pinpoint-area hypotheses: per-hypothesis MLP + the mean of the photo's
+  hypothesis embeddings. Listwise loss towards hypotheses whose restricted top-1 is < 25 km (GPS only).
+- **Features:** restricted score mass, restricted top-1 / top-3, pool support, rank, distinct photographers, restricted candidate
+  count, gallery density, and relative-to-photo-max versions.
+- **Evaluation:** 5-fold cross-validation over train photos; trained on all of train for dev3k (3 seeds).
+
+| | train, 5-fold CV (35,359) | dev3k (trained on train) |
+|---|---|---|
+| Pinpoint + agreement (reference) | +1.0 [+0.7, +1.2] | +2.0 [+1.2, +2.8] |
+| E2 hand comparator | +1.6 [+1.3, +1.9] | +2.2 [+1.3, +3.1] |
+| **E3 learned comparator** | **+2.1** [+1.9, +2.4] (1,530 fixes / 775 breaks); < 1 km +0.4 | **+2.6 / +2.8 / +2.7** (seeds); < 1 km +0.3-0.5 |
+| without distinct photographers | +1.4 | +1.6 |
+| without pool support | +1.9 | +2.7 |
+| without score mass | +2.0 | +2.6 |
+| without gallery density | +1.9 | +2.2 |
+
+- **Reading:**
+  - On 35k held-out train photos the learned comparator adds **+1.1 pts beyond Pinpoint + agreement** and +0.5 beyond the hand
+    comparator, and it no longer costs 1 km accuracy (+0.4).
+  - On dev3k it's +0.7 beyond agreement (+2.7 vs +2.0). dev3k's agreement figure is high relative to train (lesson 68), so the
+    35k cross-validation is the more reliable estimate.
+  - **Distinct photographers matters most** (-0.7 without it), then gallery density (-0.2 to -0.5) and pool support.
+  - The oracle (46-48%) is still far above (34.5-36%).
+- **Still to do for E3:** the set-aware Pinpoint reranker ablation (Pinpoint retrained with attention across candidates;
+  pinpoint-yogi), to separate "hypothesis testing" from "joint scoring of the pool".
