@@ -779,3 +779,18 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       restricted to the clue's region +0.1 (7 / 4); at >= 0.5 -0.1 to -0.3.
     - Judging clues by looking at the photo is the right mechanism, but right clues are few: text search with these readers and offline sources
       is worth about +0.3 pts on dev3k (ceiling +2.7), not enough to carry the agent. Named places are better answered by their own coordinate.
+
+66. **A fine-tuned clue judge lifts read-text clues to +0.7 pts, then stalls (2026-10-09; dev3k, 4B clues; `clue_judge.py sft-data / combine`,
+    `sft_train`, runs `clue-judge-4b`, `clue-judge-vs-4b`, `clue-judge-vs-all-4b`).** Clues from the base 4B (read text, read place names,
+    search queries) for the 35,359 train photos (169,734 clues; 60,617 specific), searched with `text_search`; labels from GPS only (the
+    clue's top place < 25 km from the truth). Perfect-judge ceilings (clue's own coordinate): all clues +2.9 pts, read clues +1.7,
+    recalled queries +2.0.
+    - Judge on all specific clues (30k rows, natural 28% Yes): held-out precision on read clues 20 / 11 (clue right / Pinpoint right,
+      where they disagree; zero-shot 15 / 15); end to end, text clues +0.5 [+0.2, +0.9] (21 fixes / 5 breaks). Recalled names no better:
+      the target taught "recognisable place", right mostly where Pinpoint is right.
+    - Judge trained only on clues disagreeing with Pinpoint, with Pinpoint's region in the prompt: read clues 26 / 11, end to end +0.6
+      [+0.3, +1.0] (23 / 4).
+    - With 35k extra photos from MP16 buckets 0-98 (2x the positives): read clues 27 / 12, end to end +0.7 [+0.4, +1.1] (25 / 4).
+    - Recalled names lose with every judge (best 10 / 9). Thresholds and clue type were chosen on dev3k, so the +0.6-0.7 is slightly
+      optimistic. Fine-tuning roughly doubles the zero-shot gain on read text (about half the read ceiling), but more data and the
+      decision-conditioned target add only ~0.1 each: the clues, not the judge, are the limit. Text search tops out near +0.7 pts.

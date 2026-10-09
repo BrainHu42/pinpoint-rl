@@ -85,6 +85,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   pool oracle (50.3%): a clue only has to name the region. Target design: the agent calls Pinpoint as a tool, restricted to where clues point.
 - 65: text search (GeoNames, Overture, YFCC; `text_search.py`) gives the right region where Pinpoint's is wrong on only ~150 dev3k photos and
   loses 1:18 on disagreements; a 4B judge looking at the photo flips accepted clues to 14:6, but end to end only +0.3 pts.
+- 66: a fine-tuned 4B clue judge (GPS labels, train clues; then disagreement-only; then +35k photos from buckets 0-98) lifts read-text clues
+  to +0.5 / +0.6 / +0.7 pts on dev3k (25 fixes / 4 breaks at best); recalled landmark names stay unsolved; ceiling +1.7 for read clues.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

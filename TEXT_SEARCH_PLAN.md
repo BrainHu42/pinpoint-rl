@@ -332,3 +332,20 @@ it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt 
   - So: **more data**, not the 9B. 35k extra photos from MP16 buckets 0-98 (`pinpoint_reference extra`; no benchmark or dev
     photographers, no near-duplicates of benchmark photos), 4B clues, searched, `--vs` rows, then retrain the 4B on both sets.
   - Caveat: Pinpoint trained on buckets 0-98, so its answers there are better (the judge sees Pinpoint right more often).
+
+**More data (35k extra photos from MP16 buckets 0-98; run `clue-judge-vs-all-4b`, 2026-10-09):**
+- **Data:** the extra photos gave 39,390 disagreeing specific clues (1,857 right, 4.7%; Pinpoint is right more often on its own
+  training buckets). Combined with bucket 99: 64,000 rows, every Yes kept (about 4,100 distinct right clues, 2x before),
+  60,109 training rows, 1 epoch.
+- **Held-out precision** (clue right / Pinpoint right): read clues 27 / 12 (before 26 / 11); text only 23 / 6 (21 / 4);
+  recalled names 8 / 18.
+- **End to end, read clues at P(Yes) >= 0.5, the clue's own coordinate:** **+0.7 pts** [+0.4, +1.1] (45 switched, 25 fixes /
+  4 breaks); at >= 0.7: +0.6 (21 / 3). Pinpoint restricted to the clue's region: +0.4.
+- **Stopping here:**
+  - Doubling the positive examples moved the result by about +0.1 (25 vs 23 fixes), within noise.
+  - Recalled names stay unsolved with every judge.
+  - The read-clue ceiling is +1.7, and the judges recover about half of it.
+  - A 9B is unlikely to change this: zero-shot it was no better, and more data barely helped, which points at the clues rather
+    than the judge.
+- **Text-search line, final:** about +0.6 to +0.7 pts on dev3k (read clues, the clue's coordinate, few breaks), below the
+  1-pt bar.
