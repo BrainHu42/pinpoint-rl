@@ -415,3 +415,32 @@ region; 123 right):**
     aren't confirmed by retrieval or exemplars.
   - The exemplar check is weak: similarity is what retrieval already uses.
   - Text search stays at about +0.7 pts.
+
+**Missing clue types (2026-10-09; dev3k, Pinpoint's 1,997 mistakes):**
+- **Typed survey (`clue_survey.py`, base 4B):** for each clue type, the photos where it's reported; the country it implies,
+  right vs Pinpoint's country right; and the region it implies that is right where Pinpoint's region is wrong:
+
+| Clue type | Reported | Country right / Pinpoint's right | Region right & Pinpoint wrong |
+|---|---|---|---|
+| flag | 74 | 32 / 53 | 1 |
+| regional / bilingual language | 49 | 24 / 31 | 5 |
+| local-authority name | 44 | 29 / 31 | 9 |
+| road number / km marker | 5 | 2 / 5 | 0 |
+| distance sign | 2 | 1 / 2 | 0 |
+| postcode | 4 | 2 / 3 | 1 |
+| phone area code | 6 | 3 / 6 | 2 |
+| currency / units | 18 | 8 / 11 | 1 |
+| regional chain | 27 | 13 / 16 | 2 |
+
+- **Chain footprints (`chain_footprint.py`):**
+  - Clue n-grams matched 444 Overture brands (>= 20 stores), almost all generic words that happen to be brand names
+    ("arena", "national", "garage").
+  - Possible fixes (footprint keeps the true region and excludes Pinpoint's): 22, against 23 with shuffled clues.
+  - Exact brand clues with concentrated footprints: 1-2 fixes against 9-19 breaks. Overture's brand coverage is also uneven:
+    global brands like IKEA show narrow footprints.
+  - No regional chains (Wawa, Mercadona…) show up in these photos.
+- **Reading:**
+  - Every missing clue type is rare in Pinpoint's mistakes; flags are the most common, at 3.7%.
+  - Where present, the implied place is right less often than Pinpoint.
+  - In total about 20 region fixes at best (+0.7 pts ceiling, before any selection).
+  - The clue inventory isn't the gap: personal Flickr photos simply carry few explicit clues.
