@@ -444,3 +444,37 @@ region; 123 right):**
   - Where present, the implied place is right less often than Pinpoint.
   - In total about 20 region fixes at best (+0.7 pts ceiling, before any selection).
   - The clue inventory isn't the gap: personal Flickr photos simply carry few explicit clues.
+
+## Locatability ceiling (2026-10-09; `scripts/locatability_score.py`, labels in `artifacts/agent/locatability_dev3k.json`)
+- **Setup:** a blind by-eye pass over 120 random dev3k photos (seed 42), made without seeing the truth or Pinpoint's answer.
+  Each photo gets the finest level its content supports and a guess:
+  - P: a specific place (landmark, legible place text);
+  - C: city; R: region; N: country; K: continent / broad;
+  - X: nothing place-specific.
+- **Results** (counts within 25 km):
+
+| Tier | Photos | Blind guess | Pinpoint | Oracle over Pinpoint's pool | Pinpoint restricted to the true region |
+|---|---|---|---|---|---|
+| P (specific place) | 17 (14%) | 15 | 13 | 13 | 15 |
+| C (city) | 9 (8%) | 9 | 8 | 8 | 8 |
+| R (region) | 7 (6%) | 2 | 2 | 3 | 2 |
+| N (country) | 16 (13%) | 4 | 8 | 12 | 9 |
+| K (continent) | 15 (12%) | 3 | 5 | 10 | 10 |
+| X (nothing place-specific) | 56 (47%) | 0 | 8 | 16 | 30 |
+| **all** | 120 | **33 (28%)** | **44 (37%)** | 62 (52%) | 74 (62%) |
+
+- **Combined:** blind or Pinpoint right on 50 (42%). Blind right where Pinpoint is wrong: 6 (5%); the reverse: 17.
+- **Reading:**
+  - **Nearly half the photos (47%) carry nothing place-specific:** food, pets, flowers, interiors, concerts, close-ups. No clue
+    reader can locate them. Retrieval still gets 8 of 56 (the same scene photographed by others), and 30 if the true region
+    were known. That region knowledge isn't in the image, so it's out of reach without outside context.
+  - **Content-locatable photos (P + C, 22%) are already mostly solved:** Pinpoint 21 of 26, the blind reader 24 of 26.
+  - **The middle tiers (R / N / K, 32%) are where an expert knows the country or region but not the spot.** There, retrieval
+    inside the right area is the lever, and Pinpoint's pool oracle shows the candidates often exist.
+  - **Estimated ceiling from image content plus today's retrieval: about 42-48% within 25 km** (Pinpoint 37% on this sample,
+    33.4% on all of dev3k). That's roughly +5-10 pts of headroom, most of it from reading region-level evidence well. The
+    remaining ~50% would need information the photo doesn't contain.
+- **Caveats:**
+  - One reader (the assistant), who guessed coarse coordinates (country-level guesses rarely land within 25 km).
+  - 120 photos, so about ±4 pts.
+  - A practised GeoGuessr player might do better on the N / K tiers.
