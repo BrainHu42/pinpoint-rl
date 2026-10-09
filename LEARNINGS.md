@@ -14,7 +14,7 @@ exactly): top-1 **17.5 / 37.2** on the full eval halves (MP16 dev 16.0 / 33.9), 
 pool we choose from. In lessons 1-53 and the numbers below, "the reranker" is our earlier one-step reranker (an MLP over 17 hand-made
 features, top-1 16.7 / 38.2) over our ~17-candidate pool (oracle 33.4 / 59.0); gains quoted against it need re-measuring against Pinpoint.
 
-**Where we are (2026-10-04).** Against Pinpoint's reranker top-1, the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
+**Where we are (2026-10-04).** Against the one-step reranker's top-1 (before lesson 54; never re-measured against Pinpoint), the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
 from a fine-tuned 4B comparator (query photo + exemplar photo of a candidate -> same place?) combined with the reranker's rank (lessons 24, 29, 40, 41).
 On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing fitted on them:
 
