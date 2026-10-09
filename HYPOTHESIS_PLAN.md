@@ -185,3 +185,25 @@ and as the "is it just a better reranker?" control.
   - The oracle (46-48%) is still far above (34.5-36%).
 - **Still to do for E3:** the set-aware Pinpoint reranker ablation (Pinpoint retrained with attention across candidates;
   pinpoint-yogi), to separate "hypothesis testing" from "joint scoring of the pool".
+
+## E4 results: clue hypotheses and clue features (2026-10-09)
+- **Clue evidence without leakage:** the **zero-shot** 4B judge (`clue_judge`, base model) on all 60,617 train and 5,163 dev3k specific
+  clues. The fine-tuned judge was trained on train clues, so it can't be used there.
+- **Clue hypotheses:** read-text clues with P(Yes) >= 0.5 more than 25 km from every Pinpoint area, up to 2 per photo, searched with
+  restricted retrieval. 589 on train (536 photos), 42 on dev3k.
+- **Clue features per hypothesis,** separately for read-text and recalled-name clues whose place is within 25 km of the hypothesis:
+  count, max P(Yes), max cluster share, rarity.
+
+| | train, 5-fold CV | dev3k (trained on train; 3 seeds) |
+|---|---|---|
+| Pinpoint + agreement | +1.0 | +2.0 |
+| E3 (Pinpoint areas, no clues) | +2.1 [+1.9, +2.4] | +2.6 / +2.8 / +2.7 |
+| E4 without clue features (clue hypotheses only) | +2.2 [+2.0, +2.5] | +3.0 |
+| **E4 (clue hypotheses + clue features)** | **+2.5** [+2.2, +2.8] (1,715 fixes / 839 breaks); < 1 km +0.4 | **+3.2 / +3.6 / +3.1**; < 1 km +0.5-0.7 |
+
+- **Reading:**
+  - Clues add +0.4 on train and about +0.5 on dev3k over E3.
+  - The full system is now **+1.5 pts beyond Pinpoint + agreement on 35k held-out train photos** and +1.3 on dev3k: the >= 1 pt bar
+    holds on both.
+  - Against Pinpoint alone: +2.5 (train CV) and about +3.3 (dev3k), i.e. 32.4 -> 34.8% and 33.4 -> 36.8% < 25 km.
+  - The oracle (46-48%) still leaves room; E5 (the agent choosing which hypotheses to test) is next.

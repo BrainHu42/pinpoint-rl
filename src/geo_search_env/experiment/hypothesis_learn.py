@@ -3,6 +3,7 @@
 # photo's hypothesis embeddings) scores the hypotheses jointly; listwise softmax loss towards the hypotheses whose restricted top-1 is < 25 km
 # from the truth (GPS labels only). 5-fold CV on train (35k bucket-99 photos), then trained on all of train and applied to dev3k. dev sets only.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.hypothesis_learn --ablate photographers support
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.hypothesis_learn --e4 --ablate clues        (E4)
 
 """Features per hypothesis: log score mass at T 0.1 / 0.2 / 0.5, restricted top-1 and top-3 scores, log pool support, area rank (one-hot),
 log distinct photographers, log restricted candidates, log gallery density, and each of the main ones minus the photo's maximum (relative).
@@ -19,12 +20,14 @@ import numpy as np
 
 OUT = Path("artifacts/agent")
 FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypothesis_features_dev3k_clues.npz"}
-GROUPS = {"mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
+CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
+GROUPS = {"clues": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
-def _matrix(f: dict, drop: Sequence[str]) -> tuple[np.ndarray, list[np.ndarray]]:
-    keep = f["source"] == 0
+def _matrix(f: dict, drop: Sequence[str], e4: bool = False) -> tuple[np.ndarray, list[np.ndarray]]:
+    keep = np.ones(len(f["source"]), bool) if e4 else f["source"] == 0
     photo = f["photo"][keep]
     lg = lambda x: np.log(np.maximum(x, 1e-12))
     cols, names = [], []
@@ -42,6 +45,10 @@ def _matrix(f: dict, drop: Sequence[str]) -> tuple[np.ndarray, list[np.ndarray]]
                 mx = np.full(int(photo.max()) + 1, -np.inf)
                 np.maximum.at(mx, photo, x)
                 cols.append(x - mx[photo])
+    if e4:
+        cols.append((f["source"][keep] == 1).astype(float))
+        if "clues" not in drop:
+            cols += [np.log1p(f[k][keep]) if k.endswith("_n") else f[k][keep] for k in CLUE_KEYS]
     X = np.stack(cols, 1)
     groups = [np.flatnonzero(photo == p) for p in range(len(f["base_km"]))]
     return X, groups
@@ -113,10 +120,10 @@ def _predict(model, mu, sd, X, groups, photos) -> dict[int, int]:
     return out
 
 
-def _evaluate(name: str, f: dict, groups, picks: dict[int, int]) -> None:
+def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = False) -> None:
     from .strategy_search import _bootstrap
 
-    keep = np.flatnonzero(f["source"] == 0)
+    keep = np.arange(len(f["source"])) if e4 else np.flatnonzero(f["source"] == 0)
     km = f["km"][keep]
     base = f["base_km"]
     chosen25 = np.asarray([km[picks[p]] < 25 if p in picks else base[p] < 25 for p in range(len(base))], float)
@@ -130,14 +137,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ablate", nargs="*", default=(), help="feature groups to drop in extra runs: " + ", ".join(GROUPS))
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument("--e4", action="store_true", help="Pinpoint areas + clue hypotheses + clue features (ablation group: clues)")
     args = parser.parse_args(argv)
-    tr, dv = dict(np.load(FEATURES["train"])), dict(np.load(FEATURES["dev3k"]))
+    paths = FEATURES_E4 if args.e4 else FEATURES
+    tr, dv = dict(np.load(paths["train"])), dict(np.load(paths["dev3k"]))
     print(f"train: {len(tr['base_km'])} photos, Pinpoint < 25 km {np.mean(tr['base_km'] < 25):.1%} (agreement +1.0, hand comparator +1.6); "
           f"dev3k: Pinpoint {np.mean(dv['base_km'] < 25):.1%} (agreement +2.0, hand comparator +2.2)")
     for drop in [()] + [(g,) for g in args.ablate]:
-        Xt, gt = _matrix(tr, drop)
-        Xd, gd = _matrix(dv, drop)
-        okt = tr["km"][tr["source"] == 0] < 25
+        Xt, gt = _matrix(tr, drop, args.e4)
+        Xd, gd = _matrix(dv, drop, args.e4)
+        okt = (tr["km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
         label = "all features" if not drop else f"without {drop[0]}"
         # 5-fold CV on train (held-out photos), seed-averaged by voting the first seed's picks (seeds vary the init only)
         folds = np.random.default_rng(0).permutation(len(gt)) % 5
@@ -147,10 +156,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             model, mu, sd = _fit(Xt, gt, okt, fit, seed=k)
             cv |= _predict(model, mu, sd, Xt, gt, held)
         print(f" {label}")
-        _evaluate("train, 5-fold cross-validation", tr, gt, cv)
+        _evaluate("train, 5-fold cross-validation", tr, gt, cv, args.e4)
         for seed in range(args.seeds if not drop else 1):
             model, mu, sd = _fit(Xt, gt, okt, np.arange(len(gt)), seed=seed)
-            _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, _predict(model, mu, sd, Xd, gd, np.arange(len(gd))))
+            _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, _predict(model, mu, sd, Xd, gd, np.arange(len(gd))), args.e4)
     return 0
 
 

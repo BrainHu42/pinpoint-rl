@@ -4,6 +4,7 @@
 # < 25 km from the truth (K = 1..5), against Pinpoint, agreement and the pool oracle? dev sets only.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.hypotheses run --tag dev3k [--k 5] [--clues]   (GPU, one index pass)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.hypotheses oracle --tag dev3k
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.hypotheses clue-hyps --tag train --judge 4b   (E4: clue places, GPU)
 
 """run:    hypotheses and their restricted results -> artifacts/agent/hypotheses_{tag}.npz: per (photo, hypothesis) the photo position, source
         (0 Pinpoint area, 1 clue), area rank, centre, area support, restricted candidates (lat / lon, reranker scores, 9 retrieval features,
@@ -76,6 +77,55 @@ def run(tag: str, k: int, clues: bool) -> None:
     oracle(tag, clues)
 
 
+def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: int = 2) -> None:
+    """E4: places of read-text clues the (zero-shot) judge accepts, more than BOX_KM from every Pinpoint-area hypothesis of the photo, searched
+    with Pinpoint restricted to a box around them -> artifacts/agent/hypotheses_{tag}_cluehyps.npz (same format, source 1)."""
+
+    from ..models.pinpoint_reranker import PinpointReranker
+    from .clue_judge import _judge_path, _items
+    from .strategy_search import _haversine_km, load_world
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    areas_npz = dict(np.load(OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"))
+    centres: dict[int, list] = {}
+    for ph, src, c in zip(areas_npz["photo"], areas_npz["source"], areas_npz["center"]):
+        if src == 0:
+            centres.setdefault(int(ph), []).append(c)
+    p_yes = {(r["image_id"], r["query"]): r["p_yes"] for r in json.loads(_judge_path(tag, judge, "4b").read_text(encoding="utf-8"))}
+    position = {e["image_id"]: i for i, e in enumerate(photos)}
+    cands: dict[int, list] = {}
+    for r in _items(tag, "4b"):
+        if r["source"].startswith("query") or p_yes.get((r["image_id"], r["query"]), 0) < min_p:
+            continue
+        ph = position[r["image_id"]]
+        here = np.asarray(centres.get(ph, []), np.float64).reshape(-1, 2)
+        if len(here) and (_haversine_km(r["lat"], r["lon"], here) < BOX_KM).any():
+            continue
+        cands.setdefault(ph, []).append((p_yes[(r["image_id"], r["query"])], r["lat"], r["lon"]))
+    hyps = []
+    for ph, lst in cands.items():
+        kept = []
+        for pr, la, lo in sorted(lst, reverse=True):
+            if all(_haversine_km(la, lo, np.asarray([[a, b]]))[0] >= BOX_KM for _, a, b in kept):
+                kept.append((pr, la, lo))
+        hyps += [{"photo": ph, "source": 1, "rank": k, "support": pr, "center": [la, lo]} for k, (pr, la, lo) in enumerate(kept[:per_photo])]
+    print(f"{tag}: {len(hyps)} clue hypotheses on {len(cands)} photos (judge {judge}, P(Yes) >= {min_p})", flush=True)
+    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
+    world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
+    reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    pidx = np.asarray([h["photo"] for h in hyps])
+    centre = np.asarray([h["center"] for h in hyps], np.float64)
+    dlat = BOX_KM / 111.0
+    dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
+    box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
+    found = reranker.rank(world.query_embeddings[pidx], query_author=world.query_author[pidx], index_author=world.mp16["author"][reranker.cache_indices],
+                          query_box=box)
+    np.savez(OUT / f"hypotheses_{tag}_cluehyps.npz", photo=pidx, source=np.ones(len(hyps), int), rank=np.asarray([h["rank"] for h in hyps]),
+             support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
+             rows=found.rows)
+    print(f"-> {OUT / f'hypotheses_{tag}_cluehyps.npz'}", flush=True)
+
+
 def oracle(tag: str, clues: bool = False) -> None:
     from .pinpoint_tool import pick
     from .pinpoint_reference import load_pools
@@ -114,12 +164,18 @@ def oracle(tag: str, clues: bool = False) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("run", "oracle"))
+    parser.add_argument("cmd", choices=("run", "oracle", "clue-hyps"))
+    parser.add_argument("--judge", default="4b", help="clue-hyps: clue_judge run whose P(Yes) accepts clues (zero-shot 4b: no train leakage)")
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--clues", action="store_true")
     args = parser.parse_args(argv)
-    run(args.tag, args.k, args.clues) if args.cmd == "run" else oracle(args.tag, args.clues)
+    if args.cmd == "run":
+        run(args.tag, args.k, args.clues)
+    elif args.cmd == "clue-hyps":
+        clue_hypotheses(args.tag, args.judge)
+    else:
+        oracle(args.tag, args.clues)
     return 0
 
 

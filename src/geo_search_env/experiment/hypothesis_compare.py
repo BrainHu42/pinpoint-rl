@@ -54,7 +54,47 @@ def _paths(tag: str, clues: bool) -> tuple[Path, Path]:
     return OUT / f"hypotheses_{tag}{s}.npz", OUT / f"hypothesis_features_{tag}{s}.npz"
 
 
-def features(tag: str, clues: bool) -> None:
+def _merge_clue_hyps(tag: str) -> dict:
+    """Pinpoint-area hypotheses (hypotheses_{tag}.npz, source 0 only) + E4 clue hypotheses (hypotheses_{tag}_cluehyps.npz)."""
+
+    a = dict(np.load(OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"))
+    keep = a["source"] == 0
+    a = {k: v[keep] for k, v in a.items()}
+    path = OUT / f"hypotheses_{tag}_cluehyps.npz"
+    if not path.exists():
+        return a
+    b = dict(np.load(path))
+    return {k: np.concatenate([a[k], b[k]]) for k in a}
+
+
+def _clue_features(tag: str, z: dict, judge: str = "4b") -> dict:
+    """Per hypothesis: read-text / recalled clues of the photo whose top place is within BOX_KM of the hypothesis centre: count, max judge
+    P(Yes), max cluster share, fewest matches (log)."""
+
+    from .clue_judge import _judge_path, _items
+    from .strategy_search import _haversine_km
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    position = {e["image_id"]: i for i, e in enumerate(photos)}
+    p_yes = {(r["image_id"], r["query"]): r["p_yes"] for r in json.loads(_judge_path(tag, judge, "4b").read_text(encoding="utf-8"))}
+    by_photo: dict[int, list] = {}
+    for r in _items(tag, "4b"):
+        by_photo.setdefault(position[r["image_id"]], []).append(
+            (0 if r["source"].startswith("query") else 1, r["lat"], r["lon"], p_yes.get((r["image_id"], r["query"]), 0.0), r["share"], r["matches"]))
+    out = {f"{kind}_{stat}": np.zeros(len(z["photo"])) for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")}
+    for i, (ph, c) in enumerate(zip(z["photo"], z["center"])):
+        for kind_id, la, lo, p, share, matches in by_photo.get(int(ph), []):
+            if _haversine_km(c[0], c[1], np.asarray([[la, lo]]))[0] >= BOX_KM:
+                continue
+            kind = "read" if kind_id else "recall"
+            out[f"{kind}_n"][i] += 1
+            out[f"{kind}_p"][i] = max(out[f"{kind}_p"][i], p)
+            out[f"{kind}_share"][i] = max(out[f"{kind}_share"][i], share)
+            out[f"{kind}_rare"][i] = max(out[f"{kind}_rare"][i], 1.0 / np.log(2 + matches))
+    return out
+
+
+def features(tag: str, clues: bool, e4: bool = False) -> None:
     from scipy.spatial import cKDTree
 
     from ..models.pinpoint_reranker import _discover_index, _unit_xyz
@@ -62,6 +102,9 @@ def features(tag: str, clues: bool) -> None:
 
     src, dst = _paths(tag, clues)
     z = dict(np.load(src))
+    if e4:
+        z = _merge_clue_hyps(tag)
+        dst = OUT / f"hypothesis_features_{tag}_e4.npz"
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     truth = np.asarray([e["truth"] for e in photos], np.float64)
     index_dir = _discover_index()
@@ -87,6 +130,8 @@ def features(tag: str, clues: bool) -> None:
             km[i] = _haversine_km(*truth[z["photo"][i]], z["latlon"][i, :1].astype(np.float64))[0]
     f["km"] = km
     f["base_km"] = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] for e in photos])
+    if e4:
+        f |= _clue_features(tag, z)
     np.savez(dst, **f)
     print(f"{n} hypotheses for {len(photos)} photos -> {dst}")
 
@@ -141,8 +186,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("cmd", choices=("features", "report"))
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--clues", action="store_true")
+    parser.add_argument("--e4", action="store_true", help="features: Pinpoint areas + clue hypotheses + clue features -> hypothesis_features_{tag}_e4.npz")
     args = parser.parse_args(argv)
-    features(args.tag, args.clues) if args.cmd == "features" else report(args.tag, args.clues)
+    features(args.tag, args.clues, args.e4) if args.cmd == "features" else report(args.tag, args.clues)
     return 0
 
 
