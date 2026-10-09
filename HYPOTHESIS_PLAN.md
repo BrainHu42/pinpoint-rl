@@ -91,3 +91,38 @@ and as the "is it just a better reranker?" control.
 - **Cost:** restricted retrieval per hypothesis is one index pass per batch of (photo, hypothesis) pairs. Fine offline; for the agent,
   cache or use a box index.
 - **Novelty:** depends on E0.
+
+## E0: literature check (2026-10-09; arXiv abstracts and pages, some papers only partly read, Semantic Scholar rate-limited)
+**Already done (cite and differentiate):**
+- **Density of retrieved neighbours as evidence:** Im2GPS (Hays & Efros 2008, mean-shift over kNN); Revisiting IM2GPS (Vo, Jacobs &
+  Hays, ICCV 2017, kernel density over kNN). Lesson 68's agreement is this idea applied to a learned reranker's pool.
+- **Retrieval restricted to predicted areas:**
+  - Kordopatis-Zilos et al. (ICMR 2021) search within one predicted cell and cluster spatially.
+  - **PIGEON / PIGEOTTO** (CVPR 2024) take the top-K geocells, cluster training locations inside each, pick the best cluster per cell
+    by embedding distance and combine with a fixed product of softmax x geocell probability. This is the closest prior work to steps
+    1-3, but the comparison is fixed, and there is no photographer, popularity or clue evidence.
+- **Retrieval-augmented VLMs scoring candidates one at a time:**
+  - Img2Loc (SIGIR 2024) and G3 (NeurIPS 2024).
+  - **GeoRanker** (arXiv 2505.13731, 2025): VLM value head, one (query, candidate) forward pass per candidate, listwise loss in
+    training but pointwise at inference, no agreement across candidates.
+- **RL / tool agents that verify hypotheses:**
+  - **Thinking with Map** (arXiv 2601.05432, 2026): GRPO, map / POI tools, parallel trajectories + verifier.
+  - **GeoVista** (2511.15705): zoom + web search, SFT + RL.
+  - **LocationAgent** (2601.19155): explicit hypothesis-verification cycles, zero-shot.
+  - GEO-Detective, GeoSearch, GeoBrowse, GeoAgent: web or Street View tools.
+  - None of them uses region-restricted retrieval over a geotagged gallery.
+
+**What looks novel (no prior work found):**
+1. A **learned set-level comparator across area hypotheses** using evidence from restricted retrieval: match mass, distinct
+   photographers, popularity correction, clue support.
+2. Text-read and recalled hypotheses tested by restricted image retrieval.
+3. An **RL agent whose tool is region-restricted gallery retrieval**, choosing which hypotheses to test and when to commit.
+4. The diagnosis that strong pointwise rerankers (Pinpoint, GeoRanker) discard set-level evidence, shown on top of a learned reranker.
+
+**Implications for the paper:**
+- PIGEON is the baseline the comparator must beat. Reproduce its fixed combination on our hypotheses: per hypothesis, the best
+  restricted cluster's similarity x the hypothesis prior.
+- The novelty claim rests on the learned evidence comparison (E2-E3) and the agent (E5), not on restricted search itself.
+- The hypothesis-testing framing must be distinguished from LocationAgent (theirs: web and map clues, zero-shot; ours: gallery
+  retrieval inside hypotheses, trained).
+- Next comparator baselines: PIGEON-style product, Vo et al. KDE, Pinpoint + agreement.
