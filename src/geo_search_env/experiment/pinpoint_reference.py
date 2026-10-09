@@ -1,5 +1,5 @@
 # The reference to beat: Pinpoint's attention reranker (its released final model), and its candidate pool, which is the pool every
-# experiment chooses from. Usage: .venv/bin/python -m geo_search_env.experiment.pinpoint_reference {bench,mp16,report} [--root artifacts/pinpoint_reference]
+# experiment chooses from. Usage: .venv/bin/python -m geo_search_env.experiment.pinpoint_reference {bench,mp16,extra,report} [--root artifacts/pinpoint_reference]
 
 """Cache Pinpoint's reranked candidate pool for every benchmark photo and every MP16 query, and report its accuracy.
 
@@ -94,6 +94,48 @@ def mp16(root: Path) -> None:
     _rank(load_world(mp16_queries=queries), root, "mp16")
 
 
+def extra(root: Path, n: int = 35_000, seed: int = 1) -> None:
+    """More training photos for the clue judge (user, 2026-10-09: the other MP16 buckets): n photos from buckets 0-98 (which Pinpoint trained
+    on), with the query pool's rules (sft_data.pool): no benchmark photographers, no dev photographers (the val author buckets), no near-duplicates
+    of benchmark photos, and none of the queries already in artifacts/sft/queries.json. Saves artifacts/sft/queries_extra.json and Pinpoint's
+    pools for them as mp16_extra (load_pools("mp16_extra"))."""
+
+    import torch
+    import torch.nn.functional as F
+
+    from .sft_data import HELD_OUT_BUCKET, NEAR_DUPLICATE_SIM, VAL_AUTHOR_BUCKETS, _md5_bucket
+
+    world = load_world()
+    image_ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    author_names = np.empty(len(world.vocab["author"]), dtype=object)
+    for name, index in world.vocab["author"].items():
+        author_names[index] = name
+    used = {q["row"] for q in json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))}
+    rng = np.random.default_rng(seed)
+    val_author = np.asarray([_md5_bucket(a, VAL_AUTHOR_BUCKETS) == 0 for a in author_names])[world.mp16["author"]]
+    eligible = ~np.isin(world.mp16["author"], world.query_author[world.query_author >= 0]) & ~val_author
+    rows = []
+    for r in rng.permutation(np.flatnonzero(eligible)):  # hash lazily: only until n photos from buckets 0-98 are found
+        if int(r) not in used and _md5_bucket(image_ids[r], 100) < HELD_OUT_BUCKET:
+            rows.append(int(r))
+            if len(rows) >= int(n * 1.05):  # a margin for the near-duplicate filter
+                break
+    rows = np.sort(np.asarray(rows))
+    device = torch.device("cuda")
+    bench = F.normalize(torch.as_tensor(world.query_embeddings, device=device), dim=-1).half()
+    near = np.concatenate([
+        (F.normalize(torch.as_tensor(np.asarray(world.mp16["embeddings"][rows[i : i + 8192]]), device=device).float(), dim=-1).half() @ bench.T)
+        .max(dim=1).values.float().cpu().numpy()
+        for i in range(0, len(rows), 8192)
+    ])
+    rows = rows[near < NEAR_DUPLICATE_SIM][:n]
+    queries = [{"row": int(r), "image_id": image_ids[r], "group": "trained_on", "split": "train"} for r in rows]
+    (SFT_ROOT / "queries_extra.json").write_text(json.dumps(queries) + "\n", encoding="utf-8")
+    print(f"{len(queries)} extra photos from buckets 0-98 -> {SFT_ROOT / 'queries_extra.json'}", flush=True)
+    del world
+    _rank(load_world(mp16_queries=queries), root, "mp16_extra")
+
+
 def _line(label: str, predictions: np.ndarray, truth: np.ndarray) -> str:
     m = compute_metrics(predictions, truth)
     return f"  {label:34s}" + "".join(f"{m[f'Under_{t}_km']:7.1%}" for t in THRESHOLDS) + f"   median {m['Median_km_error']:7.0f} km"
@@ -128,10 +170,10 @@ def report(root: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("bench", "mp16", "report"))
+    parser.add_argument("command", choices=("bench", "mp16", "extra", "report"))
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
-    {"bench": bench, "mp16": mp16, "report": report}[args.command](args.root)
+    {"bench": bench, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
     return 0
 
 

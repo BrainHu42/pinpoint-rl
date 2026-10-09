@@ -64,6 +64,19 @@ def make_split_set(tag: str = "train", split: str = "train") -> None:
     print(f"{tag}: {len(picked)} of {len(ids)} {split} photos with Pinpoint's pool -> {PHOTO_SETS / tag / 'photos.json'}")
 
 
+def make_extra_set(tag: str = "train_extra") -> None:
+    """The clue judge's extra training photos (MP16 buckets 0-98, pinpoint_reference extra) as a photo set, with Pinpoint's pool."""
+
+    from .photo_sets import _entries, _save
+    from .pinpoint_reference import load_pools
+
+    pools = load_pools("mp16_extra")
+    queries = pools["queries"]
+    picked = list(range(len(queries)))
+    _save(tag, _entries(pools, picked, lambda i: {"index": i, "image_id": queries[i]["image_id"], "row": queries[i]["row"], "pools": "mp16_extra"}))
+    print(f"{tag}: {len(picked)} extra photos with Pinpoint's pool -> {PHOTO_SETS / tag / 'photos.json'}")
+
+
 def write_splits(dev_tag: str = "dev3k") -> None:
     """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev3k;
     test = the im2gps3k + yfcc4k eval halves (photo set `full`). Image ids -> artifacts/agent/splits.json."""
@@ -100,6 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--make-dev", default=None, help="build this photo set from the dev ids and exit")
     parser.add_argument("--splits", action="store_true", help="write artifacts/agent/splits.json and exit")
     parser.add_argument("--make-split-set", default=None, metavar="SPLIT", help="build a photo set named after this split (e.g. train) and exit")
+    parser.add_argument("--make-extra-set", action="store_true", help="build the train_extra photo set (MP16 buckets 0-98) and exit")
     args = parser.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
     if args.make_dev:
@@ -110,6 +124,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.make_split_set:
         make_split_set(args.make_split_set, args.make_split_set)
+        return 0
+    if args.make_extra_set:
+        make_extra_set()
         return 0
     for tag in args.tags:
         rows = targets(tag)
