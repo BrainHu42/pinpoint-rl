@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Serve a VLM and judge every specific text-search clue of a photo set (clue_judge.py judge), then the report. RUN="vlm_country sample" runs
 # that module command against the server instead (no report).
-# Usage: [MODEL=<dir>] [NAME=4b] [TAG=dev3k] [CLUES=9b] [RUN=...] setsid nohup bash scripts/clue_judge.sh > artifacts/agent/logs/clue_judge.log 2>&1 &
+# Usage: [MODEL=<dir>] [NAME=4b] [TAG=dev3k] [CLUES=9b] [VS=1] [RUN=...] setsid nohup bash scripts/clue_judge.sh > artifacts/agent/logs/clue_judge.log 2>&1 &
 set -uo pipefail
 if [ -z "${IN_SCOPE:-}" ]; then  # memory-capped cgroup (30 GB RAM, no swap)
   exec systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 env IN_SCOPE=1 bash "$0" "$@"
@@ -24,7 +24,7 @@ until curl -sf 127.0.0.1:8765/health >/dev/null; do kill -0 $server 2>/dev/null 
 run=${RUN:-clue_judge judge}
 echo "$(date +%T) $run $tag ($name)"
 if [ -z "${RUN:-}" ]; then
-  .venv/bin/python -m geo_search_env.experiment.$run --tag $tag --name $name --clues $clues 2>&1
+  .venv/bin/python -m geo_search_env.experiment.$run --tag $tag --name $name --clues $clues ${VS:+--vs} 2>&1
 else
   .venv/bin/python -m geo_search_env.experiment.$run --tag $tag --name $name 2>&1
 fi

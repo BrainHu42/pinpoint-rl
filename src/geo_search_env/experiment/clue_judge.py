@@ -37,6 +37,13 @@ could refer to somewhere else (a brand, product, logo, clothing, a poster or adv
 is only a similar-looking one.
 
 Answer with Yes or No."""
+# The decision the switch rule actually makes: the clue points to a different region than Pinpoint's top-1. Used with --vs (judging and training
+# only on such clues, with Pinpoint's region in the prompt).
+PROMPT_VS = """A geolocation tool found the name "{query}" for this photo ({how}). Searching for it points to {region}, {country}. A visual retrieval system, which compares the photo with millions of geotagged photos, instead places it in {pin_region}, {pin_country}.
+
+Is the name better evidence of where THIS photo was taken than the retrieval system's guess? Answer Yes only if the photo itself ties the name to its place: it is written on a shop front, street or station sign, building, plaque or local notice, or it names a unique landmark you can clearly recognise in the photo. Answer No if the name could refer to somewhere else (a brand, product, logo, clothing, a poster or advert for another place, a person's name, generic words) or the place is only a similar-looking one.
+
+Answer with Yes or No."""
 
 
 def _how(source: str) -> str:
@@ -53,22 +60,48 @@ def _items(tag: str, clues: str = "9b") -> list[dict[str, Any]]:
     return [r for r in rows if "region" in r and r["share"] >= MIN_SHARE and labels[r["image_id"]]["truth"].get("region")]
 
 
+def _prompt(r: dict, pin: dict | None = None) -> str:
+    """The judge prompt for one clue; with Pinpoint's top-1 labels (pin), the --vs prompt."""
+
+    fields = {"query": r["query"], "how": _how(r["source"]), "region": r["region"][1] or "?", "country": r["region"][0] or "?"}
+    if pin is None:
+        return PROMPT.format(**fields)
+    return PROMPT_VS.format(**fields, pin_region=pin.get("region") or "?", pin_country=pin.get("country") or "?")
+
+
+def _differing(tag: str, items: list[dict]) -> list[tuple[dict, dict]]:
+    """(clue, Pinpoint's top-1 labels) for the clues whose region differs from Pinpoint's top-1 region."""
+
+    from .agent_targets import same_region
+
+    labels = {p["image_id"]: p for p in json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))}
+    out = []
+    for r in items:
+        pin = labels[r["image_id"]]["pool"][0] if labels[r["image_id"]]["pool"] else {}
+        if not same_region({"country": r["region"][0], "region": r["region"][1]}, pin):
+            out.append((r, pin))
+    return out
+
+
 def _judge_path(tag: str, name: str, clues: str) -> Path:
     return OUT / (f"clue_judge_{tag}_{name}.json" if clues == "9b" else f"clue_judge_{tag}_{name}_{clues}.json")
 
 
-def judge(tag: str, name: str, clues: str = "9b", server: str = "http://127.0.0.1:8765", workers: int = 32) -> None:
+def judge(tag: str, name: str, clues: str = "9b", vs: bool = False, server: str = "http://127.0.0.1:8765", workers: int = 32) -> None:
     from .name_score import _post
     from .sft_data import MP16Images
 
-    items = _items(tag, clues)
+    pairs = _differing(tag, _items(tag, clues)) if vs else [(r, None) for r in _items(tag, clues)]
+    items = [r for r, _ in pairs]
+    pins = [p for _, p in pairs]
     images = MP16Images()
     cache: dict[str, str] = {}
 
-    def ask(r: dict) -> float | None:
+    def ask(job: tuple[dict, dict | None]) -> float | None:
+        r, pin = job
         if r["image_id"] not in cache:
             cache[r["image_id"]] = base64.b64encode(images.read(r["image_id"])).decode()
-        text = PROMPT.format(query=r["query"], how=_how(r["source"]), region=r["region"][1] or "?", country=r["region"][0] or "?")
+        text = _prompt(r, pin)
         body = {"model": "vlm", "temperature": 0.0, "max_tokens": 1, "logprobs": True, "top_logprobs": 10, "chat_template_kwargs": {"enable_thinking": False},
                 "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + cache[r["image_id"]]}},
                                                           {"type": "text", "text": text}]}]}
@@ -85,7 +118,7 @@ def judge(tag: str, name: str, clues: str = "9b", server: str = "http://127.0.0.
         return p["yes"] / (p["yes"] + p["no"]) if p["yes"] + p["no"] > 0 else None
 
     with ThreadPoolExecutor(workers) as pool:
-        scores = list(pool.map(ask, items))
+        scores = list(pool.map(ask, zip(items, pins)))
     out = [{"image_id": r["image_id"], "query": r["query"], "p_yes": s} for r, s in zip(items, scores)]
     path = _judge_path(tag, name, clues)
     path.write_text(json.dumps(out) + "\n", encoding="utf-8")
@@ -159,24 +192,27 @@ def picks(tag: str, name: str, threshold: float, clues: str = "9b", sources: Seq
     print(f"{len(out)} photos with an accepted clue (P(Yes) >= {threshold}) -> {path}")
 
 
-def sft_data(tag: str, clues: str, out: Path, max_examples: int, val_share: float = 0.05) -> None:
+def sft_data(tag: str, clues: str, out: Path, max_examples: int, val_share: float = 0.05, vs: bool = False, pos_repeat: int = 1) -> None:
     """Judge training rows (sft_train.py format: image_id, split, prompt, target) from a photo set's specific clues: target Yes when the clue's
     top place is < 25 km from the photo's truth (GPS only). Photos are split train / val (val_share of photos, for the eval loss). Clues are
-    subsampled uniformly to at most max_examples rows, so the Yes rate stays the natural one and P(Yes) stays calibrated."""
+    subsampled uniformly to at most max_examples rows, so the Yes rate stays the natural one and P(Yes) stays calibrated. With vs: only clues
+    whose region differs from Pinpoint's top-1 region, with Pinpoint's region in the prompt (PROMPT_VS); Yes rows repeated pos_repeat times
+    (Yes is rare there; thresholds are chosen on dev anyway)."""
 
     items = _items(tag, clues)
-    ids = sorted({r["image_id"] for r in items})
+    pairs = _differing(tag, items) if vs else [(r, None) for r in items]
+    ids = sorted({r["image_id"] for r, _ in pairs})
     val = set(np.random.default_rng(0).choice(ids, int(len(ids) * val_share), replace=False).tolist())
-    pos = sum(r["km"] < 25 for r in items)
-    picked = items if len(items) <= max_examples else [items[i] for i in sorted(np.random.default_rng(1).choice(len(items), max_examples, replace=False))]
+    pos = sum(r["km"] < 25 for r, _ in pairs)
+    picked = pairs if len(pairs) <= max_examples else [pairs[i] for i in sorted(np.random.default_rng(1).choice(len(pairs), max_examples, replace=False))]
     rows = []
-    for r in picked:
-        prompt = PROMPT.format(query=r["query"], how=_how(r["source"]), region=r["region"][1] or "?", country=r["region"][0] or "?")
-        rows.append({"image_id": r["image_id"], "split": "val" if r["image_id"] in val else "train", "prompt": prompt,
-                     "target": "Yes" if r["km"] < 25 else "No"})
+    for r, pin in picked:
+        row = {"image_id": r["image_id"], "split": "val" if r["image_id"] in val else "train", "prompt": _prompt(r, pin),
+               "target": "Yes" if r["km"] < 25 else "No"}
+        rows += [row] * (pos_repeat if row["target"] == "Yes" and row["split"] == "train" else 1)
     out.write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
-    print(f"{tag} / {clues}: {len(items)} specific clues, {pos} positive; wrote {len(rows)} rows ({sum(x['target'] == 'Yes' for x in rows)} Yes, "
-          f"{sum(x['split'] == 'val' for x in rows)} val) -> {out}")
+    print(f"{tag} / {clues}{' (vs Pinpoint)' if vs else ''}: {len(pairs)} clues, {pos} positive; wrote {len(rows)} rows "
+          f"({sum(x['target'] == 'Yes' for x in rows)} Yes, {sum(x['split'] == 'val' for x in rows)} val) -> {out}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -186,18 +222,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=OUT / "clue_judge_sft.jsonl")
     parser.add_argument("--max-examples", type=int, default=24_000)
     parser.add_argument("--sources", nargs="*", default=(), help="picks: only these clue kinds (text, place name, query, landmark)")
+    parser.add_argument("--vs", action="store_true", help="judge / sft-data: only clues whose region differs from Pinpoint's, PROMPT_VS")
+    parser.add_argument("--pos-repeat", type=int, default=1, help="sft-data: repeat Yes training rows")
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--name", default="4b")
     parser.add_argument("--threshold", type=float, default=0.5)
     args = parser.parse_args(argv)
     if args.cmd == "judge":
-        judge(args.tag, args.name, args.clues)
+        judge(args.tag, args.name, args.clues, args.vs)
     elif args.cmd == "report":
         report(args.tag, args.name, args.clues)
     elif args.cmd == "picks":
         picks(args.tag, args.name, args.threshold, args.clues, args.sources)
     else:
-        sft_data(args.tag, args.clues, args.out, args.max_examples)
+        sft_data(args.tag, args.clues, args.out, args.max_examples, vs=args.vs, pos_repeat=args.pos_repeat)
     return 0
 
 
