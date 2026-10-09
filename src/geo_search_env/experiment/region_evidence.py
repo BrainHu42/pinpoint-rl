@@ -2,7 +2,7 @@
 # from 33.4 to 61.3% < 25 km, but the text tool's blind picks point to wrong regions too often (-7.7). This breaks every query's top result down by
 # clue type and specificity and asks, where its region differs from Pinpoint's top-1 region: how often is the query right (a possible fix) and how
 # often is Pinpoint right (a possible break)? dev sets only.
-# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.region_evidence search --tag dev3k   (CPU, ~5 min; caches the results)
+# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.region_evidence search --tag dev3k [--clues 4b] [--workers 8]   (CPU)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.region_evidence report --tag dev3k
 
 """search: every model-produced phrase of each photo, raw (punctuation kept, so domains and phone numbers are recognised), with its source:
@@ -28,8 +28,30 @@ LABELS_NPZ = Path("artifacts/place_labels/mp16_country_region.npz")
 SOURCES = ("landmark 27b", "landmark 9b", "text 9b", "place name 9b", "query 9b")  # first source wins for a repeated phrase
 
 
-def _raw_phrases(tag: str) -> dict[str, dict[str, str]]:
+def evidence_path(tag: str, clues: str = "9b") -> Path:
+    """region_evidence_{tag}.json for the 9B / 27B clue set (the first runs), region_evidence_{tag}_{clues}.json for others."""
+
+    return OUT / (f"region_evidence_{tag}.json" if clues == "9b" else f"region_evidence_{tag}_{clues}.json")
+
+
+def _raw_phrases(tag: str, clues: str = "9b") -> dict[str, dict[str, str]]:
     from .text_search import norm
+
+    if clues != "9b":  # one model's clues: text and place names it read (observe extract), its search queries (observe queries)
+        parsed = {k: (v.get("parsed") or {}) for k, v in json.loads((OUT / f"observe_{tag}_{clues}.json").read_text(encoding="utf-8")).items()}
+        tables = {f"text {clues}": {k: [str(x) for x in v.get("text") or []] for k, v in parsed.items()},
+                  f"place name {clues}": {k: [str(x) for x in v.get("place_names") or []] for k, v in parsed.items()},
+                  f"query {clues}": {k: v or [] for k, v in json.loads((OUT / f"queries_{tag}_{clues}.json").read_text(encoding="utf-8")).items()}}
+        out: dict[str, dict[str, str]] = {}
+        for src, table in tables.items():
+            for image_id, raws in table.items():
+                seen = {norm(p) for p in out.get(image_id, {})}
+                for raw in raws:
+                    key = norm(raw)
+                    if len(key) >= 3 and key not in seen:
+                        seen.add(key)
+                        out.setdefault(image_id, {})[raw.strip()] = src
+        return out
 
     tables: dict[str, dict[str, list[str]]] = {}
     for name in ("27b", "9b"):
@@ -86,18 +108,12 @@ class _Labeller:
         return str(self.country[j]), str(self.region[j])
 
 
-def search(tag: str) -> None:
-    import time
-
+def _search_chunk(args: tuple[list[dict], dict[str, dict[str, str]], dict[str, str]]) -> list[dict[str, Any]]:
     from .text_search import TextSearch, haversine_km
-    from .yfcc_names import _mp16_authors
 
-    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    phrases = _raw_phrases(tag)
-    authors = _mp16_authors({e["image_id"] for e in photos})
-    tool, label = TextSearch(), _Labeller()
-    rows, start = [], time.time()
-    for p, e in enumerate(photos):
+    photos, phrases, authors = args
+    tool, rows = TextSearch(), []
+    for e in photos:
         own = (int(e["image_id"].split("_")[-1].split(".")[0]), authors.get(e["image_id"], ""))
         for q, src in phrases.get(e["image_id"], {}).items():
             r = tool.search(q, exclude=own)
@@ -106,18 +122,41 @@ def search(tag: str) -> None:
             if r.clusters:
                 c = r.clusters[0]
                 row |= {"lat": c.lat, "lon": c.lon, "weight": c.weight, "share": c.share, "exact": c.exact, "places": c.places,
-                        "region": label(c.lat, c.lon), "km": float(haversine_km(*e["truth"], np.asarray([c.lat]), np.asarray([c.lon]))[0])}
+                        "km": float(haversine_km(*e["truth"], np.asarray([c.lat]), np.asarray([c.lon]))[0])}
             rows.append(row)
-        if p % 500 == 0:
-            print(f"  {p} photos, {len(rows)} searches, {time.time() - start:.0f} s", flush=True)
-    (OUT / f"region_evidence_{tag}.json").write_text(json.dumps(rows) + "\n", encoding="utf-8")
-    print(f"{len(rows)} searches for {len(phrases)} photos -> {OUT / f'region_evidence_{tag}.json'}")
+    return rows
 
 
-def report(tag: str) -> None:
+def search(tag: str, clues: str = "9b", workers: int = 8) -> None:
+    import multiprocessing
+    import time
+
+    from .yfcc_names import _mp16_authors
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    phrases = _raw_phrases(tag, clues)
+    photos = [e for e in photos if e["image_id"] in phrases]
+    authors = _mp16_authors({e["image_id"] for e in photos})
+    chunks = [photos[i:i + 200] for i in range(0, len(photos), 200)]
+    start, rows = time.time(), []
+    with multiprocessing.get_context("spawn").Pool(workers) as pool:
+        for k, part in enumerate(pool.imap(_search_chunk, [(c, {e["image_id"]: phrases[e["image_id"]] for e in c}, authors) for c in chunks])):
+            rows += part
+            if k % 10 == 0:
+                print(f"  {min((k + 1) * 200, len(photos))} of {len(photos)} photos, {len(rows)} searches, {time.time() - start:.0f} s", flush=True)
+    label = _Labeller()
+    for row in rows:
+        if "lat" in row:
+            row["region"] = label(row["lat"], row["lon"])
+    path = evidence_path(tag, clues)
+    path.write_text(json.dumps(rows) + "\n", encoding="utf-8")
+    print(f"{len(rows)} searches for {len(photos)} photos -> {path}")
+
+
+def report(tag: str, clues: str = "9b") -> None:
     from .agent_targets import same_region
 
-    rows = json.loads((OUT / f"region_evidence_{tag}.json").read_text(encoding="utf-8"))
+    rows = json.loads(evidence_path(tag, clues).read_text(encoding="utf-8"))
     labels = {p["image_id"]: p for p in json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))}
     truth = {k: (v["truth"].get("country") or "", v["truth"].get("region") or "") for k, v in labels.items()}
     pin = {k: ((v["pool"][0].get("country") or "", v["pool"][0].get("region") or "") if v["pool"] else ("", "")) for k, v in labels.items()}
@@ -179,8 +218,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("cmd", choices=("search", "report"))
     parser.add_argument("--tag", default="dev3k")
+    parser.add_argument("--clues", default="9b", help="clue set: 9b (the 9B / 27B phrases) or a model name with observe extract + queries files")
+    parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args(argv)
-    search(args.tag) if args.cmd == "search" else report(args.tag)
+    search(args.tag, args.clues, args.workers) if args.cmd == "search" else report(args.tag, args.clues)
     return 0
 
 

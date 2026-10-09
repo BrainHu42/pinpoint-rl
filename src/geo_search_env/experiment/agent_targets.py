@@ -4,6 +4,7 @@
 #        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.place_labels pool-labels --tag dev3k   (Overture labels)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --tags dev3k                (targets)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --splits                    (artifacts/agent/splits.json)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.agent_targets --make-split-set train      (photo set of the train split)
 
 """Writes artifacts/agent/targets_{tag}.json: per photo the image id, reranker top-1 km, pool oracle km, choosing / fixable flags and the rank of
 the first candidate in the true region (None if no candidate is there or the truth has no region label). Prints the counts and what a perfect
@@ -48,6 +49,21 @@ def make_dev(tag: str = "dev3k") -> None:
     print(f"{tag}: {len(picked)} MP16 photos with Pinpoint's pool -> {PHOTO_SETS / tag / 'photos.json'}")
 
 
+def make_split_set(tag: str = "train", split: str = "train") -> None:
+    """A photo set from one split of artifacts/agent/splits.json (e.g. the training photos for the clue judge), with Pinpoint's pool."""
+
+    from .photo_sets import _entries, _save
+    from .pinpoint_reference import load_pools
+
+    pools = load_pools("mp16")
+    queries = pools["queries"]
+    position = {q["image_id"]: i for i, q in enumerate(queries)}
+    ids = json.loads((OUT / "splits.json").read_text(encoding="utf-8"))[split]
+    picked = sorted(position[i] for i in ids if i in position)
+    _save(tag, _entries(pools, picked, lambda i: {"index": i, "image_id": queries[i]["image_id"], "row": queries[i]["row"]}))
+    print(f"{tag}: {len(picked)} of {len(ids)} {split} photos with Pinpoint's pool -> {PHOTO_SETS / tag / 'photos.json'}")
+
+
 def write_splits(dev_tag: str = "dev3k") -> None:
     """The one data split (CLAUDE.md): train = MP16 bucket-99 photos (held out from Pinpoint, burned-in GPS filtered) not in dev; dev = dev3k;
     test = the im2gps3k + yfcc4k eval halves (photo set `full`). Image ids -> artifacts/agent/splits.json."""
@@ -83,6 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tags", nargs="+", default=["dev3k"])
     parser.add_argument("--make-dev", default=None, help="build this photo set from the dev ids and exit")
     parser.add_argument("--splits", action="store_true", help="write artifacts/agent/splits.json and exit")
+    parser.add_argument("--make-split-set", default=None, metavar="SPLIT", help="build a photo set named after this split (e.g. train) and exit")
     args = parser.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
     if args.make_dev:
@@ -90,6 +107,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.splits:
         write_splits()
+        return 0
+    if args.make_split_set:
+        make_split_set(args.make_split_set, args.make_split_set)
         return 0
     for tag in args.tags:
         rows = targets(tag)
