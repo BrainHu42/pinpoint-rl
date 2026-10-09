@@ -68,7 +68,7 @@ im2gps3k and wikimedia are unaffected), wikimedia 8.5 / 24.7 / 57.5. With the fi
 - 52: by eye, of 140 random attention-reranker misses (> 25 km; 70 per benchmark), a person places 8 within 25 km (+1 low confidence): landmarks and
   readable text (a race banner, a plaque, a dealer URL); half of them were never among its 12 candidates. Of 45 misses with a right candidate, a person would
   pick it for ~4. Most misses have no place signal (73) or only region-level signal; text sometimes misleads both (a Polish ad in Atlanta).
-- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 5,029 Commons photos uploaded after 2026-07-01, taken in 2026). im2gps3k has 198 photographers
+- 53: im2gps3k and yfcc4k flaws, and a new benchmark (commons26, 5,023 Commons photos uploaded after 2026-07-01, taken in 2026). im2gps3k has 198 photographers
   (design effect ~6: its error bars are ~2.5x too small) and our tune / eval split shares 97.5% of them. The same top-1 MP16 retrieval gets 37.6 / 38.1%
   within 25 km on im2gps3k / yfcc4k but 10.4% on commons26 test (continents weighted equally, all photos); 1 km 14.9 / 29.5 vs 2.8.
 
@@ -787,8 +787,10 @@ baseline for new evidence (10, 13).
       20k read cap), kept if EXIF GPS + capture date >= 2026-01-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of
       the page's camera location, not bots / Mapillary: 293,881 photos from 4,794 uploaders (61% Europe, 2.1% Africa). Pick: continents in turn to
       5,100, <= 5 per uploader, >= 1 km from any other photo, no country > 10%; 3 photos gone from Commons before download, 65 non-photos and 3 with
-      printed coordinates dropped -> 5,029 from 2,347 uploaders (2.1 each; EU 1,565, AS 1,571, NA 832, SA 481, AF 333, OC 247; split by uploader,
-      dev 977, test 4,052). 1,257 were taken January-June 2026 (slice `taken` >= 2026-07-01 for the strict post-cutoff check). The headline weights
+      printed coordinates dropped, and 6 with open deletion requests / licence review on Commons (`check`, 2026-10-08) -> 5,023 from 2,345
+      uploaders (2.1 each; EU ~1,565, AS ~1,570, NA ~830, SA ~480, AF 333, OC 247; split by uploader, dev 977, test 4,046). Released for
+      Hugging Face with random IMG_IDs (the Commons page id is a lookup key to the answer; map in `id_map.json`, not released), a CC BY 4.0
+      licence for labels / embeddings (images keep their own licences), a canary GUID and a standalone `score.py`. 1,257 were taken January-June 2026 (slice `taken` >= 2026-07-01 for the strict post-cutoff check). The headline weights
       the six continents equally (SE clustered by uploader); the plain mean is reported too.
     - Commons can't supply equal continents: Africa has 215 uploaders in the window, and 833 photos per continent would need ~3x that (Oceania ~4x).
       Supply levers measured on sample days: capture date >= 2026-01 instead of >= 2026-07 (+45% Africa uploaders; adopted), <= 5 per uploader at
@@ -807,16 +809,16 @@ baseline for new evidence (10, 13).
       |---|---|---|
       | im2gps3k | 2,997 | 14.9 / 37.6 / 50.7 / 67.8 / 83.5 |
       | yfcc4k | 4,536 | 29.5 / 38.1 / 47.0 / 61.9 / 76.5 |
-      | commons26 test, continent-balanced (headline) | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
-      | commons26 test, plain mean | 4,052 | 3.0 / 11.3 / 26.7 / 52.7 / 75.3 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268; EU 3.4 / 9.2 / 30.5 / 69.7 / 91.4) |
+      | commons26 test, continent-balanced (headline) | 4,046 | 2.8 / 10.4 / 22.8 / 46.4 / 68.4 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
+      | commons26 test, plain mean | 4,046 | 3.0 / 11.3 / 26.7 / 52.8 / 75.4 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268; EU 3.4 / 9.2 / 30.5 / 69.8 / 91.4) |
       Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
     - Pinpoint's attention reranker (the baseline; `pinpoint_reranker_eval run --benchmarks commons26`, unfiltered: no uploader is in MP16) on
       commons26, continent-balanced, < 1 / 25 / 200 / 750 / 2500 km (predictions in `/data/pinpoint/commons26/pred_*.csv`):
       | commons26 | n | retrieval top-1 | reranker top-1 | oracle over its 12 |
       |---|---|---|---|---|
       | dev | 977 | 3.1 / 12.1 / 25.2 / 44.8 / 67.7 | 6.2 / 22.1 / 38.7 / 62.7 / 78.5 | 11.0 / 38.1 / 64.0 / 79.8 / 91.8 |
-      | test | 4,052 | 2.8 / 10.4 / 22.8 / 46.4 / 68.3 | 4.6 / 16.8 / 33.6 / 58.4 / 78.0 (± 0.5 / 0.9 / 1.1 / 1.2 / 1.0) | 9.9 / 33.5 / 59.8 / 80.7 / 92.4 |
-      Test plain mean 4.7 / 17.5 / 38.7 / 65.3 / 83.3. By continent at 25 km: AS 21.6, OC 21.3, NA 20.0, EU 14.3, SA 13.2, AF 10.4; tier none 7.0.
+      | test | 4,046 | 2.8 / 10.4 / 22.8 / 46.4 / 68.4 | 4.6 / 16.8 / 33.7 / 58.4 / 78.0 (± 0.5 / 0.9 / 1.1 / 1.2 / 1.1) | 9.9 / 33.5 / 59.8 / 80.7 / 92.4 |
+      Test plain mean 4.7 / 17.6 / 38.8 / 65.4 / 83.3. By continent at 25 km: AS 21.7, OC 21.3, NA 20.0, EU 14.3, SA 13.2, AF 10.4; tier none 7.0.
       Versus the old benchmarks (29.5 / 47.4 / 61.9 at 1 / 25 / 200 km), 1 km falls ~6x and 25 km ~3x. The headroom in choosing among the 12 is
       the same in points as before (+16.7 at 25 km, old sets +16.8) but doubles the score here, so the project's choosing problem carries over.
 
