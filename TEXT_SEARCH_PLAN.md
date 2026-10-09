@@ -371,3 +371,18 @@ control (each photo gets another photo's clues).
   - Co-occurrence of these clues is mostly coincidence.
   - The "right place anywhere in the results" figure (231) was largely luck: common words hit everywhere.
   - Neither idea raises the ceiling. The offline clues themselves are the limit: too few right ones (coverage and reading).
+
+**Keyless online geocoders (`web_geocode.py`, 2026-10-09; the 7,953 unique 4B clues of Pinpoint's 1,468 dev3k mistakes with clues):**
+
+| Source | First result < 25 km | Any of 5 | Shuffled luck (first) | First result right and not reached offline |
+|---|---|---|---|---|
+| OpenStreetMap Nominatim | 88 (+2.9 pts) | 113 | 2 | 20 |
+| English Wikipedia search | 91 (+3.0 pts) | 123 | 6 | 25 |
+| Offline text search (top result, any clue) | 113 (+3.8 pts) | | | |
+
+- **Overlap:** Nominatim and Wikipedia share 64 photos. Together they reach 38 mistakes offline doesn't.
+- **Ceiling (all three, first results):** 151 mistakes (+5.0 pts), up from +3.8.
+- **Reading:**
+  - Hits are real (luck is 2-6 photos: a geocoder returns one specific place per query).
+  - The coverage gain is modest.
+  - At the judges' ~50% recovery, these sources might add about +0.4-0.6 pts to the +0.7.

@@ -27,7 +27,7 @@ PHOTO_SETS = Path("artifacts/photo_sets")
 AGENT = "pinpoint-rl geolocation research pilot (contact: brainhu42@gmail.com)"
 URLS = {"nominatim": "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q={q}",
         "wikipedia": "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=5&prop=coordinates&format=json&gsrsearch={q}"}
-DELAY = {"nominatim": 1.1, "wikipedia": 0.25}
+DELAY = {"nominatim": 1.05, "wikipedia": 0.25}
 
 
 def _mistakes(tag: str, clues: str = "4b") -> tuple[list[dict], dict[str, dict[str, str]]]:
@@ -56,6 +56,7 @@ def fetch(source: str, tag: str) -> None:
     print(f"{source}: {len(queries)} unique clues of {len(mistakes)} mistake photos, {len(todo)} to fetch", flush=True)
     with path.open("a", encoding="utf-8") as out:
         for n, q in enumerate(todo):
+            started = time.time()
             request = urllib.request.Request(URLS[source].format(q=urllib.parse.quote(q)), headers={"User-Agent": AGENT})
             results, error = [], None
             for attempt in range(3):
@@ -69,7 +70,7 @@ def fetch(source: str, tag: str) -> None:
                     time.sleep(5 * (attempt + 1))
             out.write(json.dumps({"query": q, "results": results, "error": error}) + "\n")
             out.flush()
-            time.sleep(DELAY[source])
+            time.sleep(max(0.0, DELAY[source] - (time.time() - started)))  # at most one request per DELAY seconds, response time included
             if n % 500 == 0:
                 print(f"  {n} of {len(todo)}", flush=True)
     print(f"-> {path}")
