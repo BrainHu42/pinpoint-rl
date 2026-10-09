@@ -478,3 +478,30 @@ region; 123 right):**
   - One reader (the assistant), who guessed coarse coordinates (country-level guesses rarely land within 25 km).
   - 120 photos, so about ±4 pts.
   - A practised GeoGuessr player might do better on the N / K tiers.
+
+## Before building on the ceiling (2026-10-09)
+
+**1. Agreement among Pinpoint's candidates (`pool_agreement.py`).**
+- **Idea:** Pinpoint's reranker scores each candidate on its own. Re-score each candidate by the softmax score mass (T = 0.2)
+  of all candidates within 25 km of it. The setting was chosen on train and is the same as the best held-out setting on dev3k.
+
+| Set | Pinpoint < 25 km | Pick the most supported candidate | Pick the best-scored candidate of the most supported area |
+|---|---|---|---|
+| train (35,359 photos, not used for dev choices) | 32.4% | **+1.0** [+0.7, +1.2] (1,019 fixes / 682 breaks); < 1 km about -0.6 | +0.7 [+0.5, +0.9]; < 1 km -0.1 |
+| dev3k (3,000) | 33.4% | **+2.0** [+1.2, +2.8] (106 / 46); < 1 km -0.7 [-1.3, -0.2] | +1.7 [+1.0, +2.5]; < 1 km +0.2 |
+
+- **The first method in this project to clear the 1-pt bar on independent data (train).** Free: it uses only Pinpoint's own
+  output. The dev3k figure is higher than train's, probably partly by chance. The second pick keeps 1 km accuracy.
+
+**2. Eye check: why Pinpoint misses a right candidate in its pool.**
+- **Sample:** 48 random dev3k photos where the top-1 is >= 25 km off but a pool candidate is < 25 km (507 such photos in dev3k).
+- **Near-misses, 19 (40%):** the top-1 is 25-100 km away, usually the same region and the same kind of place (Pongau vs Kaprun,
+  Encinitas vs Del Mar, Rogaland vs Rogaland). Only fine local discrimination would help; region-level constraints wouldn't.
+- **Generic photos far off, 20 (42%):** flowers, interiors, people, sea, food. The right candidate is in the pool largely by
+  chance; 5 of them are the right country but the wrong region with nothing to tell them apart.
+- **Explicit clues, 8 (17%):** text ("Zagrebački plesni centar", "Durham Elementary School", the Antietam plaque, Vietnamese
+  billboards, Chinese signs), recognisable places (Dam Square, a skyline, the Shanghai Expo's Manneken Pis) and look-alike ruins.
+- **Physical differences** (coast vs inland, alpine vs flat) between the top-1 and the right candidate: essentially none.
+  Retrieval already returns physically similar candidates. **Physical-constraint elimination is unlikely to help; dropped.**
+- **Reading:** most recoverable cases are near-misses and generic photos where several candidates cluster. That's what the
+  agreement re-scoring exploits, which fits its +1-2 pts.
