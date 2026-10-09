@@ -1,5 +1,16 @@
 # Plan: a text-search tool and an agent trained to use it (draft for review, 2026-10-08)
 
+> **Status (2026-10-09): agent training (steps 2-5) is on hold; a direction decision is pending.**
+> - **The design holds:** Pinpoint restricted to the true region reaches +27.9 pts on dev3k (lesson 64).
+> - **No evidence source supplies the right region where Pinpoint's is wrong:**
+>   - text search with a VLM judge: +0.3 (lesson 65);
+>   - the VLM's own country guess: worse than Pinpoint's;
+>   - domains / phone numbers: 21 photos;
+>   - read-text language: barely predictive;
+>   - number plates: 1.5% of photos, no better than Pinpoint;
+>   - choosing among the pool's regions by restricted reranker score: -0.1.
+> - **Explicit clues are rare on these personal-Flickr photos.** See "Options" and the checks at the end.
+
 ## Goal
 Fix Pinpoint's mistakes on photos with searchable text or a nameable place (domains, business and gallery signs, event banners,
 landmarks). By eye these are about 5-7.5% of its mistakes (your test-set estimate; lesson 62 on dev3k). The agent reads the photo,
@@ -245,3 +256,29 @@ about +0.3 pts in practice (lesson 65). Each option below has a cheap first chec
 
 **Recommendation:** 1 first. It's the cheapest, uses data already on disk, and has the largest clean ceiling with few breaks. If
 it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt on dev3k by itself.
+
+**Options 2 and 3, first checks (2026-10-09, dev3k):**
+- **Option 2, choosing among the pool's regions (`pinpoint_constrained regions`):**
+  - **Setup:** Pinpoint restricted to each (country, region) in the photo's own pool; 5.6 regions per photo, 16,870 searches.
+  - **Oracle:** over Pinpoint + the per-region top-1s it is 44.9%, below the pool's own oracle (50.3%). The true region often isn't
+    in the pool, and keeping only one candidate per region drops good ones.
+  - **Selection:** switching to the highest restricted reranker score when it beats Pinpoint's top-1: -0.1 [-0.9, +0.7]
+    (1,865 switched, 66 fixes / 70 breaks). Reranker scores across regions carry nothing new.
+- **Option 3, number plates (`plates.py`, 9B):**
+  - **Presence:** a plate is reported on 44 of 3,000 photos (1.5%), 27 of Pinpoint's 1,997 mistakes.
+  - **Country:** right 34 vs Pinpoint 36; where they differ, plate right 4 vs Pinpoint right 6.
+  - **Region:** given on 5 photos.
+- **Conclusion:** with options 1-3 checked, every explicit clue we can extract (text, domains, phones, language, plates) and
+  every holistic one (the VLM's country, reranker scores) gives the right region less often than Pinpoint does where they
+  disagree, or is too rare to matter. On dev3k (and so likely on im2gps3k / yfcc4k) a clue-based agent has about +0.3-0.5 pts
+  to work with.
+
+**Direction choices (for discussion):**
+1. **Build the agent anyway, as the platform for tool use and live APIs.** Pinpoint as a tool, text search, the clue judge,
+   landmarks. Accept that the tools sum to about +0.5 pts on these benchmarks; the value is the deployed system, not the
+   benchmark number.
+2. **Retarget the evaluation to photos where explicit clues are common** (street-level: OSV-5M's test split, Mapillary-style
+   imagery, or the deployed use case). The professional-geolocator approach has something to work with there. Pinpoint's
+   retriever was trained on OSV-5M, so a held-out street-level set would be needed.
+3. **Look for region evidence that isn't explicit and isn't appearance:** the open research question (e.g. co-occurring map
+   features near each candidate). Earlier tries (lessons 51, 55) added about 0, because they re-encoded retrieval.

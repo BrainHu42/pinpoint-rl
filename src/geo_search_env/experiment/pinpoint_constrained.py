@@ -142,13 +142,69 @@ def report(tag: str, picks_name: str = "") -> None:
     line("text pick's own coordinate", np.where(has, pick, base), has)
 
 
+def regions(tag: str) -> None:
+    """TEXT_SEARCH_PLAN option 2: Pinpoint restricted to each (country, region) in the photo's own pool, one index pass for all. Per photo: the
+    oracle over the per-region top-1s (vs the pool's own oracle), and choosing the region whose restricted top-1 has the highest reranker
+    score (switching only when it beats Pinpoint's own top-1 score) -> artifacts/agent/pool_regions_{tag}.npz."""
+
+    from ..models.pinpoint_reranker import PinpointReranker
+    from .pinpoint_reference import load_pools
+    from .strategy_search import _bootstrap, _haversine_km, load_world
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    labels = {p["image_id"]: p for p in json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))}
+    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
+    world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
+    reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    _, region = _index_labels(reranker.cache_indices)
+    vocab: dict[str, int] = {}
+    index_region = np.asarray([vocab.setdefault(x, len(vocab)) if x else -1 for x in region], np.int64)
+    owner, wanted = [], []
+    for p, e in enumerate(photos):
+        seen = set()
+        for c in labels[e["image_id"]]["pool"]:
+            key = f"{c.get('country')}|{c.get('region')}" if c.get("country") and c.get("region") else ""
+            if key and key in vocab and key not in seen:
+                seen.add(key)
+                owner.append(p)
+                wanted.append(vocab[key])
+    owner, wanted = np.asarray(owner), np.asarray(wanted)
+    print(f"{len(photos)} photos, {len(owner)} (photo, pool region) searches, {len(owner) / len(photos):.1f} regions per photo", flush=True)
+    found = reranker.rank(world.query_embeddings[owner], query_author=world.query_author[owner], index_author=world.mp16["author"][reranker.cache_indices],
+                          query_region=wanted, index_region=index_region)
+    top, score = found.top1, found.scores[:, 0]
+    np.savez(OUT / f"pool_regions_{tag}.npz", owner=owner, region=wanted, latlon=top, score=score)
+    truth = np.asarray([e["truth"] for e in photos])
+    km = np.asarray([_haversine_km(*truth[o], np.asarray([t]))[0] if np.isfinite(t).all() else np.inf for o, t in zip(owner, top)])
+    base = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] for e in photos])
+    pool_oracle = np.asarray([_haversine_km(*e["truth"], np.asarray(e["pool"])).min() for e in photos])
+    pools = load_pools("mp16")
+    pin_score = np.asarray([pools["scores"][e["index"]][0] for e in photos])
+    best_km, oracle_km = base.copy(), base.copy()
+    for p in range(len(photos)):
+        m = owner == p
+        if not m.any():
+            continue
+        oracle_km[p] = min(base[p], km[m].min())
+        j = np.flatnonzero(m)[int(np.argmax(np.where(np.isfinite(score[m]), score[m], -np.inf)))]
+        if score[j] > pin_score[p]:  # a restricted search found a higher-scoring candidate than Pinpoint's own top-1
+            best_km[p] = km[j]
+    print(f"{tag}: Pinpoint < 25 km {(base < 25).mean():.1%}; oracle over its pool {(pool_oracle < 25).mean():.1%}; "
+          f"oracle over Pinpoint + per-pool-region restricted top-1s {(oracle_km < 25).mean():.1%}")
+    c = _bootstrap((best_km < 25) * 1.0 - (base < 25))
+    print(f"  highest reranker score across restricted searches (switch when above Pinpoint's top-1 score): < 25 km {(best_km < 25).mean():.1%} "
+          f"({100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}]); switched {(best_km != base).sum()}, "
+          f"fixes {((best_km < 25) & (base >= 25)).sum()}, breaks {((best_km >= 25) & (base < 25)).sum()}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("labels", "run", "report"))
+    parser.add_argument("cmd", choices=("labels", "run", "report", "regions"))
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--picks", default="", help="picks file suffix: text_search_picks_{tag}_{picks}.json (e.g. clue_judge picks)")
     args = parser.parse_args(argv)
-    {"labels": lambda: labels(), "run": lambda: run(args.tag, args.picks), "report": lambda: report(args.tag, args.picks)}[args.cmd]()
+    {"labels": lambda: labels(), "run": lambda: run(args.tag, args.picks), "report": lambda: report(args.tag, args.picks),
+     "regions": lambda: regions(args.tag)}[args.cmd]()
     return 0
 
 
