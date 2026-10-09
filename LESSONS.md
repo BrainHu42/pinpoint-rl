@@ -794,3 +794,27 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Recalled names lose with every judge (best 10 / 9). Thresholds and clue type were chosen on dev3k, so the +0.6-0.7 is slightly
       optimistic. Fine-tuning roughly doubles the zero-shot gain on read text (about half the read ceiling), but more data and the
       decision-conditioned target add only ~0.1 each: the clues, not the judge, are the limit. Text search tops out near +0.7 pts.
+
+67. **Locatability ceiling: about half the photos carry nothing place-specific (2026-10-09; 120 random dev3k photos; `scripts/locatability_score.py`,
+    labels `fixtures/locatability_dev3k.json`).** Blind by-eye pass (truth and Pinpoint unseen); tier = the finest level the content
+    supports. P specific place 14%, C city 8%, R region 6%, N country 13%, K continent 12%, **X nothing place-specific 47%** (food, pets,
+    flowers, interiors, concerts).
+    - Within 25 km: blind guesses 28%, Pinpoint 37%, either 42%; oracle over Pinpoint's pool 52%; Pinpoint restricted to the true region 62%.
+    - P + C photos: Pinpoint 21 / 26, blind 24 / 26 (mostly solved). R + N + K: Pinpoint 15 / 38, pool oracle 25 / 38 (the gap). X: Pinpoint
+      8 / 56, true-region restriction 30 / 56, but that region knowledge isn't in those images.
+    - Estimated ceiling from image content plus today's retrieval: about 42-48% < 25 km (Pinpoint 33.4% on all of dev3k). One reader,
+      coarse guesses, +-4 pts.
+    - Eye check of 48 dev3k photos where Pinpoint's top-1 is wrong but its pool holds the right place: 40% near-misses (top-1 25-100 km
+      away, same kind of place), 42% generic photos, 17% explicit clues (text, recognisable places); physical differences between the
+      top-1 and the right candidate (coast, terrain) essentially never. Physical-constraint elimination dropped.
+
+68. **Agreement among Pinpoint's own candidates adds +1.0 pts (2026-10-09; `pool_agreement.py`).** Pinpoint's reranker scores each
+    candidate independently. Re-scoring each candidate by the softmax score mass (T = 0.2) of all candidates within 25 km of it, and picking
+    the most supported one (setting chosen on train; also the best held-out setting on dev3k):
+    - train (35,359 bucket-99 photos, never used for dev choices): 32.4 -> 33.3% < 25 km, **+1.0** [+0.7, +1.2] (1,019 fixes / 682 breaks);
+      < 1 km about -0.6.
+    - dev3k: 33.4 -> 35.4%, **+2.0** [+1.2, +2.8] (106 / 46); < 1 km -0.7 [-1.3, -0.2].
+    - Picking Pinpoint's best-scored candidate inside the most supported area instead keeps 1 km accuracy: train +0.7 (< 1 km -0.1),
+      dev3k +1.7 (< 1 km +0.2).
+    - The first change in this project to clear +1 pt on independent data, free (Pinpoint's own outputs only). It works where several
+      candidates cluster: near-misses and generic photos, the bulk of Pinpoint's recoverable misses.

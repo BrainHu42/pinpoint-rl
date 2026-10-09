@@ -78,7 +78,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - Text search and Pinpoint as a tool (lessons 64-65; plan and target design in `TEXT_SEARCH_PLAN.md`): `text_search.py` (SQLite FTS5 over
   GeoNames, Overture places / websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a
   restart), `pinpoint_constrained.py` (Pinpoint restricted to a country / region), `region_evidence.py`, `clue_judge.py` + `scripts/clue_judge.sh`.
-  Expert clue catalogue: `GEOLOCATION_CLUES.md`.
+  Expert clue catalogue: `GEOLOCATION_CLUES.md`. Later checks: `clue_points.py`, `web_geocode.py`, `recall_verify.py`, `clue_survey.py`,
+  `chain_footprint.py`, `vlm_country.py`, `plates.py`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
+- **Agreement re-scoring of Pinpoint's pool (lesson 68, +1.0 pts on train): `pool_agreement.py`.**
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).

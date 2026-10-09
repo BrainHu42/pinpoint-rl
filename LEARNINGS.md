@@ -87,6 +87,10 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   loses 1:18 on disagreements; a 4B judge looking at the photo flips accepted clues to 14:6, but end to end only +0.3 pts.
 - 66: a fine-tuned 4B clue judge (GPS labels, train clues; then disagreement-only; then +35k photos from buckets 0-98) lifts read-text clues
   to +0.5 / +0.6 / +0.7 pts on dev3k (25 fixes / 4 breaks at best); recalled landmark names stay unsolved; ceiling +1.7 for read clues.
+- 67: blind locatability pass on 120 dev3k photos: 47% show nothing place-specific; ceiling from content + today's retrieval ~42-48% < 25 km
+  (Pinpoint 37% there). The gap is photos with a recognisable country / region but no spot; Pinpoint's misses are near-misses or generic.
+- **68 (positive): agreement among Pinpoint's candidates** (score mass within 25 km, `pool_agreement.py`): **+1.0 pts on train** [+0.7, +1.2],
+  +2.0 on dev3k; -0.6 at 1 km (the best-in-area variant keeps 1 km at +0.7 / +1.7). First gain >= 1 pt on independent data.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
