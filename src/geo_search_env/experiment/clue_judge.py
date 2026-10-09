@@ -215,9 +215,23 @@ def sft_data(tag: str, clues: str, out: Path, max_examples: int, val_share: floa
           f"({sum(x['target'] == 'Yes' for x in rows)} Yes, {sum(x['split'] == 'val' for x in rows)} val) -> {out}")
 
 
+def combine(inputs: Sequence[Path], out: Path, max_rows: int) -> None:
+    """Concatenate judge training files; keep every Yes row and every val row, sample the No training rows down to max_rows in total."""
+
+    rows = [json.loads(line) for path in inputs for line in path.read_text(encoding="utf-8").splitlines()]
+    keep = [r for r in rows if r["target"] == "Yes" or r["split"] == "val"]
+    neg = [r for r in rows if r["target"] == "No" and r["split"] == "train"]
+    room = max(0, max_rows - len(keep))
+    if len(neg) > room:
+        neg = [neg[i] for i in sorted(np.random.default_rng(2).choice(len(neg), room, replace=False))]
+    out.write_text("".join(json.dumps(r) + "\n" for r in keep + neg), encoding="utf-8")
+    print(f"{len(rows)} rows from {len(inputs)} files -> {len(keep) + len(neg)} ({sum(r['target'] == 'Yes' for r in keep)} Yes) -> {out}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("judge", "report", "picks", "sft-data"))
+    parser.add_argument("cmd", choices=("judge", "report", "picks", "sft-data", "combine"))
+    parser.add_argument("--inputs", type=Path, nargs="*", default=(), help="combine: judge training files")
     parser.add_argument("--clues", default="9b", help="clue set (region_evidence --clues)")
     parser.add_argument("--out", type=Path, default=OUT / "clue_judge_sft.jsonl")
     parser.add_argument("--max-examples", type=int, default=24_000)
@@ -234,6 +248,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         report(args.tag, args.name, args.clues)
     elif args.cmd == "picks":
         picks(args.tag, args.name, args.threshold, args.clues, args.sources)
+    elif args.cmd == "combine":
+        combine(args.inputs, args.out, args.max_examples)
     else:
         sft_data(args.tag, args.clues, args.out, args.max_examples, vs=args.vs, pos_repeat=args.pos_repeat)
     return 0
