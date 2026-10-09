@@ -349,3 +349,25 @@ it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt 
     than the judge.
 - **Text-search line, final:** about +0.6 to +0.7 pts on dev3k (read clues, the clue's coordinate, few breaks), below the
   1-pt bar.
+
+**Beyond the top result (`clue_points.py`, 2026-10-09; dev3k, 4B clues; raw matches of 14,295 clues).** Both use a shuffled-clue
+control (each photo gets another photo's clues).
+- **1. Clues confirming one of Pinpoint's other candidates** (a clue match within R km of the candidate):
+
+| | Real clues | Shuffled (luck) |
+|---|---|---|
+| Ceiling, R = 1 km (Pinpoint wrong, a supported non-top candidate < 25 km) | 79 | 20 |
+| Ceiling, R = 5 km | 122 | 40 |
+| Best rule (switch to the best-supported candidate when the top-1 has none; clues with <= 10 matches, R = 1 km) | +0.2 [-0.1, +0.5] (13 fixes / 7 breaks) | +0.0 |
+| Any clue, R = 1 km | -0.8 (38 / 61) | -0.4 |
+
+- **2. Two clues of the same photo matching within 1 km of each other** (sharing no word):
+  - Real clues give a joint spot on 1,016 photos, right on 267, 36 of them Pinpoint's mistakes. The shuffled control gives a
+    spot on 887 photos: common names co-occur in every big city.
+  - Every switch rule loses (best -1.0: 16 fixes / 47 breaks; control -1.3).
+- **Reading:**
+  - Net of luck, candidate confirmation is worth about 60-80 fixable photos, the same size as the top-result ceiling (87),
+    and simple rules get +0.2.
+  - Co-occurrence of these clues is mostly coincidence.
+  - The "right place anywhere in the results" figure (231) was largely luck: common words hit everywhere.
+  - Neither idea raises the ceiling. The offline clues themselves are the limit: too few right ones (coverage and reading).

@@ -397,6 +397,15 @@ class TextSearch:
         """query: text as read in the photo. near: (lat, lon, km) to look only around a place. exclude: (Flickr photo id, user) of the photo being
         located, never matched (set by the environment, not the agent)."""
 
+        kind, places, photos, counts, hint, loose = self.matches(query, near, exclude)
+        if kind == "name" and not norm(query):
+            return Result(query, kind, {}, [])
+        return Result(query, kind, counts, self._cluster(places, photos, query, near), hint, loose)
+
+    def matches(self, query: str, near: tuple[float, float, float] | None = None, exclude: tuple[int, str] | None = None):
+        """The raw matches behind a search, before clustering: (kind, places [(name, lat, lon, cc, kind, src, chain)], Flickr photos
+        [(photo id, user, lat, lon, accuracy)], counts per source, country hint, loose). Each source is sampled to SAMPLE matches."""
+
         hint, loose, photos = "", False, []
         domain, digits = domain_of(query, GENERIC_TLDS | set(self.tld)), phone_digits(query)
         if digits:
@@ -422,15 +431,14 @@ class TextSearch:
             kind = "name"
             words = norm(query).split()
             if not words:
-                return Result(query, kind, {}, [])
+                return kind, [], [], {}, "", False
             box = None
             if near:
                 la, lo, km = near
                 dlat, dlon = km / 111.0, km / (111.0 * max(math.cos(math.radians(la)), 0.05))
                 box = (la - dlat, la + dlat, lo - dlon, lo + dlon)
             places, photos, counts, loose = self._names(words, box, exclude)
-        clusters = self._cluster(places, photos, query, near)
-        return Result(query, kind, counts, clusters, hint, loose)
+        return kind, places, photos, counts, hint, loose
 
     def _cluster(self, places: list[tuple], photos: list[tuple], query: str, near: tuple | None) -> list[Cluster]:
         lat = np.asarray([p[1] for p in places] + [p[2] for p in photos], np.float64)
