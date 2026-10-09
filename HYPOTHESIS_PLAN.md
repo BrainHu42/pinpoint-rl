@@ -126,3 +126,35 @@ and as the "is it just a better reranker?" control.
 - The hypothesis-testing framing must be distinguished from LocationAgent (theirs: web and map clues, zero-shot; ours: gallery
   retrieval inside hypotheses, trained).
 - Next comparator baselines: PIGEON-style product, Vo et al. KDE, Pinpoint + agreement.
+
+## E1 / E2 results (2026-10-09; `hypotheses.py`, `hypothesis_compare.py`)
+- **E1, hypothesis oracle** (pick the right one of the top-K Pinpoint areas; its restricted top-1):
+
+| K | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| dev3k | 34.9% | 41.3% | 44.6% | 46.5% | 48.0% (48.5% + clue places) |
+| train | 33.1% | 39.5% | 42.7% | 44.7% | 46.0% |
+
+  Pinpoint 33.4 / 32.4%; pool oracle 50.3 / 49.2%. "Any restricted candidate" at K = 5: 51.6 / 49.6%. **Go** (>= 45% on dev3k).
+- **E2, comparators** (K = 5; answer = the chosen hypothesis's restricted top-1; change vs Pinpoint's top-1 < 25 km):
+
+| Comparator | train (35,359) | dev3k (3,000) |
+|---|---|---|
+| Pinpoint + agreement on its pool (lesson 68, the reference) | +1.0 [+0.7, +1.2] | +2.0 [+1.2, +2.8] |
+| area 1 (best pool support), restricted top-1 | +0.7 | +1.5 |
+| max restricted top-1 score | -0.5 | +0.1 |
+| restricted score mass | -0.1 | +0.5 |
+| PIGEON-style: pool support x softmax(restricted top-1 / 0.2) | +0.8 [+0.6, +1.0] | +1.5 |
+| Vo et al. KDE over the top-100 neighbours alone | -1.0 [-1.3, -0.6] | -0.1 |
+| **restricted mass (T 0.2) x support^0.5 x distinct photographers** (parameters chosen on train) | **+1.6** [+1.3, +1.9] (1,315 fixes / 754 breaks) | **+2.2** [+1.3, +3.1] (129 / 64) |
+| same without photographers | +0.8 | +1.9 |
+| same without support | +0.9 | +1.0 |
+
+- **Reading:**
+  - **E2 passes on train:** the hand comparator beats Pinpoint + agreement by +0.6 pts on 35k photos (+1.6 vs +1.0). On dev3k it's
+    +2.2 vs +2.0.
+  - **Distinct photographers is the key evidence:** +0.8 on train. Matches from many different people inside an area are
+    independent votes; a photo series by one person isn't. This feature is new for geolocation (E0).
+  - **Gallery density (the popularity correction) wasn't selected.**
+  - **Prior work is weaker on our hypotheses:** the PIGEON-style fixed product gets +0.8 and kNN density -1.0.
+  - The oracle (46-48%) leaves a lot for a learned comparator (E3).
