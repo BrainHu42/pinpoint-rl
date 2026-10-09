@@ -161,25 +161,21 @@ def picks(tag: str, name: str, threshold: float) -> None:
 
 def sft_data(tag: str, clues: str, out: Path, max_examples: int, val_share: float = 0.05) -> None:
     """Judge training rows (sft_train.py format: image_id, split, prompt, target) from a photo set's specific clues: target Yes when the clue's
-    top place is < 25 km from the photo's truth (GPS only). Photos are split train / val (val_share of photos, for the eval loss). Negatives are
-    subsampled so that at most max_examples rows remain, keeping every positive."""
+    top place is < 25 km from the photo's truth (GPS only). Photos are split train / val (val_share of photos, for the eval loss). Clues are
+    subsampled uniformly to at most max_examples rows, so the Yes rate stays the natural one and P(Yes) stays calibrated."""
 
     items = _items(tag, clues)
     ids = sorted({r["image_id"] for r in items})
     val = set(np.random.default_rng(0).choice(ids, int(len(ids) * val_share), replace=False).tolist())
-    pos = [r for r in items if r["km"] < 25]
-    neg = [r for r in items if r["km"] >= 25]
-    rng = np.random.default_rng(1)
-    keep = max(0, max_examples - len(pos))
-    if len(neg) > keep:
-        neg = [neg[i] for i in sorted(rng.choice(len(neg), keep, replace=False))]
+    pos = sum(r["km"] < 25 for r in items)
+    picked = items if len(items) <= max_examples else [items[i] for i in sorted(np.random.default_rng(1).choice(len(items), max_examples, replace=False))]
     rows = []
-    for r in pos + neg:
+    for r in picked:
         prompt = PROMPT.format(query=r["query"], how=_how(r["source"]), region=r["region"][1] or "?", country=r["region"][0] or "?")
         rows.append({"image_id": r["image_id"], "split": "val" if r["image_id"] in val else "train", "prompt": prompt,
                      "target": "Yes" if r["km"] < 25 else "No"})
     out.write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
-    print(f"{tag} / {clues}: {len(items)} specific clues, {len(pos)} positive; wrote {len(rows)} rows ({sum(x['target'] == 'Yes' for x in rows)} Yes, "
+    print(f"{tag} / {clues}: {len(items)} specific clues, {pos} positive; wrote {len(rows)} rows ({sum(x['target'] == 'Yes' for x in rows)} Yes, "
           f"{sum(x['split'] == 'val' for x in rows)} val) -> {out}")
 
 
