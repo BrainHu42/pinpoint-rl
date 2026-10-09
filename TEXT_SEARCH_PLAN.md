@@ -314,3 +314,21 @@ it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt 
   - It doesn't help on recalled names. The target ("is the clue's place right?") isn't conditioned on disagreeing with Pinpoint,
     so the judge learns "recognisable place", which is right mostly where Pinpoint is right.
   - The best rule is +0.5 pts, still below the 1-pt bar. The read-clue ceiling itself is only +1.7.
+
+**Judge trained on the decision itself (`clue_judge --vs`, run `clue-judge-vs-4b`, 2026-10-09):**
+- **Setup:** only clues whose region differs from Pinpoint's top-1 region (39,855 train clues, 2,259 = 5.7% right), with
+  Pinpoint's region in the prompt ("…instead places it in X. Is the name better evidence…?"); Yes rows repeated 3x; 1 epoch,
+  eval loss 0.070 -> 0.057 (train loss 0.02-0.05).
+- **Held-out precision** (clue right / Pinpoint right):
+  - read clues 26 / 11 (first fine-tune 20 / 11, zero-shot 15 / 15);
+  - text only 21 / 4 (19 / 8; 11 / 2);
+  - recalled names still lose, 10 / 23.
+- **End to end, read clues (text + place names) at P(Yes) >= 0.3, the clue's own coordinate:** **+0.6 pts** [+0.3, +1.0]
+  (49 switched, 23 fixes / 4 breaks). Text only: +0.5 (18 / 2). Pinpoint restricted to the clue's region: +0.4.
+- **Decision (made overnight per the agreed rule, with the user's instruction to use the other MP16 buckets for more data):**
+  - +0.6 is below the 1-pt bar and only slightly above the first fine-tune.
+  - Training loss is far below held-out loss, with only ~2.3k distinct positives: the judge is data-limited, not capacity-limited.
+  - The zero-shot 9B judged no better than the 4B (lesson 65).
+  - So: **more data**, not the 9B. 35k extra photos from MP16 buckets 0-98 (`pinpoint_reference extra`; no benchmark or dev
+    photographers, no near-duplicates of benchmark photos), 4B clues, searched, `--vs` rows, then retrain the 4B on both sets.
+  - Caveat: Pinpoint trained on buckets 0-98, so its answers there are better (the judge sees Pinpoint right more often).
