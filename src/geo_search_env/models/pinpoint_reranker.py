@@ -186,7 +186,7 @@ class PinpointReranker:
 
     @torch.inference_mode()
     def _search(self, raw: torch.Tensor, projected: torch.Tensor, query_author: np.ndarray | None, index_author: np.ndarray | None,
-                query_region: np.ndarray | None = None, index_region: np.ndarray | None = None):
+                query_region: np.ndarray | None = None, index_region: np.ndarray | None = None, query_box: np.ndarray | None = None):
         """Top hits per modality, streaming the index once; returns {modality: (rows [Q, k], scores [Q, k])}.
 
         Many index scores tie exactly (photos at one coordinate share a GPS embedding; near-duplicates share an fp16
@@ -204,6 +204,7 @@ class PinpointReranker:
         }
         q_author = None if query_author is None else torch.as_tensor(query_author, device=self.device)
         q_region = None if query_region is None else torch.as_tensor(query_region, device=self.device)
+        q_box = None if query_box is None else torch.as_tensor(query_box, device=self.device, dtype=torch.float32)  # [Q, 4] lat lo / hi, lon lo / hi
         count = len(self.latlon)
         for start in range(0, count, self.chunk):
             end = min(start + self.chunk, count)
@@ -214,11 +215,17 @@ class PinpointReranker:
             }
             excluded = None if q_author is None else torch.as_tensor(index_author[start:end], device=self.device)
             region = None if q_region is None else torch.as_tensor(index_region[start:end], device=self.device)
+            where = None if q_box is None else torch.as_tensor(np.asarray(self.latlon[start:end]), device=self.device)
             for m in MODALITIES:
                 for b in range(0, len(raw), self.query_batch):
                     scores = queries[m][b : b + self.query_batch] @ blocks[m].T
                     if excluded is not None:
                         scores.masked_fill_(excluded.unsqueeze(0) == q_author[b : b + self.query_batch].unsqueeze(1), float("-inf"))
+                    if where is not None:  # a NaN box leaves that query unrestricted
+                        box = q_box[b : b + self.query_batch]
+                        lat, lon = where[:, 0].unsqueeze(0), where[:, 1].unsqueeze(0)
+                        outside = (lat < box[:, 0:1]) | (lat > box[:, 1:2]) | (lon < box[:, 2:3]) | (lon > box[:, 3:4])
+                        scores.masked_fill_(outside & ~torch.isnan(box[:, 0:1]), float("-inf"))
                     if region is not None:  # region id -1: no restriction for that query
                         qr = q_region[b : b + self.query_batch].unsqueeze(1)
                         scores.masked_fill_((region.unsqueeze(0) != qr) & (qr >= 0), float("-inf"))
@@ -339,15 +346,16 @@ class PinpointReranker:
         return np.concatenate(all_scores), np.concatenate(all_features)
 
     def rank(self, embeddings: np.ndarray, *, query_author: np.ndarray | None = None, index_author: np.ndarray | None = None,
-             query_region: np.ndarray | None = None, index_region: np.ndarray | None = None) -> RerankedCandidates:
+             query_region: np.ndarray | None = None, index_region: np.ndarray | None = None, query_box: np.ndarray | None = None) -> RerankedCandidates:
         """Rerank each query's pool. `embeddings`: raw SigLIP2 [Q, 1536]. With `query_author` and `index_author`
         (an author id per index row, e.g. `mp16_author[cache_indices]`), index photos by the same author are excluded.
-        With `query_region` and `index_region` (int ids), a query only searches index rows of its region (-1: anywhere)."""
+        With `query_region` and `index_region` (int ids), a query only searches index rows of its region (-1: anywhere). With `query_box`
+        ([Q, 4]: lat min, lat max, lon min, lon max in degrees; NaN: anywhere), only index rows inside the query's box."""
 
         if (query_author is None) != (index_author is None) or (query_region is None) != (index_region is None):
             raise ValueError("pass both query_author and index_author (query_region and index_region), or neither")
         raw, projected = self.encode_queries(embeddings)
-        rows, ranks, flags = self._union(self._search(raw, projected, query_author, index_author, query_region, index_region))
+        rows, ranks, flags = self._union(self._search(raw, projected, query_author, index_author, query_region, index_region, query_box))
         scores, features = self._score(raw, projected, rows, ranks, flags)
         order = np.argsort(-scores, axis=1, kind="stable")
         rows, scores, features = np.take_along_axis(rows, order, 1), np.take_along_axis(scores, order, 1), np.take_along_axis(features, order[..., None], 1)

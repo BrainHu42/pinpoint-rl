@@ -386,3 +386,32 @@ control (each photo gets another photo's clues).
   - Hits are real (luck is 2-6 photos: a geocoder returns one specific place per query).
   - The coverage gain is modest.
   - At the judges' ~50% recovery, these sources might add about +0.4-0.6 pts to the +0.7.
+
+**Verifying recalled names (`recall_verify.py`, 2026-10-09; dev3k, the 2,657 recalled-name clues of the 4B that disagree with Pinpoint's
+region; 123 right):**
+- **Checks:**
+  - **Restricted retrieval:** Pinpoint restricted to a ~55 km box around the named place (new `query_box` in the port); its best
+    reranker score minus Pinpoint's own top-1 score.
+  - **Exemplars:** SigLIP2 similarity to gallery photos within 1 km of the named place, minus similarity to Pinpoint's top-1
+    photo.
+- **Separation of right vs wrong clues (AUC):** restricted margin 0.876, exemplar margin 0.675, the fine-tuned judge 0.937.
+  The AUCs mostly reflect easy wrong clues.
+- **Where it matters (clue right while Pinpoint is wrong, 77 clues):** only 16% have a restricted match scoring above
+  Pinpoint's top-1 (39% within 0.1). The gallery near the right place rarely offers a stronger match than Pinpoint's
+  look-alike, so retrieval can't confirm a right recognition it didn't make itself.
+- **Clue level:** the margin prunes some breaks (judge >= 0.8: 18 right / 7 wrong -> 17 / 4 with margin > -0.3).
+- **Per photo, end to end** (the clue's own coordinate):
+
+| Rule | Switched | Change < 25 km | Fixes / breaks |
+|---|---|---|---|
+| read clues, P(Yes) >= 0.5 (the previous best) | 45 | +0.7 [+0.4, +1.1] | 25 / 4 |
+| recalled only, P(Yes) >= 0.8 | 43 | +0.1 | 8 / 4 |
+| recalled only, + margin > -0.3 | 39 | +0.1 | 7 / 3 |
+| read + verified recalled | 71 | +0.6 | 26 / 7 |
+| thresholds chosen on the other half | 70 | +0.5 [+0.2, +0.9] | 25 / 9 |
+
+- **Reading:**
+  - Neither check unlocks recalled names. Most right recalled names sit on photos the read clues already fix, and the rest
+    aren't confirmed by retrieval or exemplars.
+  - The exemplar check is weak: similarity is what retrieval already uses.
+  - Text search stays at about +0.7 pts.
