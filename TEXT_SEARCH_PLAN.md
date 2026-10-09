@@ -505,3 +505,27 @@ region; 123 right):**
   Retrieval already returns physically similar candidates. **Physical-constraint elimination is unlikely to help; dropped.**
 - **Reading:** most recoverable cases are near-misses and generic photos where several candidates cluster. That's what the
   agreement re-scoring exploits, which fits its +1-2 pts.
+
+## Agreement + text clues, and the Pinpoint tool as areas (2026-10-09)
+- **Pinpoint tool (`pinpoint_tool.py`):** returns **areas**, not single candidates. Each area is grouped around its
+  best-supported candidate (25 km, softmax T = 0.2) with its share of retrieval confidence and member count. Area 1's pick is
+  lesson 68's agreement pick. Example the agent reads:
+  `pinpoint(): 11 visually similar geotagged photos, grouped into 1 areas: 1. Schwangau, Bavaria, Germany (47.555, 10.749): 100%, 11 of 11 candidates`.
+  This replaces "Pinpoint runs once and its pool goes into the prompt" in the target design: the agent sees where the visual
+  evidence concentrates, as an expert would weigh it.
+- **Combination on dev3k:** agreement pick, overridden by an accepted read-text clue (fine-tuned judge `ftvsall4b`, the clue's
+  own coordinate); judge threshold chosen on one half and counted on the other.
+
+| Rule | Change < 25 km | Fixes / breaks |
+|---|---|---|
+| agreement (support) | +2.0 [+1.3, +2.8] | 106 / 46 |
+| agreement (best in area) | +1.7 [+1.0, +2.5] | 96 / 45 |
+| Pinpoint + clue judge | +0.6 [+0.2, +1.0] | 25 / 7 |
+| **agreement (support) + clue judge** | **+2.6** [+1.8, +3.5] | 129 / 51 |
+| agreement (best in area) + clue judge | +2.3 [+1.5, +3.2] | 120 / 50 |
+
+- **Reading:**
+  - The two add up almost fully: they fix different photos (clusters vs explicit text).
+  - Calibration: agreement measured +1.0 on train against +2.0 on dev3k. The judge can't be checked on train (it was trained
+    there). A realistic combined gain is about +1.5 pts.
+  - Confirming it would take a held-out MP16 set for the judge, or a one-time test-set run if you ask.
