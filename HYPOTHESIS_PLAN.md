@@ -265,3 +265,10 @@ the chosen hypothesis):
 - **More hypotheses barely help:** the comparator, not the hypothesis set, is the bottleneck.
 - **The 4B's plausibility judgement:** separates right from wrong hypotheses only weakly on dev3k (AUC 0.63 vs restricted score mass
   0.84). Train judging is running; the extra photos queued next.
+- **Where the comparator misses** (dev3k, one model, no VLM feature): some hypothesis is right on 1,519 photos and the comparator picks
+  a wrong one on 426.
+  - **The right hypothesis is usually area 2 (122), area 1 (82) or area 3 (69);** 60 are VLM places.
+  - **The evidence points the wrong way:** the right hypothesis has the larger restricted score mass in only 26% of these misses,
+    more photographers in 35%, the higher top-1 in 28%; the 4B's plausibility is a coin flip (52%).
+  - These misses are evidence-ambiguous: the gallery supports the wrong area better. More comparator capacity can't fix them; it would
+    need evidence retrieval doesn't have.
