@@ -30,6 +30,7 @@ OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 AUTHORS = OUT / "mp16_author_by_cache_row.npy"
 BOX_KM = 25.0
+VLM_NAME = ""  # --vlm-name: plausibility from that judge (hypvlm_*_{name}.npy) instead of the base 4B
 EXTRA_HYPOTHESES = ["cluehyps"]  # merged after the Pinpoint areas in --e4 features (add "more10", "vlmhyps" with --extra-hyps)
 
 
@@ -60,7 +61,7 @@ def _merge_clue_hyps(tag: str) -> dict:
 
     base = OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"
     a = dict(np.load(base))
-    vlm = OUT / f"hypvlm_{tag}{'_base' if base.stem == f'hypotheses_{tag}' else '_clues'}.npy"
+    vlm = OUT / f"hypvlm_{tag}{'_base' if base.stem == f'hypotheses_{tag}' else '_clues'}{VLM_NAME and '_' + VLM_NAME}.npy"
     a["vlm_p"] = np.load(vlm) if vlm.exists() else np.full(len(a["photo"]), np.nan)
     keep = (a["source"] == 0) & (a["rank"] < 5 if "more10" not in EXTRA_HYPOTHESES else True)
     a = {k: v[keep] for k, v in a.items()}
@@ -68,7 +69,7 @@ def _merge_clue_hyps(tag: str) -> dict:
         path = OUT / f"hypotheses_{tag}_{name}.npz"
         if path.exists():
             b = dict(np.load(path))
-            vlm = OUT / f"hypvlm_{tag}_{name}.npy"
+            vlm = OUT / f"hypvlm_{tag}_{name}{VLM_NAME and '_' + VLM_NAME}.npy"
             b["vlm_p"] = np.load(vlm) if vlm.exists() else np.full(len(b["photo"]), np.nan)
             a = {k: np.concatenate([a[k], b[k]]) for k in a}
     return a
@@ -225,10 +226,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--clues", action="store_true")
     parser.add_argument("--e4", action="store_true", help="features: Pinpoint areas + clue hypotheses + clue features -> hypothesis_features_{tag}_e4.npz")
     parser.add_argument("--extra-hyps", nargs="*", default=(), help="also merge these hypothesis files (more10, vlmhyps); output ..._e4_<names>.npz")
+    parser.add_argument("--vlm-name", default="", help="plausibility judge name (fine-tuned run); output ..._vlm<name>.npz")
     args = parser.parse_args(argv)
+    global VLM_NAME
+    VLM_NAME = args.vlm_name
     if args.extra_hyps:
         EXTRA_HYPOTHESES.extend(args.extra_hyps)
-    features(args.tag, args.clues, args.e4, "_".join(args.extra_hyps)) if args.cmd == "features" else report(args.tag, args.clues)
+    features(args.tag, args.clues, args.e4, "_".join(list(args.extra_hyps) + ([f"vlm{VLM_NAME}"] if VLM_NAME else []))) if args.cmd == "features" else report(args.tag, args.clues)
     return 0
 
 

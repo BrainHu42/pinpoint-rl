@@ -272,3 +272,12 @@ the chosen hypothesis):
     more photographers in 35%, the higher top-1 in 28%; the 4B's plausibility is a coin flip (52%).
   - These misses are evidence-ambiguous: the gallery supports the wrong area better. More comparator capacity can't fix them; it would
     need evidence retrieval doesn't have.
+- **The 4B's plausibility as a feature (train judged, 313k hypotheses, 0 failures):** no gain. With it, train CV +2.8 / +3.4 and dev3k
+  +3.5 / +4.3; without it +2.9 / +3.5 and +3.8 / +4.6 (`--ablate vlm`).
+- **The 35k extra photos (buckets 0-98) as comparator training data:** no gain. Train CV +2.9 / +3.6, dev3k +3.3 / +4.1 (vs +2.9 / +3.5
+  and +3.8 / +4.6 without). Pinpoint was trained on those photos (top-1 40.1% < 25 km vs 32.4% on train; K = 5 oracle 55.1% vs 46.4%),
+  so their evidence looks different; and more data doesn't help a comparator whose misses are evidence-ambiguous.
+- **Next (running):** a fine-tuned plausibility judge. LoRA SFT of the 4B on 47k train_extra hypotheses ("could this photo be from
+  {place}?", Yes when the hypothesis's restricted top-1 is < 25 km; GPS labels; `hypothesis_vlm sft-data`, `scripts/hypvlm_run.sh`),
+  then judged on every train and dev3k hypothesis and added as the comparator's vlm feature. Tests whether a 4B taught on our labels
+  adds place knowledge the gallery evidence lacks.

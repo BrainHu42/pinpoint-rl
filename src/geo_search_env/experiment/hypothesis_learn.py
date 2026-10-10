@@ -189,7 +189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         okt = (tr["km_agree" if args.target_agree else "km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
         n_train = len(gt)
         if args.extra_train:  # appended after train's photos; used for fitting only, never evaluated
-            ex = dict(np.load(FEATURES_E4["train"].with_name("hypothesis_features_train_extra_e4.npz")))
+            ex = dict(np.load(FEATURES_E4["train"].with_name("hypothesis_features_train_extra_e4" + (f"_{args.variant}" if args.variant else "") + ".npz")))
             Xe, ge = _matrix(ex, drop, args.e4, args.extra)
             if Xe.shape[1] < Xt.shape[1]:  # train has VLM-plausibility columns the extra photos lack: pad as "missing"
                 Xe = np.concatenate([Xe, np.tile([0.5, 0.0], (len(Xe), 1))[:, :Xt.shape[1] - Xe.shape[1]]], 1)
