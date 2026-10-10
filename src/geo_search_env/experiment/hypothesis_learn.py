@@ -116,8 +116,11 @@ def _fit(X: np.ndarray, groups: list[np.ndarray], ok: np.ndarray, photos: np.nda
 
 
 def _predict(model, mu, sd, X, groups, photos) -> dict[int, int]:
+    """Top-scored hypothesis per photo. model may be a list of models (an ensemble: their per-photo softmax probabilities are averaged)."""
+
     import torch
 
+    models = model if isinstance(model, list) else [model]
     out = {}
     with torch.no_grad():
         for b in np.array_split(np.asarray(photos), max(1, len(photos) // 2048)):
@@ -126,7 +129,14 @@ def _predict(model, mu, sd, X, groups, photos) -> dict[int, int]:
                 continue
             rows = np.concatenate([groups[p] for p in b])
             seg = np.concatenate([np.full(len(groups[p]), j) for j, p in enumerate(b)])
-            s = model.scores(torch.as_tensor((X[rows] - mu) / sd, dtype=torch.float32), torch.as_tensor(seg), len(b)).numpy()
+            x = torch.as_tensor((X[rows] - mu) / sd, dtype=torch.float32)
+            segt = torch.as_tensor(seg)
+            s = np.zeros(len(rows))
+            for m in models:
+                raw = m.scores(x, segt, len(b))
+                mx = torch.full((len(b),), -1e9).scatter_reduce(0, segt, raw, "amax")
+                ex = torch.exp(raw - mx[segt])
+                s += (ex / torch.zeros(len(b)).index_add_(0, segt, ex)[segt]).numpy()
             start = 0
             for p in b:
                 n = len(groups[p])
@@ -156,6 +166,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--extra", action="store_true", help="+ restricted-retrieval features (ablation group: restricted); needs --e4")
     parser.add_argument("--attn", action="store_true", help="attention between a photo's hypotheses instead of the mean")
     parser.add_argument("--agree", action="store_true", help="answer with the agreement pick inside the chosen hypothesis")
+    parser.add_argument("--ensemble", type=int, default=1, help="models per fit, softmax-averaged")
+    parser.add_argument("--save", type=Path, help="save the comparator(s) trained on all of train (seed 0)")
     parser.add_argument("--variant", default="", help="feature-file suffix after _e4 (e.g. more10, vlmhyps, more10_vlmhyps)")
     args = parser.parse_args(argv)
     _Model.attn = args.attn
@@ -173,14 +185,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         cv = {}
         for k in range(5):
             fit, held = np.flatnonzero(folds != k), np.flatnonzero(folds == k)
-            model, mu, sd = _fit(Xt, gt, okt, fit, seed=k)
-            cv |= _predict(model, mu, sd, Xt, gt, held)
+            fits = [_fit(Xt, gt, okt, fit, seed=10 * k + j) for j in range(args.ensemble)]
+            cv |= _predict([m for m, _, _ in fits], fits[0][1], fits[0][2], Xt, gt, held)
         print(f" {label}")
         _evaluate("train, 5-fold cross-validation", tr, gt, cv, args.e4)
         if args.agree:
             _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
         for seed in range(args.seeds if not drop else 1):
-            model, mu, sd = _fit(Xt, gt, okt, np.arange(len(gt)), seed=seed)
+            fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]
+            model, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
+            if args.save and seed == 0 and not drop:
+                import torch
+
+                torch.save({"models": [{"enc": m.enc.state_dict(), "qkv": m.qkv.state_dict(), "head": m.head.state_dict()} for m in model],
+                            "mu": mu, "sd": sd, "dim": Xt.shape[1], "attn": _Model.attn, "args": vars(args)}, args.save)
+                print(f"  saved {len(model)} comparator(s) -> {args.save}")
             picks = _predict(model, mu, sd, Xd, gd, np.arange(len(gd)))
             _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, picks, args.e4)
             if args.agree:
