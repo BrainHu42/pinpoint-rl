@@ -168,6 +168,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--agree", action="store_true", help="answer with the agreement pick inside the chosen hypothesis")
     parser.add_argument("--ensemble", type=int, default=1, help="models per fit, softmax-averaged")
     parser.add_argument("--save", type=Path, help="save the comparator(s) trained on all of train (seed 0)")
+    parser.add_argument("--dump", type=Path, help="save per-photo dev3k distances (seed 0) for analysis")
     parser.add_argument("--variant", default="", help="feature-file suffix after _e4 (e.g. more10, vlmhyps, more10_vlmhyps)")
     args = parser.parse_args(argv)
     _Model.attn = args.attn
@@ -201,6 +202,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "mu": mu, "sd": sd, "dim": Xt.shape[1], "attn": _Model.attn, "args": vars(args)}, args.save)
                 print(f"  saved {len(model)} comparator(s) -> {args.save}")
             picks = _predict(model, mu, sd, Xd, gd, np.arange(len(gd)))
+            if args.dump and seed == 0 and not drop:
+                keep = np.arange(len(dv["source"])) if args.e4 else np.flatnonzero(dv["source"] == 0)
+                km = np.asarray([dv["km"][keep][picks[p]] if p in picks else dv["base_km"][p] for p in range(len(gd))])
+                kma = np.asarray([dv["km_agree"][keep][picks[p]] if p in picks and "km_agree" in dv else km[p] for p in range(len(gd))])
+                np.savez(args.dump, km=km, km_agree=kma, base_km=dv["base_km"])
+                print(f"  per-photo dev3k km -> {args.dump}")
             _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, picks, args.e4)
             if args.agree:
                 _evaluate(f"dev3k, agreement pick inside (seed {seed})", dv, gd, picks, args.e4, agree=True)

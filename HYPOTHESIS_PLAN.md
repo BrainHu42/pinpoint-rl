@@ -229,3 +229,15 @@ and as the "is it just a better reranker?" control.
   - The agreement pick inside the chosen hypothesis adds +0.5 at 25 km and costs about 1 pt at 1 km (the same trade-off as lesson 68).
   - The extra restricted features and attention don't help.
   - Still running: more hypotheses (areas ranked 6-10).
+
+**Ensemble and breakdown (2026-10-10).**
+- **5-model ensemble (E4 features):** train CV +2.7 [+2.4, +3.0] (top-1 pick; < 1 km +0.5) / +3.2 [+3.0, +3.5] (agreement pick inside;
+  < 1 km -0.7). dev3k +3.9 [+2.8, +4.9] / **+4.6** [+3.6, +5.7] (68-69 breaks).
+- **Saved:** `artifacts/agent/hyp_e4_comparator.pt`; per-photo dev3k distances in `artifacts/agent/hyp_e4_dev3k_picks.npz`.
+- **By locatability tier** (the 120 blind-labelled dev3k photos; counts < 25 km, Pinpoint -> system):
+  - P 13 -> 13, C 8 -> 8 (already solved);
+  - R 2 -> 3, N 8 -> 10, K 5 -> 6 (gains, where expected);
+  - X 8 -> 9;
+  - all 44 -> 49.
+- **By Pinpoint's error on all of dev3k:** fixes 59 of 246 photos 25-100 km off (24%), 89 of 780 at 100-750 km, 29 of 460 at 750-2,500 km,
+  28 of 511 beyond. Breaks: 68 (median 209 km off).
