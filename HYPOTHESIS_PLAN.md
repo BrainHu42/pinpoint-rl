@@ -249,3 +249,19 @@ GPU queue, in order:
 3. VLM plausibility of each hypothesis (`hypothesis_vlm.py`: "could this photo be from {place}?", P(Yes)) on train and dev3k.
 
 After each: retrain the comparator (5-fold CV on train, dev3k), keep what helps, record here.
+
+**Overnight results so far** (5-model ensembles; train 5-fold CV / dev3k; change vs Pinpoint < 25 km; "agree" = agreement pick inside
+the chosen hypothesis):
+
+| Variant | train CV (top-1 / agree) | dev3k (top-1 / agree) | dev3k breaks |
+|---|---|---|---|
+| E4 (Pinpoint areas K = 5 + clue places + clue features) | +2.7 / +3.2 | +3.9 / +4.6 | 69 |
+| + VLM place hypotheses (oracle train 46.4 -> 48.8%, dev3k 48.5 -> 50.6%) | +2.8 / +3.4 | +3.7 / +4.5 | 60 |
+| + areas ranked 6-10 | +2.7 / +3.2 | +3.6 / +4.5 | 70 |
+| + both | +2.9 / +3.5 | +3.3 / +4.1 | 77 |
+| **+ VLM places + distance to Pinpoint's top-1** | **+2.9 / +3.5** | **+3.8 / +4.6** | **59** |
+| same, trained towards the agreement pick's label | +2.9 / +3.5 | +3.4 / +4.2 | 69 |
+
+- **More hypotheses barely help:** the comparator, not the hypothesis set, is the bottleneck.
+- **The 4B's plausibility judgement:** separates right from wrong hypotheses only weakly on dev3k (AUC 0.63 vs restricted score mass
+  0.84). Train judging is running; the extra photos queued next.
