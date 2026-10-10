@@ -172,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--attn", action="store_true", help="attention between a photo's hypotheses instead of the mean")
     parser.add_argument("--agree", action="store_true", help="answer with the agreement pick inside the chosen hypothesis")
     parser.add_argument("--ensemble", type=int, default=1, help="models per fit, softmax-averaged")
+    parser.add_argument("--extra-train", action="store_true", help="add the 35k MP16 bucket 0-98 photos (train_extra) to every training fit")
     parser.add_argument("--target-agree", action="store_true", help="train towards hypotheses whose agreement pick (not top-1) is < 25 km")
     parser.add_argument("--save", type=Path, help="save the comparator(s) trained on all of train (seed 0)")
     parser.add_argument("--dump", type=Path, help="save per-photo dev3k distances (seed 0) for analysis")
@@ -186,9 +187,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         Xt, gt = _matrix(tr, drop, args.e4, args.extra)
         Xd, gd = _matrix(dv, drop, args.e4, args.extra)
         okt = (tr["km_agree" if args.target_agree else "km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
+        n_train = len(gt)
+        if args.extra_train:  # appended after train's photos; used for fitting only, never evaluated
+            ex = dict(np.load(FEATURES_E4["train"].with_name("hypothesis_features_train_extra_e4.npz")))
+            Xe, ge = _matrix(ex, drop, args.e4, args.extra)
+            if Xe.shape[1] < Xt.shape[1]:  # train has VLM-plausibility columns the extra photos lack: pad as "missing"
+                Xe = np.concatenate([Xe, np.tile([0.5, 0.0], (len(Xe), 1))[:, :Xt.shape[1] - Xe.shape[1]]], 1)
+            off = len(Xt)
+            Xt = np.concatenate([Xt, Xe])
+            gt = gt + [g + off for g in ge]
+            okt = np.concatenate([okt, ex["km"] < 25])
+            print(f"  + {len(ge)} extra training photos (buckets 0-98)")
         label = "all features" if not drop else f"without {drop[0]}"
         # 5-fold CV on train (held-out photos), seed-averaged by voting the first seed's picks (seeds vary the init only)
-        folds = np.random.default_rng(0).permutation(len(gt)) % 5
+        folds = np.concatenate([np.random.default_rng(0).permutation(n_train) % 5, np.full(len(gt) - n_train, -1)])
         cv = {}
         for k in range(5):
             fit, held = np.flatnonzero(folds != k), np.flatnonzero(folds == k)
@@ -199,7 +211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.agree:
             _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
         for seed in range(args.seeds if not drop else 1):
-            fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]
+            fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]  # train (+ extra)
             model, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
             if args.save and seed == 0 and not drop:
                 import torch

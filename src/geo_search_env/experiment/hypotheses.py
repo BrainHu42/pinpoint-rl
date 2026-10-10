@@ -34,7 +34,7 @@ def _hypotheses(tag: str, k: int, clues: bool, min_rank: int = 0) -> list[dict]:
     from .pinpoint_tool import areas
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    pools = load_pools("mp16")
+    pools = load_pools(photos[0].get("pools", "mp16"))  # train_extra: the bucket 0-98 photos' own pools
     accepted: dict[str, list[tuple[float, float, float]]] = {}
     if clues:
         from .clue_judge import _joined
@@ -54,14 +54,21 @@ def _hypotheses(tag: str, k: int, clues: bool, min_rank: int = 0) -> list[dict]:
     return out
 
 
+def _queries(photos: list[dict]) -> list[dict]:
+    """The query entries (MP16 rows) of a photo set, from the pool file its indices refer to."""
+
+    name = "queries_extra.json" if photos[0].get("pools") == "mp16_extra" else "queries.json"
+    queries = json.loads((SFT_ROOT / name).read_text(encoding="utf-8"))
+    return [queries[e["index"]] for e in photos]
+
+
 def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
     from ..models.pinpoint_reranker import PinpointReranker
     from .strategy_search import load_world
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     hyps = _hypotheses(tag, k, clues and min_rank == 0, min_rank)
-    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
-    world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
+    world = load_world(mp16_queries=_queries(photos))
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     p = np.asarray([h["photo"] for h in hyps])
     centre = np.asarray([h["center"] for h in hyps], np.float64)
@@ -113,8 +120,7 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
                 kept.append((pr, la, lo))
         hyps += [{"photo": ph, "source": 1, "rank": k, "support": pr, "center": [la, lo]} for k, (pr, la, lo) in enumerate(kept[:per_photo])]
     print(f"{tag}: {len(hyps)} clue hypotheses on {len(cands)} photos (judge {judge}, P(Yes) >= {min_p})", flush=True)
-    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
-    world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
+    world = load_world(mp16_queries=_queries(photos))
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     pidx = np.asarray([h["photo"] for h in hyps])
     centre = np.asarray([h["center"] for h in hyps], np.float64)
@@ -136,7 +142,7 @@ def oracle(tag: str, clues: bool = False) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     z = dict(np.load(OUT / f"hypotheses_{tag}{'_clues' if clues else ''}.npz"))
-    pools = load_pools("mp16")
+    pools = load_pools(photos[0].get("pools", "mp16"))
     truth = np.asarray([e["truth"] for e in photos])
     n = len(photos)
     base = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] < 25 for e in photos])
