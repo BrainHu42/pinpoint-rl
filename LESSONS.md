@@ -818,3 +818,23 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       dev3k +1.7 (< 1 km +0.2).
     - The first change in this project to clear +1 pt on independent data, free (Pinpoint's own outputs only). It works where several
       candidates cluster: near-misses and generic photos, the bulk of Pinpoint's recoverable misses.
+
+69. **Geolocation as hypothesis testing adds +2.9 / +3.5 pts on train, +3.8 / +4.6 on dev3k (2026-10-09/10; `HYPOTHESIS_PLAN.md`,
+    `hypotheses.py`, `hypothesis_compare.py`, `hypothesis_learn.py`).** Hypotheses = Pinpoint's top-5 agreement areas + clue places
+    (text search + zero-shot 4B judge) + the 4B's own place proposals; Pinpoint restricted to a +-25 km box around each; a learned set-level
+    comparator (DeepSets MLP, listwise loss, GPS labels, 5-model ensemble) picks one; the answer is its restricted top-1 (or the agreement
+    pick inside it: "/ agree").
+    - Hypothesis oracle (K = 5 areas + clue places): 46.4% train, 48.5% dev3k (Pinpoint 32.4 / 33.4, pool oracle 49.2 / 50.3); + the 4B's
+      place proposals 48.8 / 50.6.
+    - Ladder (train 5-fold CV; dev3k trained on all of train): agreement +1.0 / +2.0; hand comparator (mass x support^0.5 x photographers)
+      +1.6 / +2.2; learned +2.1 / +2.7; + clue hypotheses and clue features +2.5 / +3.3 (one model) and +2.7 / +3.9 (ensemble); + VLM
+      place hypotheses and distance to Pinpoint's top-1 **+2.9 / +3.5 train, +3.8 / +4.6 dev3k** (top-1 / agree; dev3k seeds 1-2 +3.4 / +4.2;
+      59-69 breaks; < 1 km +0.5 / -0.7 train). Saved: `artifacts/agent/hyp_final_comparator.pt`.
+    - Gains by locatability tier come from R / N / K photos (lesson 67), where the region is recognisable but the spot isn't.
+    - What did not help (each within +-0.2 on train CV): areas ranked 6-10, richer restricted-retrieval features, attention between
+      hypotheses, training towards the agreement pick's label, 35k extra training photos from buckets 0-98 (Pinpoint trained on them: its
+      top-1 is 40% < 25 km there), the zero-shot 4B's "could this photo be from {place}?" P(Yes) (AUC 0.63), and the same question
+      fine-tuned on 48k train_extra hypotheses (AUC 0.78 on dev3k, vs 0.84 for restricted score mass; +0.1 train, -0.1 dev3k).
+    - Why it stops here: of 1,519 dev3k photos with a right hypothesis, the comparator misses 426; in ~70% of those the right hypothesis has
+      the weaker retrieval evidence (score mass larger in only 26%). The fine-tuned judge prefers the right one in 58% of such pairs, too
+      weak to move the choice. The remaining headroom (oracle 48-51% vs 37-38%) needs evidence the gallery doesn't have.

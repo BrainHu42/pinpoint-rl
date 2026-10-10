@@ -91,6 +91,10 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   (Pinpoint 37% there). The gap is photos with a recognisable country / region but no spot; Pinpoint's misses are near-misses or generic.
 - **68 (positive): agreement among Pinpoint's candidates** (score mass within 25 km, `pool_agreement.py`): **+1.0 pts on train** [+0.7, +1.2],
   +2.0 on dev3k; -0.6 at 1 km (the best-in-area variant keeps 1 km at +0.7 / +1.7). First gain >= 1 pt on independent data.
+- **69 (positive): geolocation as hypothesis testing** (`HYPOTHESIS_PLAN.md`): Pinpoint areas + clue places + 4B place proposals, Pinpoint
+  restricted to each, a learned set-level comparator picks one: **+2.9 / +3.5 pts on train** (CV; top-1 / agreement pick inside), **+3.8 /
+  +4.6 on dev3k**. Oracle 49-51%. More hypotheses, more training photos and a 4B plausibility judge (zero-shot or fine-tuned) add nothing:
+  misses are evidence-ambiguous (the right hypothesis has the weaker retrieval evidence in ~70%).
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

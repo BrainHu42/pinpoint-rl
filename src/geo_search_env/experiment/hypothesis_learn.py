@@ -165,6 +165,7 @@ def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = Fals
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--drop", nargs="*", default=(), help="feature groups left out of every run (e.g. vlm)")
     parser.add_argument("--ablate", nargs="*", default=(), help="feature groups to drop in extra runs: " + ", ".join(GROUPS))
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--e4", action="store_true", help="Pinpoint areas + clue hypotheses + clue features (ablation group: clues)")
@@ -183,7 +184,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     tr, dv = dict(np.load(paths["train"])), dict(np.load(paths["dev3k"]))
     print(f"train: {len(tr['base_km'])} photos, Pinpoint < 25 km {np.mean(tr['base_km'] < 25):.1%} (agreement +1.0, hand comparator +1.6); "
           f"dev3k: Pinpoint {np.mean(dv['base_km'] < 25):.1%} (agreement +2.0, hand comparator +2.2)")
-    for drop in [()] + [(g,) for g in args.ablate]:
+    for ablated in [()] + [(g,) for g in args.ablate]:
+        drop = tuple(args.drop) + ablated
         Xt, gt = _matrix(tr, drop, args.e4, args.extra)
         Xd, gd = _matrix(dv, drop, args.e4, args.extra)
         okt = (tr["km_agree" if args.target_agree else "km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
@@ -198,7 +200,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             gt = gt + [g + off for g in ge]
             okt = np.concatenate([okt, ex["km"] < 25])
             print(f"  + {len(ge)} extra training photos (buckets 0-98)")
-        label = "all features" if not drop else f"without {drop[0]}"
+        label = "all features" if not ablated else f"without {ablated[0]}"
         # 5-fold CV on train (held-out photos), seed-averaged by voting the first seed's picks (seeds vary the init only)
         folds = np.concatenate([np.random.default_rng(0).permutation(n_train) % 5, np.full(len(gt) - n_train, -1)])
         cv = {}
@@ -210,17 +212,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         _evaluate("train, 5-fold cross-validation", tr, gt, cv, args.e4)
         if args.agree:
             _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
-        for seed in range(args.seeds if not drop else 1):
+        for seed in range(args.seeds if not ablated else 1):
             fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]  # train (+ extra)
             model, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
-            if args.save and seed == 0 and not drop:
+            if args.save and seed == 0 and not ablated:
                 import torch
 
                 torch.save({"models": [{"enc": m.enc.state_dict(), "qkv": m.qkv.state_dict(), "head": m.head.state_dict()} for m in model],
                             "mu": mu, "sd": sd, "dim": Xt.shape[1], "attn": _Model.attn, "args": vars(args)}, args.save)
                 print(f"  saved {len(model)} comparator(s) -> {args.save}")
             picks = _predict(model, mu, sd, Xd, gd, np.arange(len(gd)))
-            if args.dump and seed == 0 and not drop:
+            if args.dump and seed == 0 and not ablated:
                 keep = np.arange(len(dv["source"])) if args.e4 else np.flatnonzero(dv["source"] == 0)
                 km = np.asarray([dv["km"][keep][picks[p]] if p in picks else dv["base_km"][p] for p in range(len(gd))])
                 kma = np.asarray([dv["km_agree"][keep][picks[p]] if p in picks and "km_agree" in dv else km[p] for p in range(len(gd))])

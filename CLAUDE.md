@@ -85,6 +85,10 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   Expert clue catalogue: `GEOLOCATION_CLUES.md`. Later checks: `clue_points.py`, `web_geocode.py`, `recall_verify.py`, `clue_survey.py`,
   `chain_footprint.py`, `vlm_country.py`, `plates.py`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
 - **Agreement re-scoring of Pinpoint's pool (lesson 68, +1.0 pts on train): `pool_agreement.py`.**
+- **Hypothesis testing (lesson 69, +2.9 / +3.5 train, +3.8 / +4.6 dev3k):** `hypotheses.py` (Pinpoint areas, restricted search, clue
+  hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator; best:
+  `--e4 --variant vlmhyps --drop vlm --agree --ensemble 5`, saved `artifacts/agent/hyp_final_comparator.pt`), `hypothesis_vlm.py` +
+  `scripts/hypvlm_run.sh` (plausibility judge, zero-shot / fine-tuned; no gain).
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).
