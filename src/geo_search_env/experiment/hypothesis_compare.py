@@ -167,6 +167,8 @@ def features(tag: str, clues: bool, e4: bool = False, extra_name: str = "") -> N
         f |= _clue_features(tag, z)
         f |= _restricted_features(z, truth)
         f["vlm_p"] = z["vlm_p"]
+        top1 = np.asarray([e["pool"][0] for e in photos], np.float64)
+        f["d_top1"] = np.asarray([_haversine_km(*top1[ph], z["center"][i:i + 1])[0] for i, ph in enumerate(z["photo"])])
     np.savez(dst, **f)
     print(f"{n} hypotheses for {len(photos)} photos -> {dst}")
 

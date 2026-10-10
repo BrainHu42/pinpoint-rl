@@ -23,7 +23,7 @@ FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypo
 FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
 CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
 RESTRICTED_KEYS = [f"rf_{j}" for j in range(9)] + ["r_support", "r_areas", "r_spread"]
-GROUPS = {"clues": [], "restricted": [], "vlm": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+GROUPS = {"clues": [], "restricted": [], "vlm": [], "dist": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
@@ -50,6 +50,8 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False)
         cols += [(f["source"][keep] == src).astype(float) for src in (1, 2)]  # clue place, VLM place
         if "clues" not in drop:
             cols += [np.log1p(f[k][keep]) if k.endswith("_n") else f[k][keep] for k in CLUE_KEYS]
+    if e4 and "dist" not in drop and "d_top1" in f:
+        cols.append(np.log1p(f["d_top1"][keep]))
     if e4 and "vlm" not in drop and "vlm_p" in f and np.isfinite(f["vlm_p"]).any():
         v = f["vlm_p"][keep]
         cols += [np.where(np.isfinite(v), v, 0.5), np.isfinite(v).astype(float)]
@@ -170,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--attn", action="store_true", help="attention between a photo's hypotheses instead of the mean")
     parser.add_argument("--agree", action="store_true", help="answer with the agreement pick inside the chosen hypothesis")
     parser.add_argument("--ensemble", type=int, default=1, help="models per fit, softmax-averaged")
+    parser.add_argument("--target-agree", action="store_true", help="train towards hypotheses whose agreement pick (not top-1) is < 25 km")
     parser.add_argument("--save", type=Path, help="save the comparator(s) trained on all of train (seed 0)")
     parser.add_argument("--dump", type=Path, help="save per-photo dev3k distances (seed 0) for analysis")
     parser.add_argument("--variant", default="", help="feature-file suffix after _e4 (e.g. more10, vlmhyps, more10_vlmhyps)")
@@ -182,7 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for drop in [()] + [(g,) for g in args.ablate]:
         Xt, gt = _matrix(tr, drop, args.e4, args.extra)
         Xd, gd = _matrix(dv, drop, args.e4, args.extra)
-        okt = (tr["km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
+        okt = (tr["km_agree" if args.target_agree else "km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
         label = "all features" if not drop else f"without {drop[0]}"
         # 5-fold CV on train (held-out photos), seed-averaged by voting the first seed's picks (seeds vary the init only)
         folds = np.random.default_rng(0).permutation(len(gt)) % 5
