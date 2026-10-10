@@ -30,6 +30,7 @@ OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 AUTHORS = OUT / "mp16_author_by_cache_row.npy"
 BOX_KM = 25.0
+EXTRA_HYPOTHESES = ["cluehyps"]  # merged after the Pinpoint areas in --e4 features (add "more10", "vlmhyps" with --extra-hyps)
 
 
 def _cache_authors() -> np.ndarray:
@@ -60,11 +61,12 @@ def _merge_clue_hyps(tag: str) -> dict:
     a = dict(np.load(OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"))
     keep = a["source"] == 0
     a = {k: v[keep] for k, v in a.items()}
-    path = OUT / f"hypotheses_{tag}_cluehyps.npz"
-    if not path.exists():
-        return a
-    b = dict(np.load(path))
-    return {k: np.concatenate([a[k], b[k]]) for k in a}
+    for name in EXTRA_HYPOTHESES:
+        path = OUT / f"hypotheses_{tag}_{name}.npz"
+        if path.exists():
+            b = dict(np.load(path))
+            a = {k: np.concatenate([a[k], b[k]]) for k in a}
+    return a
 
 
 def _clue_features(tag: str, z: dict, judge: str = "4b") -> dict:
@@ -94,7 +96,33 @@ def _clue_features(tag: str, z: dict, judge: str = "4b") -> dict:
     return out
 
 
-def features(tag: str, clues: bool, e4: bool = False) -> None:
+def _restricted_features(z: dict, truth: np.ndarray) -> dict:
+    """Step 1 (comparator improvements): per hypothesis, Pinpoint's 9 retrieval features of its restricted top-1, agreement inside the
+    restricted results (support of the best restricted area, number of restricted areas), the spread of the restricted candidates (median km
+    to the top-1), and, for evaluation, the km of the agreement pick inside the hypothesis (pinpoint_tool, instead of the restricted top-1)."""
+
+    from .pinpoint_tool import areas
+    from .strategy_search import _haversine_km
+
+    n = len(z["photo"])
+    out = {f"rf_{j}": np.zeros(n) for j in range(9)} | {"r_support": np.zeros(n), "r_areas": np.zeros(n), "r_spread": np.zeros(n),
+                                                        "km_agree": np.full(n, np.inf)}
+    for i in range(n):
+        valid = z["rows"][i] >= 0
+        if not valid.any():
+            continue
+        for j in range(9):
+            out[f"rf_{j}"][i] = z["features"][i, 0, j]
+        ll = z["latlon"][i, valid].astype(np.float64)
+        s = z["scores"][i, valid].astype(np.float64)
+        a = areas(s, ll)
+        out["r_support"][i], out["r_areas"][i] = a[0].support, len(a)
+        out["r_spread"][i] = float(np.median(_haversine_km(*ll[0], ll))) if len(ll) > 1 else 0.0
+        out["km_agree"][i] = _haversine_km(*truth[z["photo"][i]], ll[[a[0].founder]])[0]
+    return out
+
+
+def features(tag: str, clues: bool, e4: bool = False, extra_name: str = "") -> None:
     from scipy.spatial import cKDTree
 
     from ..models.pinpoint_reranker import _discover_index, _unit_xyz
@@ -104,7 +132,7 @@ def features(tag: str, clues: bool, e4: bool = False) -> None:
     z = dict(np.load(src))
     if e4:
         z = _merge_clue_hyps(tag)
-        dst = OUT / f"hypothesis_features_{tag}_e4.npz"
+        dst = OUT / f"hypothesis_features_{tag}_e4{'_' + extra_name if extra_name else ''}.npz"
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     truth = np.asarray([e["truth"] for e in photos], np.float64)
     index_dir = _discover_index()
@@ -132,6 +160,7 @@ def features(tag: str, clues: bool, e4: bool = False) -> None:
     f["base_km"] = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] for e in photos])
     if e4:
         f |= _clue_features(tag, z)
+        f |= _restricted_features(z, truth)
     np.savez(dst, **f)
     print(f"{n} hypotheses for {len(photos)} photos -> {dst}")
 
@@ -187,8 +216,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--clues", action="store_true")
     parser.add_argument("--e4", action="store_true", help="features: Pinpoint areas + clue hypotheses + clue features -> hypothesis_features_{tag}_e4.npz")
+    parser.add_argument("--extra-hyps", nargs="*", default=(), help="also merge these hypothesis files (more10, vlmhyps); output ..._e4_<names>.npz")
     args = parser.parse_args(argv)
-    features(args.tag, args.clues, args.e4) if args.cmd == "features" else report(args.tag, args.clues)
+    if args.extra_hyps:
+        EXTRA_HYPOTHESES.extend(args.extra_hyps)
+    features(args.tag, args.clues, args.e4, "_".join(args.extra_hyps)) if args.cmd == "features" else report(args.tag, args.clues)
     return 0
 
 

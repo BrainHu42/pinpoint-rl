@@ -22,11 +22,12 @@ OUT = Path("artifacts/agent")
 FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypothesis_features_dev3k_clues.npz"}
 FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
 CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
-GROUPS = {"clues": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+RESTRICTED_KEYS = [f"rf_{j}" for j in range(9)] + ["r_support", "r_areas", "r_spread"]
+GROUPS = {"clues": [], "restricted": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
-def _matrix(f: dict, drop: Sequence[str], e4: bool = False) -> tuple[np.ndarray, list[np.ndarray]]:
+def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False) -> tuple[np.ndarray, list[np.ndarray]]:
     keep = np.ones(len(f["source"]), bool) if e4 else f["source"] == 0
     photo = f["photo"][keep]
     lg = lambda x: np.log(np.maximum(x, 1e-12))
@@ -37,7 +38,7 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False) -> tuple[np.ndarray,
         for k in keys:
             x = f[k][keep].astype(np.float64)
             if k == "rank":
-                cols += [(x == r).astype(float) for r in range(5)]
+                cols += [(x == r).astype(float) for r in range(10)]
                 continue
             x = lg(x) if k not in ("top1", "top3") else np.where(np.isfinite(x), x, -1.0)
             cols.append(x)
@@ -46,32 +47,46 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False) -> tuple[np.ndarray,
                 np.maximum.at(mx, photo, x)
                 cols.append(x - mx[photo])
     if e4:
-        cols.append((f["source"][keep] == 1).astype(float))
+        cols += [(f["source"][keep] == src).astype(float) for src in (1, 2)]  # clue place, VLM place
         if "clues" not in drop:
             cols += [np.log1p(f[k][keep]) if k.endswith("_n") else f[k][keep] for k in CLUE_KEYS]
+    if extra and "restricted" not in drop:
+        cols += [np.log1p(f[k][keep]) if k == "r_spread" else f[k][keep] for k in RESTRICTED_KEYS]
     X = np.stack(cols, 1)
     groups = [np.flatnonzero(photo == p) for p in range(len(f["base_km"]))]
     return X, groups
 
 
 class _Model:
+    """Per-hypothesis encoder + set context: the mean of the photo's hypotheses (DeepSets), or with attn one round of attention in which each
+    hypothesis attends to the photo's other hypotheses."""
+
+    attn = False
+
     def __init__(self, dim: int, seed: int) -> None:
         import torch
 
         torch.manual_seed(seed)
         h = 64
         self.enc = torch.nn.Sequential(torch.nn.Linear(dim, h), torch.nn.GELU(), torch.nn.Linear(h, h), torch.nn.GELU())
+        self.qkv = torch.nn.Linear(h, 3 * h)
         self.head = torch.nn.Sequential(torch.nn.Linear(2 * h, h), torch.nn.GELU(), torch.nn.Linear(h, 1))
 
     def parameters(self):
-        return list(self.enc.parameters()) + list(self.head.parameters())
+        return list(self.enc.parameters()) + list(self.head.parameters()) + (list(self.qkv.parameters()) if self.attn else [])
 
     def scores(self, x, seg, n_seg):
         import torch
 
         e = self.enc(x)
-        pooled = torch.zeros(n_seg, e.shape[1]).index_add_(0, seg, e) / torch.bincount(seg, minlength=n_seg).clamp(min=1).unsqueeze(1)
-        return self.head(torch.cat([e, pooled[seg]], 1)).squeeze(1)
+        if not self.attn:
+            ctx = (torch.zeros(n_seg, e.shape[1]).index_add_(0, seg, e) / torch.bincount(seg, minlength=n_seg).clamp(min=1).unsqueeze(1))[seg]
+        else:
+            q, k, v = self.qkv(e).chunk(3, dim=1)
+            logits = (q @ k.T) / k.shape[1] ** 0.5
+            logits = logits.masked_fill(seg.unsqueeze(0) != seg.unsqueeze(1), float("-inf"))
+            ctx = torch.softmax(logits, dim=1) @ v
+        return self.head(torch.cat([e, ctx], 1)).squeeze(1)
 
 
 def _fit(X: np.ndarray, groups: list[np.ndarray], ok: np.ndarray, photos: np.ndarray, seed: int = 0, epochs: int = 30):
@@ -120,11 +135,11 @@ def _predict(model, mu, sd, X, groups, photos) -> dict[int, int]:
     return out
 
 
-def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = False) -> None:
+def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = False, agree: bool = False) -> None:
     from .strategy_search import _bootstrap
 
     keep = np.arange(len(f["source"])) if e4 else np.flatnonzero(f["source"] == 0)
-    km = f["km"][keep]
+    km = (f["km_agree"] if agree else f["km"])[keep]
     base = f["base_km"]
     chosen25 = np.asarray([km[picks[p]] < 25 if p in picks else base[p] < 25 for p in range(len(base))], float)
     chosen1 = np.asarray([km[picks[p]] < 1 if p in picks else base[p] < 1 for p in range(len(base))], float)
@@ -138,14 +153,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--ablate", nargs="*", default=(), help="feature groups to drop in extra runs: " + ", ".join(GROUPS))
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--e4", action="store_true", help="Pinpoint areas + clue hypotheses + clue features (ablation group: clues)")
+    parser.add_argument("--extra", action="store_true", help="+ restricted-retrieval features (ablation group: restricted); needs --e4")
+    parser.add_argument("--attn", action="store_true", help="attention between a photo's hypotheses instead of the mean")
+    parser.add_argument("--agree", action="store_true", help="answer with the agreement pick inside the chosen hypothesis")
+    parser.add_argument("--variant", default="", help="feature-file suffix after _e4 (e.g. more10, vlmhyps, more10_vlmhyps)")
     args = parser.parse_args(argv)
-    paths = FEATURES_E4 if args.e4 else FEATURES
+    _Model.attn = args.attn
+    paths = ({k: v.with_name(v.stem + f"_{args.variant}.npz") for k, v in FEATURES_E4.items()} if args.variant else FEATURES_E4) if args.e4 else FEATURES
     tr, dv = dict(np.load(paths["train"])), dict(np.load(paths["dev3k"]))
     print(f"train: {len(tr['base_km'])} photos, Pinpoint < 25 km {np.mean(tr['base_km'] < 25):.1%} (agreement +1.0, hand comparator +1.6); "
           f"dev3k: Pinpoint {np.mean(dv['base_km'] < 25):.1%} (agreement +2.0, hand comparator +2.2)")
     for drop in [()] + [(g,) for g in args.ablate]:
-        Xt, gt = _matrix(tr, drop, args.e4)
-        Xd, gd = _matrix(dv, drop, args.e4)
+        Xt, gt = _matrix(tr, drop, args.e4, args.extra)
+        Xd, gd = _matrix(dv, drop, args.e4, args.extra)
         okt = (tr["km"] if args.e4 else tr["km"][tr["source"] == 0]) < 25
         label = "all features" if not drop else f"without {drop[0]}"
         # 5-fold CV on train (held-out photos), seed-averaged by voting the first seed's picks (seeds vary the init only)
@@ -157,9 +177,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             cv |= _predict(model, mu, sd, Xt, gt, held)
         print(f" {label}")
         _evaluate("train, 5-fold cross-validation", tr, gt, cv, args.e4)
+        if args.agree:
+            _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
         for seed in range(args.seeds if not drop else 1):
             model, mu, sd = _fit(Xt, gt, okt, np.arange(len(gt)), seed=seed)
-            _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, _predict(model, mu, sd, Xd, gd, np.arange(len(gd))), args.e4)
+            picks = _predict(model, mu, sd, Xd, gd, np.arange(len(gd)))
+            _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, picks, args.e4)
+            if args.agree:
+                _evaluate(f"dev3k, agreement pick inside (seed {seed})", dv, gd, picks, args.e4, agree=True)
     return 0
 
 

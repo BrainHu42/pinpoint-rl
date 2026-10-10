@@ -207,3 +207,25 @@ and as the "is it just a better reranker?" control.
     holds on both.
   - Against Pinpoint alone: +2.5 (train CV) and about +3.3 (dev3k), i.e. 32.4 -> 34.8% and 33.4 -> 36.8% < 25 km.
   - The oracle (46-48%) still leaves room; E5 (the agent choosing which hypotheses to test) is next.
+
+## Step 1 (comparator improvements) and step 3 (does the VLM add hypotheses?), 2026-10-10, in progress
+- **Step 3, the oracle with the 4B's own place proposals** (dev3k):
+  - **Proposals:** up to 3 places per photo from what it sees and knows; geocoded with the text-search databases.
+  - **New hypotheses:** those > 25 km from every existing one, searched with restricted retrieval. 8,953 geocoded, 5,859 new on
+    2,708 photos.
+  - **Oracle:** 48.5% (Pinpoint areas + clue places) -> **50.6%** with VLM places (any restricted candidate 52.1 -> 54.4%).
+  - So +2.1 pts of headroom, under the +3 pts suggested for training an agent. Whether the comparator can use them is being measured
+    (train proposals and searches running).
+- **Step 1, comparator variants** (train 5-fold CV / dev3k, 2 seeds; change vs Pinpoint < 25 km):
+
+| Variant | train CV | dev3k | < 1 km (train / dev3k) |
+|---|---|---|---|
+| E4 (restricted top-1 of the chosen hypothesis) | +2.5 [+2.3, +2.8] | +3.6 / +3.0 | +0.5 / +0.5-0.6 |
+| **E4, agreement pick inside the chosen hypothesis** | **+3.0** [+2.7, +3.3] | **+4.4 / +3.8** | -0.8 / -0.4 to -0.5 |
+| + restricted-retrieval features (Pinpoint's 9 features of the restricted top-1, restricted agreement, spread) | +2.3 | +3.0 / +3.2 | |
+| + those, agreement pick | +2.8 | +3.6 / +3.7 | |
+| attention between hypotheses (instead of the mean), agreement pick | +2.4 | +3.4 / +3.3 | |
+
+  - The agreement pick inside the chosen hypothesis adds +0.5 at 25 km and costs about 1 pt at 1 km (the same trade-off as lesson 68).
+  - The extra restricted features and attention don't help.
+  - Still running: more hypotheses (areas ranked 6-10).

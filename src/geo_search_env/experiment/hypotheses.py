@@ -29,7 +29,7 @@ BOX_KM = 25.0
 JUDGE = "ftvsall4b"
 
 
-def _hypotheses(tag: str, k: int, clues: bool) -> list[dict]:
+def _hypotheses(tag: str, k: int, clues: bool, min_rank: int = 0) -> list[dict]:
     from .pinpoint_reference import load_pools
     from .pinpoint_tool import areas
 
@@ -46,18 +46,20 @@ def _hypotheses(tag: str, k: int, clues: bool) -> list[dict]:
     for p, e in enumerate(photos):
         valid = pools["valid"][e["index"]]
         for rank, a in enumerate(areas(pools["scores"][e["index"]][valid], e["pool"])[:k]):
+            if rank < min_rank:
+                continue
             out.append({"photo": p, "source": 0, "rank": rank, "support": a.support, "center": e["pool"][a.founder]})
         for rank, (pr, la, lo) in enumerate(sorted(accepted.get(e["image_id"], []), reverse=True)[:2]):
             out.append({"photo": p, "source": 1, "rank": rank, "support": pr, "center": [la, lo]})
     return out
 
 
-def run(tag: str, k: int, clues: bool) -> None:
+def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
     from ..models.pinpoint_reranker import PinpointReranker
     from .strategy_search import load_world
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    hyps = _hypotheses(tag, k, clues)
+    hyps = _hypotheses(tag, k, clues and min_rank == 0, min_rank)
     queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
     world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
@@ -69,12 +71,13 @@ def run(tag: str, k: int, clues: bool) -> None:
     print(f"{tag}: {len(photos)} photos, {len(hyps)} hypotheses ({sum(h['source'] == 1 for h in hyps)} from clues)", flush=True)
     found = reranker.rank(world.query_embeddings[p], query_author=world.query_author[p], index_author=world.mp16["author"][reranker.cache_indices],
                           query_box=box)
-    suffix = "_clues" if clues else ""
+    suffix = f"_more{k}" if min_rank else ("_clues" if clues else "")
     np.savez(OUT / f"hypotheses_{tag}{suffix}.npz", photo=p, source=np.asarray([h["source"] for h in hyps]), rank=np.asarray([h["rank"] for h in hyps]),
              support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
              rows=found.rows)
     print(f"-> {OUT / f'hypotheses_{tag}{suffix}.npz'}", flush=True)
-    oracle(tag, clues)
+    if not min_rank:
+        oracle(tag, clues)
 
 
 def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: int = 2) -> None:
@@ -169,9 +172,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--clues", action="store_true")
+    parser.add_argument("--min-rank", type=int, default=0, help="run: only areas ranked >= this (extra hypotheses -> hypotheses_{tag}_more{k}.npz)")
     args = parser.parse_args(argv)
     if args.cmd == "run":
-        run(args.tag, args.k, args.clues)
+        run(args.tag, args.k, args.clues, args.min_rank)
     elif args.cmd == "clue-hyps":
         clue_hypotheses(args.tag, args.judge)
     else:
