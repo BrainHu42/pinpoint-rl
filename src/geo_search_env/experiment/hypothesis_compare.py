@@ -58,13 +58,18 @@ def _paths(tag: str, clues: bool) -> tuple[Path, Path]:
 def _merge_clue_hyps(tag: str) -> dict:
     """Pinpoint-area hypotheses (hypotheses_{tag}.npz, source 0 only) + E4 clue hypotheses (hypotheses_{tag}_cluehyps.npz)."""
 
-    a = dict(np.load(OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"))
-    keep = a["source"] == 0
+    base = OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"
+    a = dict(np.load(base))
+    vlm = OUT / f"hypvlm_{tag}{'_base' if base.stem == f'hypotheses_{tag}' else '_clues'}.npy"
+    a["vlm_p"] = np.load(vlm) if vlm.exists() else np.full(len(a["photo"]), np.nan)
+    keep = (a["source"] == 0) & (a["rank"] < 5 if "more10" not in EXTRA_HYPOTHESES else True)
     a = {k: v[keep] for k, v in a.items()}
     for name in EXTRA_HYPOTHESES:
         path = OUT / f"hypotheses_{tag}_{name}.npz"
         if path.exists():
             b = dict(np.load(path))
+            vlm = OUT / f"hypvlm_{tag}_{name}.npy"
+            b["vlm_p"] = np.load(vlm) if vlm.exists() else np.full(len(b["photo"]), np.nan)
             a = {k: np.concatenate([a[k], b[k]]) for k in a}
     return a
 
@@ -161,6 +166,7 @@ def features(tag: str, clues: bool, e4: bool = False, extra_name: str = "") -> N
     if e4:
         f |= _clue_features(tag, z)
         f |= _restricted_features(z, truth)
+        f["vlm_p"] = z["vlm_p"]
     np.savez(dst, **f)
     print(f"{n} hypotheses for {len(photos)} photos -> {dst}")
 

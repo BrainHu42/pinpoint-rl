@@ -23,7 +23,7 @@ FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypo
 FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
 CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
 RESTRICTED_KEYS = [f"rf_{j}" for j in range(9)] + ["r_support", "r_areas", "r_spread"]
-GROUPS = {"clues": [], "restricted": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+GROUPS = {"clues": [], "restricted": [], "vlm": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
@@ -50,6 +50,9 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False)
         cols += [(f["source"][keep] == src).astype(float) for src in (1, 2)]  # clue place, VLM place
         if "clues" not in drop:
             cols += [np.log1p(f[k][keep]) if k.endswith("_n") else f[k][keep] for k in CLUE_KEYS]
+    if e4 and "vlm" not in drop and "vlm_p" in f and np.isfinite(f["vlm_p"]).any():
+        v = f["vlm_p"][keep]
+        cols += [np.where(np.isfinite(v), v, 0.5), np.isfinite(v).astype(float)]
     if extra and "restricted" not in drop:
         cols += [np.log1p(f[k][keep]) if k == "r_spread" else f[k][keep] for k in RESTRICTED_KEYS]
     X = np.stack(cols, 1)

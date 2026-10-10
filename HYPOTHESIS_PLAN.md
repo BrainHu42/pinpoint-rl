@@ -241,3 +241,11 @@ and as the "is it just a better reranker?" control.
   - all 44 -> 49.
 - **By Pinpoint's error on all of dev3k:** fixes 59 of 246 photos 25-100 km off (24%), 89 of 780 at 100-750 km, 29 of 460 at 750-2,500 km,
   28 of 511 beyond. Breaks: 68 (median 209 km off).
+
+## Overnight plan (2026-10-10, autonomous; dev3k + train only, no test-set runs)
+GPU queue, in order:
+1. VLM place hypotheses on train (geocode + restricted search), then areas ranked 6-10 on train and dev3k.
+2. The 35k extra photos (MP16 buckets 0-98): 10 areas, zero-shot clue judge, clue hypotheses. More comparator training data.
+3. VLM plausibility of each hypothesis (`hypothesis_vlm.py`: "could this photo be from {place}?", P(Yes)) on train and dev3k.
+
+After each: retrain the comparator (5-fold CV on train, dev3k), keep what helps, record here.
