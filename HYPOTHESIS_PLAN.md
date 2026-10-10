@@ -277,7 +277,14 @@ the chosen hypothesis):
 - **The 35k extra photos (buckets 0-98) as comparator training data:** no gain. Train CV +2.9 / +3.6, dev3k +3.3 / +4.1 (vs +2.9 / +3.5
   and +3.8 / +4.6 without). Pinpoint was trained on those photos (top-1 40.1% < 25 km vs 32.4% on train; K = 5 oracle 55.1% vs 46.4%),
   so their evidence looks different; and more data doesn't help a comparator whose misses are evidence-ambiguous.
-- **Next (running):** a fine-tuned plausibility judge. LoRA SFT of the 4B on 47k train_extra hypotheses ("could this photo be from
+- **Fine-tuned plausibility judge: no gain.** Dev3k AUC rises from 0.63 (zero-shot) to 0.78 (48k rows, run `hypvlm-4b`) and 0.78
+  (110k rows, `hypvlm-4b-110k`); restricted score mass is 0.84. Comparator with it: train CV +2.9 / +3.6 (48k) and +2.9 / +3.5 (110k),
+  dev3k +3.7 / +4.4 and +3.5 / +4.2, i.e. no better than without (+2.9 / +3.5, +3.8 / +4.6). On dev3k pairs where retrieval favours the
+  wrong hypothesis, the 48k judge prefers the right one 58% of the time (zero-shot 51%): it mostly knows what the gallery already shows.
+- **Final configuration** (chosen by train CV): E4 + VLM place hypotheses + distance to Pinpoint's top-1, no plausibility feature
+  (`hypothesis_learn --e4 --variant vlmhyps --drop vlm --agree --ensemble 5`), saved to `artifacts/agent/hyp_final_comparator.pt`;
+  per-photo dev3k distances in `artifacts/agent/hyp_final_dev3k_picks.npz`. Lesson 69.
+- **Setup of the fine-tuned judge, for reference:** a fine-tuned plausibility judge. LoRA SFT of the 4B on 47k train_extra hypotheses ("could this photo be from
   {place}?", Yes when the hypothesis's restricted top-1 is < 25 km; GPS labels; `hypothesis_vlm sft-data`, `scripts/hypvlm_run.sh`),
   then judged on every train and dev3k hypothesis and added as the comparator's vlm feature. Tests whether a 4B taught on our labels
   adds place knowledge the gallery evidence lacks.

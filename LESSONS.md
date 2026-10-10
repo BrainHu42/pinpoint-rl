@@ -834,7 +834,7 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - What did not help (each within +-0.2 on train CV): areas ranked 6-10, richer restricted-retrieval features, attention between
       hypotheses, training towards the agreement pick's label, 35k extra training photos from buckets 0-98 (Pinpoint trained on them: its
       top-1 is 40% < 25 km there), the zero-shot 4B's "could this photo be from {place}?" P(Yes) (AUC 0.63), and the same question
-      fine-tuned on 48k train_extra hypotheses (AUC 0.78 on dev3k, vs 0.84 for restricted score mass; +0.1 train, -0.1 dev3k).
+      fine-tuned on 48k or 110k train_extra hypotheses (AUC 0.78 on dev3k, vs 0.84 for restricted score mass; +0.0-0.1 train, -0.1 to -0.4 dev3k).
     - Why it stops here: of 1,519 dev3k photos with a right hypothesis, the comparator misses 426; in ~70% of those the right hypothesis has
       the weaker retrieval evidence (score mass larger in only 26%). The fine-tuned judge prefers the right one in 58% of such pairs, too
       weak to move the choice. The remaining headroom (oracle 48-51% vs 37-38%) needs evidence the gallery doesn't have.
