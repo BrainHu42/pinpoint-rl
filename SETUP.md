@@ -38,9 +38,9 @@ constants listed here.
 | `/data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
 | `$PINPOINT_ROOT` | Pinpoint checkpoint + retrieval index | `models/pinpoint.py` |
 | `/data/pinpoint/wikimedia` | third test set (images, embeddings) | `experiment/wikimedia_eval.py` |
-| `/data/pinpoint/overture` | Overture places (`places.sqlite`) and division polygons | `overture_text.py`, `place_labels.py` |
+| `/data/pinpoint/overture` | Overture places (`places.sqlite`) and division polygons | `place_labels.py` (archived: `overture_text.py`) |
 | `/data/pinpoint/wikipedia` | offline geotagged Wikipedia (SQLite BM25 + dense) | `wiki_backend.py` |
-| `/data/pinpoint/geo` | WorldClim + ETOPO rasters | `candidate_attributes.py` |
+| `/data/pinpoint/geo` | WorldClim + ETOPO rasters | archived `candidate_attributes.py` only |
 | `~/.venvs/{vllm,sft,grpo,geo,overture,match}` | serving, training and standalone tool environments (`envs/*.txt`) | `scripts/*.sh`, module usage lines |
 
 Copy `.env.example` to `.env`, fill it in, and load it with `set -a; . ./.env; set +a` before running anything.

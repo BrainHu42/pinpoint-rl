@@ -82,16 +82,12 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `experiment/wiki_backend.py`: offline geotagged-Wikipedia search (`/data/pinpoint/wikipedia/enwiki_geo.sqlite` BM25 +
   `enwiki_geo_bge-base.f16.npy` dense; run with `~/.venvs/sft/bin/python`, `.venv` lacks pyarrow), `probe` go/no-go.
 - `experiment/stage1_eval.py`: stage-1 evaluation (oracle accuracy over the pool, matched whole-image control, evidence informativeness);
-  `evidence_ranker.py`, `attribute_ranker.py`: learned-reranker tests with evidence / attribute features; `photo_attributes.py`,
-  `candidate_attributes.py` (run with `~/.venvs/geo/bin/python`: rasterio, WorldClim + ETOPO under `/data/pinpoint/geo`),
-  `attribute_check.py`; `overture_text.py` (80M-place name index, `/data/pinpoint/overture`), `evidence_screen.py`, `audit_sets.py`
+  `evidence_ranker.py`: learned-reranker test with evidence features; `audit_sets.py`
   (leakage / near-duplicate / placeholder audit of train, dev, val; flags in `artifacts/query_evidence/<tag>/`).
 - `experiment/exemplar_judge.py`: exemplar "same place?" judge: screens, top-8 scoring, combiner and full-eval-halves report;
   `comparator_data.py`, `comparator_train.py` (pointwise / pairwise LoRA comparator; merge with `sft_train merge`);
   `knowledge_scaling.py` (zero-shot choosers by model size, optional nearby Wikipedia text from `wiki_nearby.py`);
   `multi_exemplar.py` (several exemplars per candidate).
-- `experiment/near_miss.py`: near-miss photos (top-1 1-25 km off): ceiling, local re-rankers, near-band comparator pairs, combiners;
-  `map_search.py` (zoom search over the gallery around the top-1), `geo_match.py` (DISK + LightGlue inliers, `~/.venvs/match`).
 - `experiment/place_labels.py`: Overture division labels for all MP16 photos and candidate names (`~/.venvs/overture`, DuckDB);
   `name_score.py` (log P(place name | photo) per candidate, combiner report); `knowledge_data.py` (knowledge SFT data:
   `select` with `~/.venvs/sft` for pyarrow, `overlay`, `dataset`); pipeline `scripts/knowledge_run.sh`, scoring `scripts/name_scores.sh`.
@@ -101,9 +97,12 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, with an optional same-photographer
   filter on its MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
   `PYTHONPATH=src:<submission>/src`; one photo per call, batching changes bf16 results) -> `artifacts/pinpoint_reranker/`.
-  Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`, `text_screen.sh`,
-  `photo_attributes.sh`, `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
+  Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`,
+  `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
   (all 3,795 eval-half), `train` (MP16 train), `wikimedia` under `artifacts/query_evidence/`.
 - Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
   experiments); `artifacts/` is not tracked.
+- `archive/experiment/`, `archive/scripts/`: code of closed experiments that nothing live imports (attributes, text screen, Overture name
+  index, deep rerank, region prior / head, geo adapter, near-miss, map search, keypoint matching, model votes, free guess, threshold headroom,
+  choosing sheet). LEARNINGS cites them by file name; to rerun one, `git mv` it back into `src/geo_search_env/experiment/` (scripts into `scripts/`).
 - Full setup from scratch: `SETUP.md` (exact env package lists in `envs/`). Handoff state and next steps: `HANDOFF.md`.

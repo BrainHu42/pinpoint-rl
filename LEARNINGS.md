@@ -4,7 +4,8 @@ What the base-model diagnostic, SFT, single-turn GRPO and the follow-up headroom
 rule out. The current plan lives in CLAUDE.md ("Research plan"). Numbers are % of
 photos within 1 km / 25 km of the truth, with same-photographer gallery images excluded. "Full eval halves" = every
 im2gps3k + yfcc4k eval-half query (n = 3,795; SE about 0.6 pts at 1 km, 0.8 at 25 km). "300 subset" = the stratified
-study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
+study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there). Code of closed lessons that nothing live imports was moved to
+`archive/experiment/` and `archive/scripts/` on 2026-10-11; lessons still cite those files by name.
 
 ## Summary (read this first; details in "Main lessons" below, numbered)
 

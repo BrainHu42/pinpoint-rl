@@ -35,8 +35,8 @@ NEG_PER_POSITIVE_PHOTO = 3
 PAIRS = ROOT / "comparator" / "pairs_train.jsonl"
 PAIRS_ALL = ROOT / "comparator" / "pairs_train_all.jsonl"  # every top-8 candidate with its distance (comparator_data.py all)
 PAIRS_MULTI = ROOT / "comparator" / "pairs_train_multi.jsonl"  # up to 4 exemplars per labelled candidate (comparator_data.py multi)
-PAIRS_NEAR = ROOT / "comparator" / "pairs_train_near.jsonl"  # near-band rows (near_miss.py near-pairs)
-PAIRS_NEAR_FULL = ROOT / "comparator" / "pairs_train_near_full.jsonl"  # every local candidate as a row (near_miss.py near-pairs-full)
+PAIRS_NEAR = ROOT / "comparator" / "pairs_train_near.jsonl"  # near-band rows (archive/experiment/near_miss.py near-pairs)
+PAIRS_NEAR_FULL = ROOT / "comparator" / "pairs_train_near_full.jsonl"  # every local candidate as a row (archive/experiment/near_miss.py near-pairs-full)
 HARD_RANKED = 2  # multi mode: best-ranked negatives kept with all their exemplars
 
 
