@@ -27,6 +27,12 @@ class BenchmarkSpec:
 BENCHMARKS = {
     "im2gps3k": BenchmarkSpec("im2gps3k", "im2gps3k/im2gps3k_places365.csv", "im2gps3k/images", "AUTHOR"),
     "yfcc4k": BenchmarkSpec("yfcc4k", "yfcc4k/yfcc4k.csv", "yfcc4k/images", "OwnerNSID"),
+    # Recent Wikimedia Commons photos (all 6,017 rows flagged usable_for_geolocation; test_balanced.csv is a 3,036-row density-balanced subset of it).
+    # Photographers are Commons usernames, so no overlap with MP16's Flickr ids is expected. Not part of the default benchmark pair (BENCHMARK_NAMES).
+    "wikimedia": BenchmarkSpec("wikimedia", "wikimedia/test.csv", "wikimedia/images", "artist"),
+    # Commons photos taken after 2026-07-01 with device GPS, <= 3 per uploader, split by uploader (`split` column: dev / test); built by
+    # experiment/commons_bench.py. `group` is the anonymised uploader. Not part of the default benchmark pair (BENCHMARK_NAMES).
+    "commons26": BenchmarkSpec("commons26", "commons26/release/benchmark.csv", "commons26/release/images", "group"),
 }
 
 
