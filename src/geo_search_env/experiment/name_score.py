@@ -80,7 +80,9 @@ def _read(e: dict, images: MP16Images) -> bytes:
     path = e.get("path")
     if not path:
         return images.read(e["image_id"])
-    return (DATA_ROOT / Path(path).relative_to("/data/pinpoint")).read_bytes() if path.startswith("/data/pinpoint/") else Path(path).read_bytes()
+    if "/data/pinpoint/" in path:  # old-machine /data/pinpoint/... or another checkout's data/pinpoint/...: this checkout's data root
+        return (DATA_ROOT / path.split("/data/pinpoint/", 1)[1]).read_bytes()
+    return Path(path).read_bytes()
 
 
 def _level_logprobs(server: str, parts: list[str], image_b64: str | None, prompt: str = PROMPT) -> list[float] | None:

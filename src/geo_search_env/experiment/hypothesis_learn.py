@@ -23,7 +23,7 @@ FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypo
 FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
 CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
 RESTRICTED_KEYS = [f"rf_{j}" for j in range(9)] + ["r_support", "r_areas", "r_spread"]
-GROUPS = {"clues": [], "restricted": [], "vlm": [], "dist": [], "set": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+GROUPS = {"clues": [], "restricted": [], "vlm": [], "dist": [], "set": [], "setr": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
@@ -57,7 +57,7 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False)
         cols += [np.where(np.isfinite(v), v, 0.5), np.isfinite(v).astype(float)]
     if e4 and "set" not in drop and "set_mass" in f:  # set-aware Pinpoint (pinpoint_set)
         cols += [np.log(np.maximum(f["set_mass"][keep], 1e-6)), f["set_top_in"][keep], np.log1p(f["d_settop"][keep])]
-        if "setr_max" in f:  # the set model inside each hypothesis: best and log-sum-exp logit, raw and minus the photo's maximum
+        if "setr_max" in f and "setr" not in drop:  # the set model inside each hypothesis: best and log-sum-exp logit, raw and minus the photo's maximum
             for k in ("setr_max", "setr_lse"):
                 x = f[k][keep].astype(np.float64)
                 mx = np.full(int(photo.max()) + 1, -np.inf)
@@ -179,6 +179,36 @@ def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = Fals
           f"fixes {int(((chosen25 == 1) & (base >= 25)).sum())}, breaks {int(((chosen25 == 0) & (base < 25)).sum())}; < 1 km {100 * c1[0]:+.1f}")
 
 
+def _apply(tag: str, dev_path: Path, model, mu, sd, drop, args) -> None:
+    """The all-of-train comparator on another photo set's features (same variant): % within 1 / 25 / 200 / 750 / 2500 km per benchmark for
+    Pinpoint's top-1, the set layer alone and the pipeline's three answers."""
+
+    import json
+
+    path = dev_path.with_name(dev_path.name.replace("_dev3k_", f"_{tag}_"))
+    f = dict(np.load(path))
+    X, g = _matrix(f, drop, args.e4, args.extra)
+    picks = _predict(model, mu, sd, X, g, np.arange(len(g)))
+    photos = json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))
+    n = len(f["base_km"])
+    answers = {"Pinpoint top-1": f["base_km"]}
+    if "set_km" in f:
+        answers["set layer alone"] = f["set_km"]
+    rules = {"pipeline, restricted top-1": f["km"], "pipeline, agreement pick": f["km_agree"]}
+    if "set_km" in f:
+        rules["pipeline, set-layer pick"] = np.where(f["set_top_in"] > 0, f["set_km"][f["photo"]], f["km_agree"])
+    for name, km in rules.items():
+        answers[name] = np.asarray([km[picks[p]] if p in picks else f["base_km"][p] for p in range(n)])
+    thresholds = (1, 25, 200, 750, 2500)
+    print(f"\n{tag} ({path.name}): % within " + " / ".join(f"{t} km" for t in thresholds))
+    for bench in sorted({p.get("benchmark", tag) for p in photos}):
+        sel = np.asarray([p.get("benchmark", tag) == bench for p in photos])
+        print(f" {bench} ({sel.sum()} photos)")
+        for name, km in answers.items():
+            print(f"  {name:30s} " + "  ".join(f"{100 * np.mean(km[sel] < t):5.1f}" for t in thresholds) + f"   median {np.median(km[sel]):7.0f} km")
+    np.savez(OUT / f"hyp_{tag}_answers.npz", **{k.replace(" ", "_").replace(",", ""): v for k, v in answers.items()})
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--drop", nargs="*", default=(), help="feature groups left out of every run (e.g. vlm)")
@@ -192,6 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--extra-train", action="store_true", help="add the 35k MP16 bucket 0-98 photos (train_extra) to every training fit")
     parser.add_argument("--target-agree", action="store_true", help="train towards hypotheses whose agreement pick (not top-1) is < 25 km")
     parser.add_argument("--save", type=Path, help="save the comparator(s) trained on all of train (seed 0)")
+    parser.add_argument("--apply", help="also apply the all-of-train comparator (seed 0) to this photo set's features (e.g. full) and report by benchmark")
     parser.add_argument("--dump", type=Path, help="save per-photo dev3k distances (seed 0) for analysis")
     parser.add_argument("--variant", default="", help="feature-file suffix after _e4 (e.g. more10, vlmhyps, more10_vlmhyps)")
     args = parser.parse_args(argv)
@@ -242,6 +273,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "mu": mu, "sd": sd, "dim": Xt.shape[1], "attn": _Model.attn, "args": vars(args)}, args.save)
                 print(f"  saved {len(model)} comparator(s) -> {args.save}")
             picks = _predict(model, mu, sd, Xd, gd, np.arange(len(gd)))
+            if args.apply and seed == 0 and not ablated:
+                _apply(args.apply, paths["dev3k"], model, mu, sd, drop, args)
             if args.dump and seed == 0 and not ablated:
                 keep = np.arange(len(dv["source"])) if args.e4 else np.flatnonzero(dv["source"] == 0)
                 km = np.asarray([dv["km"][keep][picks[p]] if p in picks else dv["base_km"][p] for p in range(len(gd))])

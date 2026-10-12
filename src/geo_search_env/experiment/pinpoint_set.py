@@ -100,8 +100,10 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None) -> None
                             flags[q, slot, m] = 1.0
             return rows, ranks, flags
 
-    queries = json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))[:limit]
-    world = load_world(mp16_queries=queries)
+    if name == "bench":  # both halves of im2gps3k and yfcc4k, in the bench pools' order (photo set full: "index")
+        world = load_world()
+    else:
+        world = load_world(mp16_queries=json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))[:limit])
     model = _Wide(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     model.original = dict(model.targets)
     model.targets = dict(zip(MODALITIES, (int(t) for t in targets)))
@@ -402,14 +404,40 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
     print(f"  set model inside each hypothesis -> {dst}", flush=True)
 
 
+def apply(tag: str, data: Path, model_path: Path) -> None:
+    """The saved set model (trained on all of train) on a photo set's extracted candidates -> artifacts/pinpoint_set/set_probs_{tag}.npz in the
+    train --dump format ({tag}_probs, {tag}_latlon, {tag}_valid; hypothesis_compare --set-dump), and its accuracy next to Pinpoint's."""
+
+    import torch
+
+    photos = json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))
+    idx = np.asarray([p["index"] for p in photos])
+    z = _load(data, "wide")
+    assert np.abs(np.asarray([p["truth"] for p in photos]) - z["truth"][idx]).max() < 1e-3
+    ckpt = torch.load(model_path, map_location="cuda", weights_only=False)
+    hp = ckpt.get("hp", HP)
+    models = []
+    for state in ckpt["models"]:
+        net = _set_model(ckpt["n_scalar"], ckpt["hidden"], dim=hp["dim"], layers=hp["layers"]).cuda()
+        net.load_state_dict(state)
+        models.append(net.eval())
+    probs = _predict_set(models, z, idx, ckpt["mu"], ckpt["sd"])
+    for bench in sorted({p.get("benchmark", tag) for p in photos}):
+        sel = np.asarray([p.get("benchmark", tag) == bench for p in photos])
+        _report(f"{tag} / {bench} ({sel.sum()} photos)", z, idx[sel], probs[sel].argmax(1))
+    dst = OUT / f"set_probs_{tag}.npz"
+    np.savez(dst, **{f"{tag}_probs": probs, f"{tag}_latlon": z["latlon"][idx], f"{tag}_valid": z["valid"][idx]})
+    print(f"  -> {dst}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply"))
     parser.add_argument("--tag", default="dev3k", help="restricted: photo set (train, dev3k)")
     parser.add_argument("--extra-hyps", nargs="*", default=("vlmhyps",), help="restricted: hypothesis files merged as in hypothesis_compare")
     parser.add_argument("--model", type=Path, default=OUT / "set_wide.pt", help="restricted: saved set model (train --save)")
     parser.add_argument("--n", type=int, default=100_000, help="more-queries: how many")
-    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES))
+    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench",))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
     parser.add_argument("--limit", type=int, help="first N queries only (plumbing)")
     parser.add_argument("--data", type=Path, default=OUT / "mp16_32_8_8.npz", help="train: extracted candidates (all of queries.json)")
@@ -425,6 +453,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     HP.update({key: getattr(args, key) for key in HP})
     if args.cmd == "more-queries":
         more_queries(args.n)
+    elif args.cmd == "apply":
+        apply(args.tag, args.data, args.model)
     elif args.cmd == "restricted":
         restricted(args.tag, args.extra_hyps, args.model)
     elif args.cmd == "extract":

@@ -34,14 +34,14 @@ justify: "City, Country", or "Region, Country" if you can't name a city. Answer 
 
 
 def propose(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 32) -> None:
-    from .name_score import _post
+    from .name_score import _post, _read
     from .sft_data import MP16Images
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     images = MP16Images()
 
     def ask(e: dict) -> list[str]:
-        image = base64.b64encode(images.read(e["image_id"])).decode()
+        image = base64.b64encode(_read(e, images)).decode()  # benchmark photos by path
         body = {"model": "vlm", "temperature": 0.0, "max_tokens": 120, "chat_template_kwargs": {"enable_thinking": False},
                 "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image}},
                                                           {"type": "text", "text": PROMPT}]}]}
@@ -110,16 +110,17 @@ def search(tag: str, name: str = "4b") -> None:
             kept.append(list(ll))
             hyps.append({"photo": p, "source": 2, "rank": rank, "support": 1.0 / (1 + rank), "center": list(ll)})
     print(f"{tag}: {n_geo} proposals geocoded, {len(hyps)} new hypotheses on {len({h['photo'] for h in hyps})} photos", flush=True)
-    queries = json.loads((SFT_ROOT / "queries.json").read_text(encoding="utf-8"))
-    world = load_world(mp16_queries=[queries[e["index"]] for e in photos])
+    from .hypotheses import photo_world
+
+    world, qrows = photo_world(photos)
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     pidx = np.asarray([h["photo"] for h in hyps])
     centre = np.asarray([h["center"] for h in hyps], np.float64)
     dlat = BOX_KM / 111.0
     dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
     box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
-    found = reranker.rank(world.query_embeddings[pidx], query_author=world.query_author[pidx], index_author=world.mp16["author"][reranker.cache_indices],
-                          query_box=box)
+    found = reranker.rank(world.query_embeddings[qrows[pidx]], query_author=world.query_author[qrows[pidx]],
+                          index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
     np.savez(OUT / f"hypotheses_{tag}_vlmhyps.npz", photo=pidx, source=np.full(len(hyps), 2), rank=np.asarray([h["rank"] for h in hyps]),
              support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
              rows=found.rows)

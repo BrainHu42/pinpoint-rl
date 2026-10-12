@@ -34,7 +34,7 @@ def _hypotheses(tag: str, k: int, clues: bool, min_rank: int = 0) -> list[dict]:
     from .pinpoint_tool import areas
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    pools = load_pools(photos[0].get("pools", "mp16"))  # train_extra: the bucket 0-98 photos' own pools
+    pools = load_pools(pools_name(photos))  # train_extra: the bucket 0-98 photos' own pools; full: the benchmark pools
     accepted: dict[str, list[tuple[float, float, float]]] = {}
     if clues:
         from .clue_judge import _joined
@@ -54,6 +54,23 @@ def _hypotheses(tag: str, k: int, clues: bool, min_rank: int = 0) -> list[dict]:
     return out
 
 
+def photo_world(photos: list[dict]):
+    """(world, rows): the query world of a photo set and each photo's row in it. Benchmark sets (full) use the benchmark world, whose order is
+    the bench pools' (photo "index"); MP16 sets the queries file of their pools."""
+
+    from .strategy_search import load_world
+
+    if "benchmark" in photos[0]:
+        return load_world(), np.asarray([e["index"] for e in photos])
+    return load_world(mp16_queries=_queries(photos)), np.arange(len(photos))
+
+
+def pools_name(photos: list[dict]) -> str:
+    """The pinpoint_reference pool set a photo set's indices refer to."""
+
+    return photos[0].get("pools") or ("bench" if "benchmark" in photos[0] else "mp16")
+
+
 def _queries(photos: list[dict]) -> list[dict]:
     """The query entries (MP16 rows) of a photo set, from the pool file its indices refer to."""
 
@@ -68,7 +85,7 @@ def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     hyps = _hypotheses(tag, k, clues and min_rank == 0, min_rank)
-    world = load_world(mp16_queries=_queries(photos))
+    world, qrows = photo_world(photos)
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     p = np.asarray([h["photo"] for h in hyps])
     centre = np.asarray([h["center"] for h in hyps], np.float64)
@@ -76,8 +93,8 @@ def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
     dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
     box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
     print(f"{tag}: {len(photos)} photos, {len(hyps)} hypotheses ({sum(h['source'] == 1 for h in hyps)} from clues)", flush=True)
-    found = reranker.rank(world.query_embeddings[p], query_author=world.query_author[p], index_author=world.mp16["author"][reranker.cache_indices],
-                          query_box=box)
+    found = reranker.rank(world.query_embeddings[qrows[p]], query_author=world.query_author[qrows[p]],
+                          index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
     suffix = f"_more{k}" if min_rank else ("_clues" if clues else "")
     np.savez(OUT / f"hypotheses_{tag}{suffix}.npz", photo=p, source=np.asarray([h["source"] for h in hyps]), rank=np.asarray([h["rank"] for h in hyps]),
              support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
@@ -120,15 +137,15 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
                 kept.append((pr, la, lo))
         hyps += [{"photo": ph, "source": 1, "rank": k, "support": pr, "center": [la, lo]} for k, (pr, la, lo) in enumerate(kept[:per_photo])]
     print(f"{tag}: {len(hyps)} clue hypotheses on {len(cands)} photos (judge {judge}, P(Yes) >= {min_p})", flush=True)
-    world = load_world(mp16_queries=_queries(photos))
+    world, qrows = photo_world(photos)
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     pidx = np.asarray([h["photo"] for h in hyps])
     centre = np.asarray([h["center"] for h in hyps], np.float64)
     dlat = BOX_KM / 111.0
     dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
     box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
-    found = reranker.rank(world.query_embeddings[pidx], query_author=world.query_author[pidx], index_author=world.mp16["author"][reranker.cache_indices],
-                          query_box=box)
+    found = reranker.rank(world.query_embeddings[qrows[pidx]], query_author=world.query_author[qrows[pidx]],
+                          index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
     np.savez(OUT / f"hypotheses_{tag}_cluehyps.npz", photo=pidx, source=np.ones(len(hyps), int), rank=np.asarray([h["rank"] for h in hyps]),
              support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
              rows=found.rows)

@@ -88,9 +88,10 @@ def _judge_path(tag: str, name: str, clues: str) -> Path:
 
 
 def judge(tag: str, name: str, clues: str = "9b", vs: bool = False, server: str = "http://127.0.0.1:8765", workers: int = 32) -> None:
-    from .name_score import _post
+    from .name_score import _post, _read
     from .sft_data import MP16Images
 
+    entry = {e["image_id"]: e for e in json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))}
     pairs = _differing(tag, _items(tag, clues)) if vs else [(r, None) for r in _items(tag, clues)]
     items = [r for r, _ in pairs]
     pins = [p for _, p in pairs]
@@ -100,7 +101,7 @@ def judge(tag: str, name: str, clues: str = "9b", vs: bool = False, server: str 
     def ask(job: tuple[dict, dict | None]) -> float | None:
         r, pin = job
         if r["image_id"] not in cache:
-            cache[r["image_id"]] = base64.b64encode(images.read(r["image_id"])).decode()
+            cache[r["image_id"]] = base64.b64encode(_read(entry[r["image_id"]], images)).decode()  # benchmark photos by path
         text = _prompt(r, pin)
         body = {"model": "vlm", "temperature": 0.0, "max_tokens": 1, "logprobs": True, "top_logprobs": 10, "chat_template_kwargs": {"enable_thinking": False},
                 "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + cache[r["image_id"]]}},
