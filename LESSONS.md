@@ -855,8 +855,10 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       - the co-trained set head's picks: +2.6 / +2.9. Trained on photos the reranker has seen, its picks don't transfer, but co-training
         improves the reranker's own scores by +1.0;
       - the offline set layer on the retrained states: no gain.
-    - Bug: the released index's source is named "source_0" and the data module's "mp16", so leave-one-out never removed the query from
-      its own pool (training accuracy 100%). Fixed with an alias in `retrieval_index._build_source_lookup`.
+    - Setup trap (not a Pinpoint bug): training against the shipped submission index, whose source is named "source_0" while the data
+      module tags samples "mp16", silently disables leave-one-out (training accuracy 100%). `train.py`'s own index build names the
+      source "mp16", and the released reranker used its own index. Fixed with an alias in `retrieval_index._build_source_lookup`; all
+      reported numbers are after the fix.
     - Step 5, RL zoom agent (`zoom_agent.py`): REINFORCE policy over pre-zoom evidence picks which hypotheses to zoom. The chooser sees
       only zoomed hypotheses' own evidence, so there is no leak.
       - 1 zoom: +3.5 / +3.8, vs +1.1 / +2.1 for Pinpoint's top area.

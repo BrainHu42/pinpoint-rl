@@ -101,7 +101,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   - `area_model.py`: area-then-spot model over zoomed CLS states.
   - `zoom_agent.py`: RL zoom policy.
   - `models/set_head.py`.
-  - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and the leave-one-out fix. Run it with
+  - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
     `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
   - Retrained checkpoints: `artifacts/pinpoint_train/{setft_a,ft_nohead}`. The port loads one via `PINPOINT_RERANKER_CKPT`.
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.

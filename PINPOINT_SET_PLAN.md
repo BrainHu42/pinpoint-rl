@@ -82,10 +82,9 @@ dev3k = trained on all of train. 1 km in brackets where it matters. The test set
 **Headline: step 4 is the lever.** Fine-tuning Pinpoint's own reranker on its training photos for 1.5M photos (6,000 steps of 256, about 1 h
 on the L40S) gives **+3.1 train / +3.3 dev3k** (1 km +1.6 / +1.0) as one model with no LLM and no zoom. That matches the whole Pinpoint-only
 hypothesis pipeline (+3.4 / +3.9).
-The run changed four things at once:
+The run changed three things at once (plus continued training):
 - wide pools (32 / 8 / 8 hits);
 - same-photographer exclusion in training, so training pools look like evaluation pools;
-- the leave-one-out fix below;
 - a co-trained set head.
 
 The control run below separates them.
@@ -116,17 +115,20 @@ Step 5 table. The leak-free version: the chooser scores each zoomed hypothesis f
 - Training: Gumbel top-B sampling and REINFORCE with the greedy picks as baseline. Reward: the zoomed answer is within 25 km.
 - Fixed mixes of areas and clue / 4B places are all worse than top-B areas.
 
-**Bugs found in the training setup** (they matter for anyone retraining Pinpoint):
-1. **Leave-one-out was off.** The released index names its source "source_0" while the data module tags samples "mp16", so no training
-   query was mapped to its own index row. Every training pool contained the query itself; train accuracy was 100%.
-   Fixed with an alias in `retrieval_index._build_source_lookup`.
-   - The released reranker was presumably trained with a working mapping (its own index build); we could not check this.
-2. **No same-photographer exclusion in training**, while our evaluation excludes the query's photographer.
+**Setup notes for retraining Pinpoint on this machine:**
+1. **Leave-one-out needs a source alias with the shipped submission index.** That index names its source "source_0" (it was built
+   with unnamed cache roots), while the data module tags samples "mp16". Training against it maps no query to its own row, so every
+   training pool contains the query itself (our first attempt: train accuracy 100%, discarded). Fixed with an alias in
+   `retrieval_index._build_source_lookup`.
+   - This is a setup issue, not a bug in Pinpoint's training. `train.py` builds its own index with named roots (`{"mp16": ...}`),
+     so leave-one-out works there. The released reranker was trained against a different index (`e8b495d78203a679` in its hparams).
+     Its accuracy on unseen photos confirms it was not trained with the query in its pool.
+2. **Same-photographer exclusion in training** (new; Pinpoint's training doesn't have it), matching our evaluation rule.
    Added `--exclude-author-path`, with authors per cache row in `artifacts/pinpoint_train/author_by_cache_row.npy`.
 
 **Control run (no set head, otherwise identical, `artifacts/pinpoint_train/ft_nohead`):** wide-pool pick +2.1 / +2.3 (1 km +1.2 / +0.4),
 own pool +1.7 / +2.0. So:
-- matching training pools to evaluation (fine-tune with leave-one-out working, photographer exclusion, wide pools) gives about +2;
+- continued training with wide pools and photographer exclusion gives about +2 (not separated further);
 - co-training the set head adds +1.0 / +1.0 to the reranker's *own* scores, though the head's picks are no better. The set objective
   shapes the states.
 

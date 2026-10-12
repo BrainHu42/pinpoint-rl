@@ -101,7 +101,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   - Area model over zoomed CLS states: **+4.4 / +4.9**; areas + clues **+4.2 / +5.2**.
   - RL zoom agent: 1 zoom reaches ~90% of the gain, 2 zooms all of it.
   - A flat global + zoom set model doesn't help (+1.4).
-  - Pinpoint's training code has a leave-one-out bug with the released index (fixed in `pinpoint_train/`).
+  - Trap: training against the shipped submission index disables leave-one-out (source-name mismatch; alias in `pinpoint_train/`).
+    This is a setup issue, not a bug in Pinpoint's training.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

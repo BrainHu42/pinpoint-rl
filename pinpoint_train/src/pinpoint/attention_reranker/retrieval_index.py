@@ -813,8 +813,9 @@ class AttentionRetrievalIndex:
             valid = (source_cache_indices >= 0) & (source_cache_indices < source_num_samples)
             mapping[source_cache_indices[valid]] = positions[valid]
             lookup[source_name] = mapping
-        # The released index names its one source "source_0" while the data module tags samples with the dataset name ("mp16"):
-        # without this alias no training query maps to its own index row and leave-one-out never excludes the query itself.
+        # The shipped submission index names its one source "source_0" (built with unnamed cache roots) while the data module tags
+        # samples with the dataset name ("mp16"); train.py's own index build would use "mp16". Training against the shipped index
+        # without this alias maps no query to its own row, so leave-one-out never excludes the query itself.
         if len(lookup) == 1:
             lookup.setdefault(str(self.manifest.get("retrieval_db_source", "mp16")), next(iter(lookup.values())))
         return lookup
