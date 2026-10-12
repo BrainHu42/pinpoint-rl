@@ -288,3 +288,14 @@ the chosen hypothesis):
   {place}?", Yes when the hypothesis's restricted top-1 is < 25 km; GPS labels; `hypothesis_vlm sft-data`, `scripts/hypvlm_run.sh`),
   then judged on every train and dev3k hypothesis and added as the comparator's vlm feature. Tests whether a 4B taught on our labels
   adds place knowledge the gallery evidence lacks.
+
+## Simplification ablations (2026-10-12; 5-model ensembles; train 5-fold CV / dev3k; top-1 / agree)
+| Pipeline | Features | train CV | dev3k |
+|---|---|---|---|
+| Full (areas + clue places + 4B proposals) | 36 | +2.9 / +3.5 | +3.8 / +4.6 |
+| Areas + clue places (no 4B proposals) | 34 | +2.8 / +3.3 | +3.3 / +4.1 |
+| **Pinpoint areas only (no VLM, no text search)** | 26 | **+2.2 / +2.7** | **+3.1 / +3.9** |
+| Pinpoint areas only, minimal features (mass, support, photographers, top-1, rank, distance) | 16 | +1.9 / +2.4 | +2.4 / +3.1 |
+| All hypotheses, minimal features (no clue features) | 16 | +2.3 / +2.8 | +3.0 / +3.8 |
+- Pinpoint run twice (global, then restricted to its own top-5 areas) plus a small comparator carries most of the gain (+2.7 of +3.5 on
+  train). The clue machinery (4B reading, text search, judge, clue features) adds ~+0.6-0.8 on train; the 4B place proposals ~+0.1-0.2.
