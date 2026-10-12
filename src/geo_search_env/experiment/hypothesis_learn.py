@@ -57,6 +57,12 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False)
         cols += [np.where(np.isfinite(v), v, 0.5), np.isfinite(v).astype(float)]
     if e4 and "set" not in drop and "set_mass" in f:  # set-aware Pinpoint (pinpoint_set)
         cols += [np.log(np.maximum(f["set_mass"][keep], 1e-6)), f["set_top_in"][keep], np.log1p(f["d_settop"][keep])]
+        if "setr_max" in f:  # the set model inside each hypothesis: best and log-sum-exp logit, raw and minus the photo's maximum
+            for k in ("setr_max", "setr_lse"):
+                x = f[k][keep].astype(np.float64)
+                mx = np.full(int(photo.max()) + 1, -np.inf)
+                np.maximum.at(mx, photo, x)
+                cols += [x, x - mx[photo]]
     if extra and "restricted" not in drop:
         cols += [np.log1p(f[k][keep]) if k == "r_spread" else f[k][keep] for k in RESTRICTED_KEYS]
     X = np.stack(cols, 1)
@@ -159,7 +165,9 @@ def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = Fals
     from .strategy_search import _bootstrap
 
     keep = np.arange(len(f["source"])) if e4 else np.flatnonzero(f["source"] == 0)
-    if agree == "set":
+    if agree == "setr":
+        km = f["km_setr"][keep]
+    elif agree == "set":
         km = np.where(f["set_top_in"] > 0, f["set_km"][f["photo"]], f["km_agree"])[keep]
     else:
         km = (f["km_agree"] if agree else f["km"])[keep]
@@ -222,6 +230,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
             if "set_km" in tr:
                 _evaluate("train, 5-fold CV, set-model pick inside the hypothesis", tr, gt, cv, args.e4, agree="set")
+            if "km_setr" in tr:
+                _evaluate("train, 5-fold CV, set model run inside the hypothesis", tr, gt, cv, args.e4, agree="setr")
         for seed in range(args.seeds if not ablated else 1):
             fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]  # train (+ extra)
             model, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
@@ -243,6 +253,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _evaluate(f"dev3k, agreement pick inside (seed {seed})", dv, gd, picks, args.e4, agree=True)
                 if "set_km" in dv:
                     _evaluate(f"dev3k, set-model pick inside (seed {seed})", dv, gd, picks, args.e4, agree="set")
+                if "km_setr" in dv:
+                    _evaluate(f"dev3k, set model run inside (seed {seed})", dv, gd, picks, args.e4, agree="setr")
     return 0
 
 

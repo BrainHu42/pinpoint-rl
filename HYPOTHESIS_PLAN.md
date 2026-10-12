@@ -326,3 +326,7 @@ train features are out-of-fold; 5-model comparator ensembles; change vs Pinpoint
 | Set-model pick if inside, else agreement | +3.3 / +1.4 → **+3.9 / +1.6** | +4.3 / +1.4 → +4.5 / +1.7 |
 - The set model stacks: +0.6 on train at 25 km for every answer rule (dev3k +0.1-0.3). The set-model pick is the best balance: nearly the
   agreement pick's 25 km gain with +1.6 at 1 km instead of -0.6.
+- **The set model run inside each hypothesis** (`pinpoint_set restricted`: restricted candidates re-scored for CLS states, max score diff
+  0.004; train scored by out-of-fold models): no gain. As a within-hypothesis pick +3.7 / +1.4 on train CV (dev3k +4.0 / +1.5), below the
+  global set pick (+3.9 / +1.6); its best / log-sum-exp logits as comparator features leave the comparator at +3.6 / +4.1 (was +3.5 / +4.1).
+  Trained on global pools, it does not transfer to the tight +-25 km pools.

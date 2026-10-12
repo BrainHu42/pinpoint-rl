@@ -142,6 +142,11 @@ def _set_features(tag: str, z: dict, truth: np.ndarray) -> dict:
     set_km = np.asarray([_haversine_km(*truth[p], top[p:p + 1])[0] for p in range(len(probs))])
     n = len(z["photo"])
     out = {"set_mass": np.zeros(n), "set_top_in": np.zeros(n), "d_settop": np.zeros(n), "set_km": set_km}
+    inside = Path("artifacts/pinpoint_set") / f"restricted_{tag}.npz"  # pinpoint_set restricted: the set model inside each hypothesis
+    if inside.exists():
+        r = np.load(inside)
+        assert np.array_equal(r["photo"], z["photo"]) and np.array_equal(r["source"], z["source"]), "restricted file from other hypotheses"
+        out |= {"setr_max": r["setr_max"], "setr_lse": r["setr_lse"], "km_setr": r["km_setr"]}
     for i, p in enumerate(z["photo"]):
         dist = _haversine_km(*z["center"][i], latlon[p][valid[p]])
         out["set_mass"][i] = probs[p][valid[p]][dist < BOX_KM].sum()

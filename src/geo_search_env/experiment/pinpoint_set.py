@@ -146,8 +146,8 @@ def _haversine_matrix(latlon: np.ndarray) -> np.ndarray:
     return (2 * 6371.0088 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))).astype(np.float32)
 
 
-def _load(path: Path, pool: str) -> dict:
-    z = dict(np.load(path))
+def _load(path: Path | dict, pool: str) -> dict:
+    z = dict(np.load(path)) if isinstance(path, Path) else dict(path)
     valid = z["rows"] >= 0
     in_pool = (z["features"][..., 6:9] > 0).any(-1)
     if pool == "original":
@@ -297,9 +297,11 @@ def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None,
     print(f"{path.name}: pool {pool}, hidden {hidden}, ensemble {ensemble}; {z['valid'][tr].sum(1).mean():.1f} candidates per photo", flush=True)
     folds = np.random.default_rng(0).permutation(len(tr)) % 5
     cv = np.zeros(z["rows"][tr].shape, dtype=np.float32)
+    fold_fits = []
     for k in range(5):
         fits = [_fit_set(z, np.concatenate([tr[folds != k], fit_extra]), hidden, seed=10 * k + j) for j in range(ensemble)]
         cv[folds == k] = _predict_set([m for m, _, _ in fits], z, tr[folds == k], fits[0][1], fits[0][2])
+        fold_fits.append(([m.state_dict() for m, _, _ in fits], fits[0][1], fits[0][2]))
     _report("train, 5-fold CV", z, tr, cv.argmax(1))
     fits = [_fit_set(z, np.concatenate([tr, fit_extra]), hidden, seed=100 + j) for j in range(ensemble)]
     dev = _predict_set([m for m, _, _ in fits], z, dv, fits[0][1], fits[0][2])
@@ -311,14 +313,101 @@ def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None,
     if save:
         import torch
 
+        # fold models too: train photos must be scored by the model that did not see them (fold k of train photo i: train_folds[i])
         torch.save({"models": [m.state_dict() for m, _, _ in fits], "mu": fits[0][1], "sd": fits[0][2], "pool": pool, "hidden": hidden,
-                    "n_scalar": z["scalars"].shape[-1]}, save)
+                    "n_scalar": z["scalars"].shape[-1], "hp": dict(HP), "fold_fits": fold_fits, "train_folds": folds}, save)
         print(f"  saved -> {save}")
+
+
+def _logits_set(models, z, photos, mu, sd, device="cuda") -> np.ndarray:
+    """Mean set-model logits [photos, C] (-inf on empty slots)."""
+
+    import torch
+
+    out = []
+    with torch.no_grad():
+        for b in np.array_split(photos, max(1, len(photos) // 512)):
+            out.append((sum(m(*_batch(z, b, mu, sd, device)) for m in models) / len(models)).cpu().numpy())
+    return np.concatenate(out)
+
+
+def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
+    """The set model inside each hypothesis: every hypothesis's restricted candidates (hypotheses.py, merged as hypothesis_compare's E4
+    features) are re-scored by Pinpoint to get their CLS states (rank / shortlist features as stored), then the set model scores them. Train
+    photos are scored by the fold model that did not see them. Saved per hypothesis (merged order): setr_max (best logit), setr_lse
+    (log-sum-exp of logits), km_setr (km of the set model's pick inside the hypothesis) -> artifacts/pinpoint_set/restricted_{tag}.npz."""
+
+    import torch
+
+    from ..models.pinpoint_reranker import PinpointReranker
+    from . import hypothesis_compare
+    from .strategy_search import load_world
+
+    hypothesis_compare.EXTRA_HYPOTHESES.extend(extra_hyps)
+    h = hypothesis_compare._merge_clue_hyps(tag)
+    photos = json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))
+    queries = json.loads(QUERY_FILES["mp16"].read_text(encoding="utf-8"))
+    world = load_world(mp16_queries=queries)
+    model = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    captured: list[torch.Tensor] = []
+    head = model.head.score_head
+
+    class _Capture(torch.nn.Module):
+        def forward(self, x):
+            captured.append(x.detach().to(torch.float16).cpu())
+            return head(x)
+
+    model.head.score_head = _Capture()
+    query_index = np.asarray([p["index"] for p in photos])[h["photo"]]
+    raw, projected = model.encode_queries(world.query_embeddings[np.unique(query_index)])
+    position = np.searchsorted(np.unique(query_index), query_index)
+    rows, features = h["rows"].astype(np.int64), h["features"].astype(np.float32)
+    scores = np.concatenate([
+        model._score(raw[position[i:i + 8192]], projected[position[i:i + 8192]], rows[i:i + 8192], features[i:i + 8192, :, 3:6],
+                     features[i:i + 8192, :, 6:9])[0]
+        for i in range(0, len(rows), 8192)
+    ])
+    valid = rows >= 0
+    print(f"{tag}: {len(rows)} hypotheses re-scored; max |score - stored| {np.abs(scores - h['scores'])[valid].max():.4f}", flush=True)
+    hidden = torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1)
+    truth = np.asarray([p["truth"] for p in photos], np.float32)[h["photo"]]
+    z = _load({"rows": rows, "latlon": h["latlon"].astype(np.float32), "scores": scores.astype(np.float32), "hidden": hidden,
+               "features": features, "truth": truth}, "wide")
+    ckpt = torch.load(model_path, map_location="cuda", weights_only=False)
+    hp = ckpt.get("hp", HP)
+
+    def build(states):
+        nets = []
+        for state in states:
+            net = _set_model(ckpt["n_scalar"], ckpt["hidden"], dim=hp["dim"], layers=hp["layers"]).cuda()
+            net.load_state_dict(state)
+            nets.append(net.eval())
+        return nets
+
+    logits = np.full(rows.shape, -np.inf, dtype=np.float32)
+    if tag == "train":  # out-of-fold: photo i of train was held out of fold model train_folds[i]
+        fold_of = np.asarray(ckpt["train_folds"])[h["photo"]]
+        for k, (states, mu, sd) in enumerate(ckpt["fold_fits"]):
+            idx = np.flatnonzero(fold_of == k)
+            logits[idx] = _logits_set(build(states), z, idx, mu, sd)
+    else:
+        logits = _logits_set(build(ckpt["models"]), z, np.arange(len(rows)), ckpt["mu"], ckpt["sd"])
+    has = valid.any(1)
+    pick = np.where(has, logits.argmax(1), 0)
+    out = {"setr_max": np.where(has, logits.max(1), -1e3),
+           "setr_lse": np.where(has, np.logaddexp.reduce(np.where(valid, logits, -np.inf), axis=1), -1e3),
+           "km_setr": np.where(has, z["km"][np.arange(len(rows)), pick], np.inf), "photo": h["photo"], "source": h["source"]}
+    dst = OUT / f"restricted_{tag}.npz"
+    np.savez(dst, **out)
+    print(f"  set model inside each hypothesis -> {dst}", flush=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train", "more-queries"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted"))
+    parser.add_argument("--tag", default="dev3k", help="restricted: photo set (train, dev3k)")
+    parser.add_argument("--extra-hyps", nargs="*", default=("vlmhyps",), help="restricted: hypothesis files merged as in hypothesis_compare")
+    parser.add_argument("--model", type=Path, default=OUT / "set_wide.pt", help="restricted: saved set model (train --save)")
     parser.add_argument("--n", type=int, default=100_000, help="more-queries: how many")
     parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
@@ -336,6 +425,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     HP.update({key: getattr(args, key) for key in HP})
     if args.cmd == "more-queries":
         more_queries(args.n)
+    elif args.cmd == "restricted":
+        restricted(args.tag, args.extra_hyps, args.model)
     elif args.cmd == "extract":
         extract(args.name, args.targets, args.limit)
     else:
