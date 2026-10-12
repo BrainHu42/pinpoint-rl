@@ -69,7 +69,8 @@ def more_queries(n: int, seed: int = 2) -> None:
     print(f"{len(queries)} more photos from buckets 0-98 -> {QUERY_FILES['mp16_more']}", flush=True)
 
 
-def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: str = "") -> None:
+def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: str = "", keep_hidden: bool = True,
+            photo_set: str | None = None) -> None:
     import torch
 
     from ..models.pinpoint_reranker import MODALITIES, PinpointReranker
@@ -103,7 +104,10 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
     if name == "bench":  # both halves of im2gps3k and yfcc4k, in the bench pools' order (photo set full: "index")
         world = load_world()
     else:
-        world = load_world(mp16_queries=json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))[:limit])
+        queries = json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))
+        if photo_set:  # only this photo set's photos, in its order ("index" into the query file)
+            queries = [queries[e["index"]] for e in json.loads((Path("artifacts/photo_sets") / photo_set / "photos.json").read_text(encoding="utf-8"))]
+        world = load_world(mp16_queries=queries[:limit])
     model = _Wide(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     model.original = dict(model.targets)
     # the released extraction searched 2x pools (tie order among equal fp16 scores depends on it); keep it for retrained rerankers
@@ -114,7 +118,8 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
 
     class _Capture(torch.nn.Module):
         def forward(self, x):
-            captured.append(x.detach().to(torch.float16).cpu())
+            if keep_hidden:
+                captured.append(x.detach().to(torch.float16).cpu())
             return head(x)
 
     model.head.score_head = _Capture()
@@ -123,16 +128,18 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
     found = model._search(raw, projected, world.query_author, index_author)
     rows, ranks, flags = model._union(found)
     scores, features = model._score(raw, projected, rows, ranks, flags)
-    hidden = torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1)
     order = np.argsort(-scores, axis=1, kind="stable")
     rows, scores = np.take_along_axis(rows, order, 1), np.take_along_axis(scores, order, 1)
-    features, hidden = np.take_along_axis(features, order[..., None], 1), np.take_along_axis(hidden, order[..., None], 1)
+    features = np.take_along_axis(features, order[..., None], 1)
+    extra = {}
+    if keep_hidden:
+        extra["hidden"] = np.take_along_axis(torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1), order[..., None], 1)
     valid = rows >= 0
     latlon = np.where(valid[..., None], np.asarray(model.latlon[np.where(valid, rows, 0)]), np.nan).astype(np.float32)
     OUT.mkdir(parents=True, exist_ok=True)
-    dst = OUT / f"{name}_{'_'.join(str(t) for t in targets)}{f'_first{limit}' if limit else ''}{f'_{tag}' if tag else ''}.npz"
-    np.savez(dst, rows=rows, latlon=latlon, scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16),
-             truth=world.query_latlon.astype(np.float32))
+    dst = OUT / f"{name}_{'_'.join(str(t) for t in targets)}{f'_{photo_set}' if photo_set else ''}{f'_first{limit}' if limit else ''}{f'_{tag}' if tag else ''}.npz"
+    np.savez(dst, rows=rows, latlon=latlon, scores=scores.astype(np.float32), features=features.astype(np.float16),
+             truth=world.query_latlon.astype(np.float32), **extra)
     in_pool = (features[..., 6:9] > 0).any(-1)
     print(f"{name}: {len(rows)} queries, {valid.sum(1).mean():.1f} candidates ({in_pool.sum(1).mean():.1f} in the original pool) -> {dst}", flush=True)
 
@@ -676,9 +683,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench",))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
     parser.add_argument("--limit", type=int, help="first N queries only (plumbing)")
+    parser.add_argument("--photo-set", help="extract: only this photo set's photos (e.g. dev3k), in its order")
     parser.add_argument("--data", type=Path, default=OUT / "mp16_32_8_8.npz", help="train: extracted candidates (all of queries.json)")
     parser.add_argument("--pool", choices=("wide", "original"), default="wide", help="train: all extracted candidates or Pinpoint's own pool")
-    parser.add_argument("--no-hidden", action="store_true", help="train: scores, features and geometry only (no CLS states)")
+    parser.add_argument("--no-hidden", action="store_true", help="train / extract: scores, features and geometry only (no CLS states)")
     parser.add_argument("--ensemble", type=int, default=1)
     parser.add_argument("--save", type=Path)
     parser.add_argument("--dump", type=Path, help="train: save pick probabilities (train out-of-fold, dev3k)")
@@ -696,7 +704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.cmd == "restricted":
         restricted(args.tag, args.extra_hyps, None if str(args.model) == "none" else args.model)
     elif args.cmd == "extract":
-        extract(args.name, args.targets, args.limit, args.ckpt_tag)
+        extract(args.name, args.targets, args.limit, args.ckpt_tag, not args.no_hidden, args.photo_set)
     elif args.cmd == "photo-set":
         photo_set(args.ckpt_tag, args.tags)
     elif args.cmd == "eval-head":

@@ -14,6 +14,8 @@ Trained with REINFORCE (self-critical: the greedy rollout's reward is the baseli
 
   python -m geo_search_env.experiment.hypothesis_agent [--ckpt-tag setft_a] [--budgets 0 1 2 3] [--apply-tag full]
 
+--zoom-rule soft: a zoomed area answers with a soft-kernel pick instead of the box agreement pick (score-weighted Laplace density, 10 km,
+T 0.1, over its restricted candidates; lesson 72 / 73: keeps 1 km, chosen on train).
 --apply-tag: the models trained on all of train applied to another photo set (full = the test set, only when the user asks), per benchmark at
 1 / 25 / 200 / 750 / 2500 km; inputs are normalised with train statistics.
 """
@@ -32,6 +34,41 @@ from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
 BOX_KM = 25.0
+KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
+
+
+def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, gate: bool = False) -> np.ndarray:
+    """km to the truth of each zoomed area's soft-kernel pick: argmax over its restricted candidates of sum_j softmax(s / T)_j exp(-d_ij / KERNEL_KM).
+    in_group (hybrid rule): only among the box rule's winning group (the founder with the most softmax(s / 0.2) mass within BOX_KM, and its
+    members), so the 25 km decision stays the box rule's and the kernel only places the point.
+    gate (gated rule): the kernel peak only if it lies within GATE_KM of the box founder, else the founder (train, top areas: the box rule's
+    25 km accuracy, 1.2 of the kernel's 2.1 points at 1 km)."""
+
+    from .pinpoint_set import _haversine_matrix
+
+    out = np.full(len(rows), np.inf)
+    for c in range(0, len(rows), 8192):
+        r = rows[c:c + 8192]
+        valid = zm["rows"][r] >= 0
+        s = np.where(valid, zm["scores"][r], -np.inf)
+        best = np.where(valid.any(1, keepdims=True), s.max(1, keepdims=True), 0.0)
+        w = np.where(valid, np.exp((s - best) / KERNEL_T), 0.0)
+        lat = np.where(valid[..., None], zm["latlon"][r], 0.0)
+        dens = (w[:, None, :] * np.exp(-_haversine_matrix(lat) / KERNEL_KM)).sum(2)
+        allowed = valid
+        if in_group or gate:
+            pair = _haversine_matrix(lat)
+            wb = np.where(valid, np.exp((s - best) / 0.2), 0.0)
+            near = (pair < BOX_KM) & valid[:, None, :] & valid[:, :, None]
+            founder = np.where(valid, (near * wb[:, None, :]).sum(2), -1).argmax(1)
+            allowed = near[np.arange(len(r)), founder]
+        pick = np.where(allowed, dens, -np.inf).argmax(1)
+        if gate:
+            pick = np.where(pair[np.arange(len(r)), pick, founder] <= GATE_KM, pick, founder)
+        both = np.stack([truth[zm["photo"][r]], lat[np.arange(len(r)), pick]], 1)
+        km = _haversine_matrix(both)[:, 0, 1]
+        out[c:c + 8192] = np.where(valid.any(1), km, np.inf)
+    return out
 
 
 def _post(f: dict) -> np.ndarray:
@@ -59,7 +96,7 @@ def _unzoomed_km(f: dict, photos: list[dict]) -> np.ndarray:
     return out
 
 
-def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None) -> dict:
+def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated") -> dict:
     import torch
 
     feat_path, zoom_path = _paths(tag, ckpt_tag)
@@ -93,7 +130,11 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     soft /= np.maximum(soft.sum(1, keepdims=True), 1e-12)
     cand = np.concatenate([np.stack([np.where(valid, zm["scores"][rows], 0), np.where(valid, s - best, 0), soft], -1), zm["features"][rows].astype(np.float32)], -1)
     un_km = _unzoomed_km({"photo": photo, "center": f["center"][rows]}, photos)
-    set_km = np.where(f["set_top_in"][rows] > 0, f["set_km"][photo], f["km_agree"][rows])
+    zoom_km = f["km_agree"][rows]
+    if zoom_rule in ("soft", "hybrid", "gated"):
+        soft_km = _kernel_km(zm, rows, np.asarray([e["truth"] for e in photos], np.float64), in_group=zoom_rule == "hybrid", gate=zoom_rule == "gated")
+        zoom_km = np.where(np.isfinite(soft_km), soft_km, zoom_km)
+    set_km = np.where(f["set_top_in"][rows] > 0, f["set_km"][photo], zoom_km)
     cell = cand[valid]
     if stats is None:  # train: its own statistics; other sets reuse them
         stats = {"pre": (pre.mean(0), pre.std(0) + 1e-6), "post": (post.mean(0), post.std(0) + 1e-6), "cand": (cell.mean(0), cell.std(0) + 1e-6)}
@@ -108,7 +149,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     d = {
         "pre": pad(norm(pre, "pre")), "post": pad(norm(post, "post")), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
-        "km_zoom": pad(f["km_agree"][rows], np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
+        "km_zoom": pad(zoom_km, np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
         "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
     }
     d["cvalid"][..., 0] |= d["mask"]  # an empty search keeps one zero slot so pooling is defined
@@ -302,11 +343,11 @@ def evaluate(net, d, photos, budgets, action_states=None):
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
-def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str) -> None:
+def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str, zoom_rule: str = "gated") -> None:
     """All-of-train answer and action heads on another photo set, per benchmark."""
 
-    tr = load("train", ckpt_tag)
-    te = load(apply_tag, ckpt_tag, stats=tr["stats"])
+    tr = load("train", ckpt_tag, zoom_rule=zoom_rule)
+    te = load(apply_tag, ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule)
     n = tr["n"]
     print(f"agent ({ckpt_tag or 'released Pinpoint'}) trained on all of train, applied to {apply_tag} ({te['n']} photos)", flush=True)
     net = fit_answer(tr, np.arange(n), seed=100)
@@ -330,17 +371,17 @@ def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str) -> None:
         km = answers.get("budget 2, agent, agree pick", answers.get(("budget all, all, agree pick")))
         c = _bootstrap((km < 25).astype(float) - (te["base_km"] < 25))
         print(f"\n budget-2 agent vs released Pinpoint at 25 km, all photos: {100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}]")
-    np.savez(hl_out() / f"agent_{apply_tag}_{ckpt_tag or 'released'}_answers.npz",
+    np.savez(hl_out() / f"agent_{apply_tag}_{ckpt_tag or 'released'}{'' if zoom_rule == 'gated' else '_' + zoom_rule}_answers.npz",
              **{k.replace(" ", "_").replace(",", "").replace("(", "").replace(")", ""): v for k, v in answers.items()}, benchmark=te["benchmark"])
 
 
-def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1) -> None:
+def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1, zoom_rule: str = "gated") -> None:
     from .strategy_search import _bootstrap
 
-    tr = load("train", ckpt_tag)
-    dv = load("dev3k", ckpt_tag, stats=tr["stats"])
+    tr = load("train", ckpt_tag, zoom_rule=zoom_rule)
+    dv = load("dev3k", ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule)
     n = tr["n"]
-    print(f"agent ({ckpt_tag or 'released Pinpoint'}): {n} train photos, up to {tr['mask'].shape[1]} areas, "
+    print(f"agent ({ckpt_tag or 'released Pinpoint'}, zoom rule {zoom_rule}): {n} train photos, up to {tr['mask'].shape[1]} areas, "
           f"{tr['mask'].sum().item() / n:.2f} per photo", flush=True)
     folds = np.random.default_rng(0).permutation(n) % 5
     cv: dict = {}
@@ -374,12 +415,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ckpt-tag", default="", help="photo sets on a retrained reranker (pinpoint_set photo-set)")
     parser.add_argument("--budgets", type=int, nargs="*", default=(0, 1, 2, 3))
+    parser.add_argument("--zoom-rule", choices=("agree", "soft", "hybrid", "gated"), default="gated",
+                        help="a zoomed area's answer: box agreement, soft kernel, kernel inside the box group, or kernel gated to 5 km of the box founder (default; lesson 74)")
     parser.add_argument("--apply-tag", help="apply the all-of-train models to this photo set (full = test set, only when the user asks)")
     args = parser.parse_args(argv)
     if args.apply_tag:
-        apply(args.ckpt_tag, args.budgets, args.apply_tag)
+        apply(args.ckpt_tag, args.budgets, args.apply_tag, args.zoom_rule)
     else:
-        run(args.ckpt_tag, args.budgets)
+        run(args.ckpt_tag, args.budgets, zoom_rule=args.zoom_rule)
     return 0
 
 

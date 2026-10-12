@@ -94,7 +94,9 @@ class _RerankerHead(nn.Module):
         """`tokens`: [M, hidden] each (query, image, gps, osv, raw); returns [M] scores."""
 
         sequence = torch.cat((self.cls_token.expand(len(tokens[0]), -1, -1), torch.stack(tokens, dim=1)), dim=1)
-        return self.score_head(self.interaction_encoder(sequence)[:, 0, :]).squeeze(-1)
+        # in chunks: attention kernels fail beyond 65,535 sequences (e.g. 512 queries x 128 candidates)
+        cls = torch.cat([self.interaction_encoder(part)[:, 0, :] for part in sequence.split(32768)])
+        return self.score_head(cls).squeeze(-1)
 
 
 def _discover_index(root: Path = INDEX_ROOT) -> Path:
