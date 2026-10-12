@@ -220,6 +220,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         freeze_base: bool = False,
         expected_hit_weight: float = 1.0,
         original_targets: Sequence[int] | None = None,
+        exclude_author_path: str | None = None,
         **unused_checkpoint_hparams: Any,
     ):
         super().__init__()
@@ -474,6 +475,15 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         )
 
         self.set_head = SetHead(hidden_dim, int(set_head_dim), 4, int(set_head_layers)) if set_head else None
+        # Same-photographer exclusion (pinpoint-rl's evaluation rule): an author id per embedding-cache row; index photos by the
+        # query's author are removed from all three searches, so training sees the pools evaluation sees.
+        self._author_by_cache_row = None
+        self._index_author = None
+        self._batch_query_author = None
+        if exclude_author_path:
+            self._author_by_cache_row = np.load(exclude_author_path)
+            index_cache_rows = np.asarray(self.retrieval_index._cache_idx_mm, dtype=np.int64)
+            self._index_author_np = self._author_by_cache_row[index_cache_rows].astype(np.int32)
         self.freeze_base = bool(freeze_base)
         if self.freeze_base:
             if self.set_head is None:
@@ -1212,6 +1222,9 @@ class AttentionInterpolateLightningModule(L.LightningModule):
             end = min(start + chunk_size, num_rows)
             chunk = retrieval_mat[start:end]
             chunk_scores = torch.matmul(query, chunk.T)
+            if self._batch_query_author is not None and self._batch_query_author.shape[0] == batch_size:
+                same = self._index_author[start:end].unsqueeze(0) == self._batch_query_author.unsqueeze(1)
+                chunk_scores.masked_fill_(same & (self._batch_query_author.unsqueeze(1) >= 0), -float("inf"))
             if has_query_mask:
                 valid = (query_indices >= start) & (query_indices < end)
                 if torch.any(valid):
@@ -1425,6 +1438,14 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         query_raw_image = self._extract_query_raw_image(embeddings)
         query_img = self._encode_query_image(query_raw_image)
         query_cache_entries = self._query_cache_entries_from_metadata(metadata_batch)
+        self._batch_query_author = None
+        if self._author_by_cache_row is not None and metadata_batch is not None:
+            if self._index_author is None or self._index_author.device != query_img.device:
+                self._index_author = torch.as_tensor(self._index_author_np, device=query_img.device)
+            authors = [
+                int(self._author_by_cache_row[int(m["cache_idx"])]) if m.get("cache_idx") is not None else -1 for m in metadata_batch
+            ]
+            self._batch_query_author = torch.as_tensor(authors, dtype=torch.int32, device=query_img.device)
 
         query_indices_for_search = None
         if apply_leave_one_out and query_indices is not None and query_indices.numel() == query_img.shape[0]:

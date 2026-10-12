@@ -813,6 +813,10 @@ class AttentionRetrievalIndex:
             valid = (source_cache_indices >= 0) & (source_cache_indices < source_num_samples)
             mapping[source_cache_indices[valid]] = positions[valid]
             lookup[source_name] = mapping
+        # The released index names its one source "source_0" while the data module tags samples with the dataset name ("mp16"):
+        # without this alias no training query maps to its own index row and leave-one-out never excludes the query itself.
+        if len(lookup) == 1:
+            lookup.setdefault(str(self.manifest.get("retrieval_db_source", "mp16")), next(iter(lookup.values())))
         return lookup
 
     def to_device(self, device: torch.device | str) -> None:

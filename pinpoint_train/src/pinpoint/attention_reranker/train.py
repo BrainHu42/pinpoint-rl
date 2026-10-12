@@ -226,6 +226,7 @@ def main() -> None:
         default=None,
         help="Wide pools: rank / shortlist features against these image / raw / gps list sizes, no sampling (e.g. 8 2 2).",
     )
+    parser.add_argument("--exclude-author-path", type=str, default=None, help="Author id per MP16 cache row: exclude same-author index photos.")
     parser.add_argument("--init-checkpoint", type=str, default=None, help="Initialise the reranker from this checkpoint (fine-tune).")
     parser.add_argument(
         "--inference-dtype",
@@ -386,6 +387,7 @@ def main() -> None:
         expected_hit_weight=args.expected_hit_weight,
         freeze_base=args.freeze_base,
         original_targets=args.original_targets,
+        exclude_author_path=args.exclude_author_path,
         inference_device=args.device,
         inference_dtype=args.inference_dtype,
     )
