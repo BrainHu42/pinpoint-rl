@@ -367,7 +367,7 @@ def _logits_set(models, z, photos, mu, sd, device="cuda") -> np.ndarray:
     return np.concatenate(out)
 
 
-def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
+def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path | None) -> None:
     """The set model inside each hypothesis: every hypothesis's restricted candidates (hypotheses.py, merged as hypothesis_compare's E4
     features) are re-scored by Pinpoint to get their CLS states (rank / shortlist features as stored), then the set model scores them. Train
     photos are scored by the fold model that did not see them. Saved per hypothesis (merged order): setr_max (best logit), setr_lse
@@ -411,6 +411,9 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
     # the zoomed candidates with their CLS states, for the look-zoom-rerank model (PINPOINT_SET_PLAN.md step 1)
     np.savez(OUT / f"zoom_{tag}.npz", photo=h["photo"], source=h["source"], rank=h["rank"], support=h["support"], center=h["center"],
              rows=rows, latlon=h["latlon"].astype(np.float32), scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16))
+    if model_path is None:  # zoom states only (retrained rerankers: no offline set model to run inside the hypotheses)
+        print(f"  zoomed candidates -> {OUT / f'zoom_{tag}.npz'}", flush=True)
+        return
     z = _load({"rows": rows, "latlon": h["latlon"].astype(np.float32), "scores": scores.astype(np.float32), "hidden": hidden,
                "features": features, "truth": truth}, "wide")
     ckpt = torch.load(model_path, map_location="cuda", weights_only=False)
@@ -548,6 +551,52 @@ def train_zoom(k: int, sources: Sequence[int], ensemble: int, save: Path | None,
         _report(f"{apply_tag} / all ({len(picks)})", te, np.arange(len(picks)), picks)
 
 
+def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
+    """The hypothesis pipeline on a retrained reranker (lesson 70; the merged-pipeline plan, step 1): its wide pool (extract --ckpt-tag) becomes
+    the photo sets' Pinpoint pool. Writes pinpoint_reference/mp16_{ckpt_tag}.npz (+ queries), photo_sets/{tag}_{ckpt_tag}/ (photos.json with the
+    new pool sorted by score, labels.json and the clue inputs of the original set linked), and set_probs_{tag}_{ckpt_tag}.npz: the retrained
+    reranker's softmax (T 0.2) over its pool, in the set-dump format (it replaces the offline set layer). Run hypotheses / hypothesis_compare /
+    restricted with PINPOINT_RERANKER_CKPT set to the same checkpoint."""
+
+    import os
+    import shutil
+
+    from ..models.pinpoint_reranker import _discover_index
+
+    z = {k: v for k, v in np.load(OUT / f"mp16_32_8_8_{ckpt_tag}.npz").items() if k != "hidden"}  # read each array once
+    valid = z["rows"] >= 0
+    index_dir = _discover_index()
+    manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
+    cache_indices = np.fromfile(index_dir / manifest["files"]["cache_indices"], dtype=np.int64)
+    ref = Path("artifacts/pinpoint_reference")
+    np.savez(ref / f"mp16_{ckpt_tag}.npz", rows=z["rows"], cache_rows=np.where(valid, cache_indices[np.where(valid, z["rows"], 0)], -1),
+             latlon=z["latlon"], scores=np.where(valid, z["scores"], -np.inf), features=z["features"], truth=z["truth"])
+    shutil.copyfile(ref / "mp16_queries.json", ref / f"mp16_{ckpt_tag}_queries.json")
+    s_ = np.where(valid, z["scores"], -np.inf)
+    probs = np.exp((s_ - s_.max(1, keepdims=True)) / 0.2)
+    probs /= probs.sum(1, keepdims=True)
+    agent = Path("artifacts/agent")
+    for tag in tags:
+        src, dst = Path("artifacts/photo_sets") / tag, Path("artifacts/photo_sets") / f"{tag}_{ckpt_tag}"
+        dst.mkdir(parents=True, exist_ok=True)
+        photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
+        for e in photos:
+            v = valid[e["index"]]
+            ll = z["latlon"][e["index"]][v].astype(float).tolist()
+            e["pool"], e["pool_rows"], e["pools"] = ll, z["rows"][e["index"]][v].tolist(), f"mp16_{ckpt_tag}"
+            e["candidates"] = [["", a, b] for a, b in ll]
+        (dst / "photos.json").write_text(json.dumps(photos), encoding="utf-8")
+        shutil.copyfile(src / "labels.json", dst / "labels.json")
+        for name in (f"region_evidence_{tag}_4b.json", f"clue_judge_{tag}_4b_4b.json", f"observe_{tag}_4b.json", f"queries_{tag}_4b.json"):
+            link = agent / name.replace(f"_{tag}_", f"_{tag}_{ckpt_tag}_", 1)
+            if (agent / name).exists() and not link.exists():
+                os.symlink((agent / name).resolve(), link)
+        idx = np.asarray([e["index"] for e in photos])
+        t = f"{tag}_{ckpt_tag}"
+        np.savez(OUT / f"set_probs_{t}.npz", **{f"{t}_probs": probs[idx], f"{t}_latlon": z["latlon"][idx], f"{t}_valid": valid[idx]})
+        print(f"{t}: {len(photos)} photos, {valid[idx].sum(1).mean():.1f} candidates per pool", flush=True)
+
+
 def eval_head(data: Path, checkpoint: Path | None) -> None:
     """Step 4: a retrained reranker (pinpoint_train/) on train and dev3k. Its own pick (top score over the original 8 / 2 / 2 pool) and,
     with `checkpoint`, its set head's pick over the wide pool, against the released Pinpoint (mp16_32_8_8.npz)."""
@@ -604,7 +653,7 @@ def eval_head(data: Path, checkpoint: Path | None) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom", "eval-head"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom", "eval-head", "photo-set"))
     parser.add_argument("--checkpoint", type=Path, help="eval-head: retrained reranker checkpoint with a set head")
     parser.add_argument("--ckpt-tag", default="", help="extract: output suffix (with PINPOINT_RERANKER_CKPT set to a retrained reranker)")
     parser.add_argument("--k", type=int, default=5, help="zoom: Pinpoint areas zoomed into")
@@ -635,9 +684,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.cmd == "apply":
         apply(args.tag, args.data, args.model)
     elif args.cmd == "restricted":
-        restricted(args.tag, args.extra_hyps, args.model)
+        restricted(args.tag, args.extra_hyps, None if str(args.model) == "none" else args.model)
     elif args.cmd == "extract":
         extract(args.name, args.targets, args.limit, args.ckpt_tag)
+    elif args.cmd == "photo-set":
+        photo_set(args.ckpt_tag)
     elif args.cmd == "eval-head":
         eval_head(args.data, args.checkpoint)
     else:

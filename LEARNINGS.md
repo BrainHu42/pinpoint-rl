@@ -103,6 +103,10 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   - A flat global + zoom set model doesn't help (+1.4).
   - Trap: training against the shipped submission index disables leave-one-out (source-name mismatch; alias in `pinpoint_train/`).
     This is a setup issue, not a bug in Pinpoint's training.
+- **71: merged pipeline** (`hypothesis_agent.py`): area model on the retrained reranker **+4.9 / +5.4** (vs +4.2 / +5.2 on released
+  Pinpoint).
+  - One network with answer + RL action heads: 2 zooms +4.7 / +5.5, no zoom +3.9 / +3.8.
+  - The learned zoom policy adds only +0.0 to +0.3 over zooming the top areas.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

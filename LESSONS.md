@@ -863,3 +863,14 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       only zoomed hypotheses' own evidence, so there is no leak.
       - 1 zoom: +3.5 / +3.8, vs +1.1 / +2.1 for Pinpoint's top area.
       - 2 zooms: +4.0 / +4.2, equal to zooming all ~6.2 hypotheses.
+
+71. **Merged pipeline, steps 1-2 (2026-10-12; `PINPOINT_SET_PLAN.md`, `hypothesis_agent.py`): the gains stack partly; zoom choice barely
+    matters.**
+    - Step 1: the area pipeline on the retrained reranker (its pool, zooms and softmax replace Pinpoint's and the set layer):
+      area model **+4.9 / +5.4** (train CV / dev3k, agreement pick), vs +4.2 / +5.2 on released Pinpoint. Retrained alone: +3.1 / +3.3.
+    - Step 2: one network with an answer head (random zoom subsets in training) and an RL action head:
+      - all areas zoomed +4.9 / +5.5; 2 zooms by the agent +4.7 / +5.5;
+      - zooming Pinpoint's top-2 areas: +4.7 / +5.2;
+      - no zoom at all: +3.9 / +3.8.
+    - Most of the gain is area-level choice, not zooming. The policy adds +0.0 to +0.3 over a fixed rule, so an action head needs
+      costlier, more varied actions to matter.

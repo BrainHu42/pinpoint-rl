@@ -99,6 +99,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - **Look-zoom-rerank (lesson 70):**
   - `pinpoint_set.py`: set layer, wide extraction (`extract --ckpt-tag`), zoom pools, `eval-head`.
   - `area_model.py`: area-then-spot model over zoomed CLS states.
+  - `hypothesis_agent.py`: merged pipeline (answer + action heads over area tokens; lesson 71). Retrained-reranker photo sets: `pinpoint_set photo-set`, `scripts/retrained_pipeline.sh`.
   - `zoom_agent.py`: RL zoom policy.
   - `models/set_head.py`.
   - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with

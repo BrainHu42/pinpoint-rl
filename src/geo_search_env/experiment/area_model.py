@@ -7,7 +7,10 @@ Each hypothesis (hypothesis_compare's merged hypotheses; aligned row by row with
 then one transformer layer over the photo's hypotheses and a score. Loss: -log P(a hypothesis < 25 km). The spot inside the chosen area is
 the agreement pick or the set-layer pick (hypothesis_learn._evaluate), as the comparator's.
 
-  python -m geo_search_env.experiment.area_model --features none|minimal|all [--sources 0 1 2] [--ensemble 3]
+  python -m geo_search_env.experiment.area_model --features none|minimal|all [--sources 0 1 2] [--ensemble 3] [--ckpt-tag setft_a]
+
+With --ckpt-tag, the photo sets built on a retrained reranker (pinpoint_set photo-set, scripts/retrained_pipeline.sh): features
+hypothesis_features_{tag}_{ckpt}_e4_set.npz, zooms zoom_{tag}_{ckpt}.npz; gains are still reported against the released Pinpoint's top-1.
 """
 
 from __future__ import annotations
@@ -42,9 +45,19 @@ def _minimal(f: dict) -> np.ndarray:
     return np.stack(cols, 1)
 
 
-def _load(tag: str, features: str, sources: Sequence[int]) -> dict:
-    f = dict(np.load(FEATURES[tag]))
-    zm = np.load(ZOOM / f"zoom_{tag}.npz")
+def _paths(tag: str, ckpt_tag: str) -> tuple[Path, Path]:
+    if not ckpt_tag:
+        return FEATURES[tag], ZOOM / f"zoom_{tag}.npz"
+    return hl.OUT / f"hypothesis_features_{tag}_{ckpt_tag}_e4_set.npz", ZOOM / f"zoom_{tag}_{ckpt_tag}.npz"
+
+
+def _load(tag: str, features: str, sources: Sequence[int], ckpt_tag: str = "") -> dict:
+    feat_path, zoom_path = _paths(tag, ckpt_tag)
+    f = dict(np.load(feat_path))
+    if ckpt_tag:  # the comparison stays the released Pinpoint's top-1 (same photo order as the original set)
+        f["rt_base_km"] = f["base_km"]
+        f["base_km"] = np.load(FEATURES[tag])["base_km"]
+    zm = np.load(zoom_path)
     assert np.array_equal(zm["photo"], f["photo"]) and np.array_equal(zm["source"], f["source"]), "zoom file not aligned with the features"
     keep = np.isin(f["source"], sources)
     valid = zm["rows"] >= 0
@@ -155,8 +168,13 @@ def _predict(nets, norm, d, photos, device="cuda") -> dict[int, int]:
     return out
 
 
-def run(features: str, sources: Sequence[int], ensemble: int) -> None:
-    tr, dv = _load("train", features, sources), _load("dev3k", features, sources)
+def run(features: str, sources: Sequence[int], ensemble: int, ckpt_tag: str = "") -> None:
+    tr, dv = _load("train", features, sources, ckpt_tag), _load("dev3k", features, sources, ckpt_tag)
+    if ckpt_tag:
+        for name, d in (("train", tr), ("dev3k", dv)):
+            f = d["f"]
+            print(f"{name}: released Pinpoint {np.mean(f['base_km'] < 25):.1%}, retrained reranker ({ckpt_tag}) top-1 {np.mean(f['rt_base_km'] < 25):.1%} "
+                  f"/ 1 km {np.mean(f['base_km'] < 1):.1%} -> {np.mean(f['rt_base_km'] < 1):.1%}", flush=True)
     n = len(tr["groups"])
     print(f"area model: features {features}, sources {tuple(sources)}, {len(tr['X'])} train hypotheses, ensemble {ensemble}", flush=True)
     folds = np.random.default_rng(0).permutation(n) % 5
@@ -177,8 +195,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--features", choices=("none", "minimal", "all"), default="minimal")
     parser.add_argument("--sources", type=int, nargs="*", default=(0, 1, 2))
     parser.add_argument("--ensemble", type=int, default=3)
+    parser.add_argument("--ckpt-tag", default="", help="photo sets on a retrained reranker (pinpoint_set photo-set)")
     args = parser.parse_args(argv)
-    run(args.features, args.sources, args.ensemble)
+    run(args.features, args.sources, args.ensemble, args.ckpt_tag)
     return 0
 
 

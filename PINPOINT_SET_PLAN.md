@@ -142,3 +142,43 @@ own pool +1.7 / +2.0. So:
   1. Run the hypothesis pipeline (areas, zooms, area model) on top of the retrained reranker.
   2. Train longer (a full epoch is ~4 h) and with an expected-hit loss on the base scores.
   3. Re-run the agent on the new states.
+
+## Merged pipeline, steps 1-2 (budgeted hypothesis-testing agent; lesson 71)
+% within 25 km vs the released Pinpoint (train 32.4%, dev3k 33.4%), train CV / dev3k; 1 km in brackets. Hypotheses: Pinpoint areas + clue places.
+
+**Step 1: the area pipeline on the retrained reranker** (`pinpoint_set photo-set --ckpt-tag setft_a`, `scripts/retrained_pipeline.sh`, `area_model --ckpt-tag setft_a`).
+The retrained reranker's 46-candidate pool replaces Pinpoint's pool, its zooms replace Pinpoint's zooms, and its softmax replaces the offline set layer.
+- More areas (4.6 vs 4.2 per photo); hypothesis oracle K = 5: 51.5% on dev3k, vs 48.5%.
+
+| Area model (areas + clues) | Released Pinpoint as the tool | Retrained reranker as the tool |
+|---|---|---|
+| All features + states, agreement pick | +4.2 / +5.2 | **+4.9 / +5.4** |
+| ... restricted top-1 | +3.6 / +4.5 | +4.6 (+1.9) / +4.7 (+0.8) |
+| ... set pick | +3.9 (+1.7) / +5.0 (+1.8) | +4.7 (+1.8) / +4.9 (+1.1) |
+| 16 Pinpoint-only features + states, agreement pick | | +4.6 / +4.9 |
+
+**Go:** +0.7 on train over the same model on released Pinpoint; +0.2 on dev3k. The two gains partly overlap: retrained alone +3.1 / +3.3, area model alone +4.2 / +5.2.
+
+**Step 2: one network, two heads** (`hypothesis_agent.py`).
+- Area tokens: pre-zoom evidence, plus zoom states once zoomed.
+- Answer head: trained on random zoom subsets. An unzoomed area answers with the best global-pool candidate inside it.
+- Action head: sequential, REINFORCE against the frozen answer head.
+
+| Zoom budget | Retrained: top-B areas | Retrained: RL agent | Released: top-B | Released: RL agent |
+|---|---|---|---|---|
+| 0 (no zoom) | +3.9 / +3.8 | | +3.3 / +4.1 | |
+| 1 | +4.2 / +4.7 | +4.4 / +4.9 | +3.9 / +4.9 | +3.8 / +4.8 |
+| 2 | +4.7 / +5.2 | **+4.7 / +5.5** | +3.9 / +5.1 | +4.0 / +4.9 |
+| 3 | +4.7 / +5.4 | +4.8 / +5.4 | +4.0 / +5.0 | +4.0 / +5.0 |
+| all (~4.6) | +4.9 / +5.5 | | +4.0 / +5.0 | |
+
+Agreement pick throughout. The set pick keeps 1 km at about +1.7 train / +1.1 dev3k, about 0.3 lower at 25 km.
+
+**Go:**
+- 2 zooms by the agent are within 0.2 of zooming every area (train), and equal on dev3k.
+- The answer head alone (zooming everything) matches the area model.
+
+**But:**
+- The learned policy beats the fixed rule (top-B Pinpoint areas) by only +0.0 to +0.3.
+- Most of the gain needs no zoom at all: area-level choice over the global pool and clue places gives +3.9 / +3.8.
+- So the action head has little to decide among areas alone. It needs costlier, more varied actions (clue reading on demand, live tools) to matter: steps 3 onward.
