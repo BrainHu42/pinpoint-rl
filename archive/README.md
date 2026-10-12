@@ -7,3 +7,5 @@ Kept for the record; lessons in `LESSONS.md` cite them. The current direction is
 - `KNOWLEDGE_PLAN.md` (2026-10-06): knowledge SFT warm start, then GRPO from the knowledge model vs the base 4B. Step 1 done; the GRPO gate failed
   (lessons 52-53).
 - `OVERNIGHT.md`, `OVERNIGHT_REPORT.md` (2026-10-07): the unattended run of that gate and its report (NO-GO, diagnosis).
+- `GEOLOCATION_CLUES.md`, `TEXT_SEARCH_PLAN.md`, `OVERNIGHT2.md`, `OVERNIGHT2_REPORT.md` (2026-10-07 to 10-09): the clue catalogue, the agent-tool
+  and text-search lines (lessons 55-68) and their overnight run. Replaced by `HYPOTHESIS_PLAN.md`; code at tag `pre-prune-2026-10-12`.

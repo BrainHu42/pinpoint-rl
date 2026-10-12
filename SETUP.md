@@ -157,7 +157,7 @@ MP16 training side (`artifacts/sft`):
 Photo sets (`artifacts/photo_sets`): `photo_sets select --tag dev --n 1000` (MP16 dev), `--tag devall --n 100000` (all of it),
 `--source bench --tag val --n 1000` and `--source bench --tag full --n 100000`; then `place_labels pool-labels --tag <tag>`
 (`.venvs/overture`; needs `place_labels label-all` once for `artifacts/place_labels/mp16.parquet`). Knowledge diagnostics:
-`knowledge_check`, `knowledge_oracle [tag]` (the target photos), `knowledge_coverage` (lessons 52-54).
+`knowledge_check` (lessons 52-54).
 
 ## 7. Serving, training and evaluation
 
@@ -184,4 +184,4 @@ PATH=.venvs/grpo/bin:$PATH .venvs/grpo/bin/python -m geo_search_env.experiment.g
 ```
 
 `scripts/` has end-to-end wrappers that serve, evaluate and stop their own server: `eval_run.sh <run>`,
-`full_eval.sh <run> <prompt>` (both on Pinpoint's candidates), and the knowledge scripts `knowledge_*.sh`. Expected numbers are in `LEARNINGS.md`.
+`full_eval.sh <run> <prompt>` (both on Pinpoint's candidates), `clue_judge.sh` and `hypvlm_run.sh`. Expected numbers are in `LEARNINGS.md`.

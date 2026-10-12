@@ -1,4 +1,4 @@
-# Agreement among Pinpoint's own candidates (TEXT_SEARCH_PLAN.md, locatability follow-up): Pinpoint's reranker scores each candidate on its own,
+# Agreement among Pinpoint's own candidates (archive/TEXT_SEARCH_PLAN.md, locatability follow-up): Pinpoint's reranker scores each candidate on its own,
 # so it never uses "5 of my 12 candidates are in the same area". Re-score each candidate by the score mass of all candidates within R km of it
 # (softmax of the reranker scores at temperature T), optionally mixed with its own score, and measure the change vs Pinpoint's top-1 on dev3k
 # (settings chosen on one half of the photos, counted on the other). dev sets only.

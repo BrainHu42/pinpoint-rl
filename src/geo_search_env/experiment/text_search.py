@@ -1,4 +1,4 @@
-# Text search tool for the geolocation agent (AGENT_DIRECTION.md, GEOLOCATION_CLUES.md section 1): text read in a photo (a business or place name,
+# Text search tool for the geolocation agent (AGENT_DIRECTION.md, archive/GEOLOCATION_CLUES.md section 1): text read in a photo (a business or place name,
 # a website, a phone number, an event name) -> the places it points to, from offline sources: GeoNames (~13M places and their alternate names),
 # Overture places (~60M businesses / POIs with websites and phones) and YFCC100M geotagged Flickr titles + tags (built by yfcc_names extract / merge).
 # Storage: SQLite FTS5 databases under data/text_search/ (on disk, stdlib only at query time, so it runs in any env, including GRPO rollouts).

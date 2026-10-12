@@ -1,4 +1,4 @@
-# Pinpoint as the agent's retrieval tool (TEXT_SEARCH_PLAN.md target design + lesson 68): instead of a ranked list of single candidates, the
+# Pinpoint as the agent's retrieval tool (archive/TEXT_SEARCH_PLAN.md target design + lesson 68): instead of a ranked list of single candidates, the
 # tool returns areas, each backed by the candidates within RADIUS_KM of its best-supported member and weighted by their reranker score mass
 # (softmax at TEMP). Area 1's pick is lesson 68's agreement pick (+1.0 pts on train over Pinpoint's top-1). `--restrict` style use (a country /
 # region / box) goes through pinpoint_constrained / models.pinpoint_reranker. dev sets only for evaluation.
