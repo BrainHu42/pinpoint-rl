@@ -299,3 +299,30 @@ the chosen hypothesis):
 | All hypotheses, minimal features (no clue features) | 16 | +2.3 / +2.8 | +3.0 / +3.8 |
 - Pinpoint run twice (global, then restricted to its own top-5 areas) plus a small comparator carries most of the gain (+2.7 of +3.5 on
   train). The clue machinery (4B reading, text search, judge, clue features) adds ~+0.6-0.8 on train; the 4B place proposals ~+0.1-0.2.
+
+## Set-aware Pinpoint (2026-10-12; `pinpoint_set.py`)
+Pinpoint's reranker loss pushes the single nearest candidate above all others (even ones 1 km from the truth), so it never learns to judge
+areas. A set layer on its frozen per-candidate CLS states (2 transformer layers over a photo's candidates, distance-bucket attention bias,
+residual on Pinpoint's score), trained on bucket 99 to maximise the expected hit (1 within 25 km, 2 within 1 km). Change vs Pinpoint, % < 25 / 1 km:
+
+| Variant | train CV | dev3k |
+|---|---|---|
+| Agreement re-scoring (lesson 68) | +1.0 / -0.6 | +2.0 / -0.7 |
+| Set layer, Pinpoint's pool (<= 12) | +1.8 / +0.8 | +1.8 / +0.8 |
+| Set layer, Pinpoint's pool, + 35k bucket 0-98 photos | +2.1 / +1.0 | +1.8 / +0.7 |
+| Set layer, wide pool (32 / 8 / 8 hits, ~46 candidates), + 35k | +1.9 / +1.4 | +2.2 / +1.1 |
+| Same, + 135k bucket 0-98 photos (saved `artifacts/pinpoint_set/set_wide.pt`) | +2.0 / +1.5 | +2.1 / +1.1 |
+| Wide, no CLS states | +0.4 / +0.4 | +1.0 / 0.0 |
+- The first loss (cross-entropy to a uniform target over all candidates < 25 km) picked ~5 pts *worse* than Pinpoint: it spreads mass.
+  The expected-hit loss (-log sum of softmax over good candidates) fixed it.
+
+**In the hypothesis pipeline** (set features per hypothesis: its probability mass inside, whether its top pick is inside, distance to it;
+train features are out-of-fold; 5-model comparator ensembles; change vs Pinpoint, 25 km / 1 km):
+
+| Answer inside the chosen hypothesis | train CV, without set → with set | dev3k, without → with |
+|---|---|---|
+| Restricted top-1 | +2.9 / +0.5 → **+3.5 / +0.7** | +3.8 / +1.0 → +4.1 / +1.2 |
+| Agreement pick | +3.5 / -0.7 → **+4.1 / -0.6** | +4.6 / 0.0 → +4.7 / +0.1 |
+| Set-model pick if inside, else agreement | +3.3 / +1.4 → **+3.9 / +1.6** | +4.3 / +1.4 → +4.5 / +1.7 |
+- The set model stacks: +0.6 on train at 25 km for every answer rule (dev3k +0.1-0.3). The set-model pick is the best balance: nearly the
+  agreement pick's 25 km gain with +1.6 at 1 km instead of -0.6.
