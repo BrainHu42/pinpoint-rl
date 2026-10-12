@@ -77,7 +77,10 @@ def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, 
     known = (mp16["region"] != UNKNOWN) & (mp16["country"] != UNKNOWN)
     region_country[mp16["region"][known]] = mp16["country"][known]
 
-    osv = _memmap_gallery(OSV_EMBED)
+    if (OSV_EMBED / "manifest.json").exists():
+        osv = _memmap_gallery(OSV_EMBED)
+    else:  # the OSV-5M embeddings were deleted (2026-10-12, disk space); Pinpoint's own OSV support cache lives in its index
+        osv = {"embeddings": np.zeros((0, 1536), np.float16), "latlon": np.zeros((0, 2)), "row_index": np.zeros(0, np.int64)}
     osv["region"] = region_grid.lookup(osv["latlon"][:, 0], osv["latlon"][:, 1])
     osv["author"] = np.full(len(osv["latlon"]), -2, dtype=np.int64)  # never equal to a query author
 

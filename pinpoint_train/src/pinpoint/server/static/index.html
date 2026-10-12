@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Pinpoint Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+      :root {
+        --bg: #1a1a2e;
+        --panel: #242438;
+        --panel-strong: #2a2a40;
+        --ink: #e0e0e8;
+        --ink-heading: #9a9ab0;
+        --accent: #5b6abf;
+        --accent-deep: #4a58a8;
+        --muted: #7a7a90;
+        --border: #3a3a50;
+        --border-strong: #4a4a60;
+        --danger: #cf5050;
+        --shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+        --results-visual-height: clamp(280px, 42vh, 500px);
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+      }
+      main {
+        max-width: 1120px;
+        margin: 3rem auto 4rem;
+        padding: 0 1.25rem;
+      }
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1.5rem;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+        gap: 1.25rem;
+        align-items: start;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        padding: 1.4rem;
+      }
+      h1 {
+        margin: 0;
+        max-width: 48rem;
+        font-size: clamp(2.35rem, 5vw, 4.25rem);
+        line-height: 0.95;
+        letter-spacing: -0.03em;
+        color: var(--ink-heading);
+      }
+      h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+      p, label, button, input, progress {
+        font-size: 0.95rem;
+      }
+      .stack {
+        display: grid;
+        gap: 1rem;
+      }
+      .field {
+        display: grid;
+        gap: 0.45rem;
+      }
+      .field small {
+        color: var(--muted);
+      }
+      input[type="password"],
+      input[type="file"] {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        padding: 0.75rem 0.85rem;
+        background: var(--panel-strong);
+        color: var(--ink);
+        font-family: inherit;
+      }
+      input[type="password"]:focus,
+      input[type="file"]:focus {
+        outline: 2px solid rgba(91, 106, 191, 0.4);
+        outline-offset: 2px;
+      }
+      .file-picker {
+        position: relative;
+        display: grid;
+        place-items: center;
+        min-height: 80px;
+        border-radius: 14px;
+        padding: 1.4rem;
+        text-align: center;
+        background: transparent;
+        border: 1.5px dashed var(--border-strong);
+        transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+      }
+      .file-picker:hover {
+        border-color: var(--accent);
+        background: rgba(91, 106, 191, 0.05);
+      }
+      .file-picker:focus-within,
+      .file-picker.drag-active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 4px rgba(91, 106, 191, 0.15);
+        background: rgba(91, 106, 191, 0.08);
+      }
+      .file-picker.has-file {
+        border-style: solid;
+      }
+      .file-input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 2;
+      }
+      .file-picker-copy {
+        display: grid;
+        gap: 0.4rem;
+        pointer-events: none;
+      }
+      .file-picker-text {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .file-picker-hint {
+        color: var(--muted);
+      }
+      button[type="submit"] {
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: white;
+        padding: 0.85rem 1.35rem;
+        cursor: pointer;
+        font-weight: 600;
+        font-family: inherit;
+        letter-spacing: 0.01em;
+        box-shadow: none;
+      }
+      button[type="submit"]:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+      .theme-toggle {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--muted);
+        padding: 0.45rem 0.85rem;
+        cursor: default;
+        font-size: 0.85rem;
+        font-weight: 500;
+        font-family: inherit;
+        box-shadow: none;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+      }
+      .meta-grid {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .upload-meta-grid {
+        margin-top: 0.5rem;
+      }
+      .meta-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.85rem;
+      }
+      .results-panel {
+        gap: 0.7rem;
+      }
+      .results-panel .meta-grid {
+        gap: 0.7rem;
+      }
+      .results-panel .meta-card {
+        padding: 0.8rem 0.9rem;
+      }
+      .meta-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.3rem;
+      }
+      .meta-value {
+        font-size: 1rem;
+        overflow-wrap: anywhere;
+      }
+      .progress-wrap {
+        display: grid;
+        gap: 0.55rem;
+      }
+      .progress-bar {
+        position: relative;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        border: none;
+        background: rgba(91, 106, 191, 0.15);
+      }
+      .progress-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0%;
+        background: linear-gradient(90deg, #3a4a8a 0%, var(--accent) 60%, var(--accent-deep) 100%);
+        transition: width 180ms ease;
+      }
+      .progress-fill.processing {
+        width: 100%;
+        background:
+          linear-gradient(
+            90deg,
+            rgba(255,255,255,0.1) 0%,
+            rgba(255,255,255,0.1) 33%,
+            var(--accent) 33%,
+            var(--accent) 66%,
+            rgba(255,255,255,0.1) 66%,
+            rgba(255,255,255,0.1) 100%
+          );
+        background-size: 120px 100%;
+        animation: progress-stripes 1s linear infinite;
+      }
+      .status-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: baseline;
+      }
+      .status-line strong {
+        font-size: 0.95rem;
+      }
+      .status-line span {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .results-shell {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 1rem;
+        height: 100%;
+        align-self: stretch;
+      }
+      .upload-panel {
+        align-content: start;
+      }
+      .map-panel {
+        overflow: hidden;
+        padding: 0;
+        min-height: 0;
+      }
+      .results-visual {
+        min-height: var(--results-visual-height);
+        height: var(--results-visual-height);
+      }
+      .preview-panel,
+      .map-placeholder {
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #1e1e34 0%, #252540 100%);
+        color: var(--muted);
+        text-align: center;
+        padding: 2rem;
+      }
+      .preview-panel {
+        box-sizing: border-box;
+        padding: 0.6rem;
+        background: linear-gradient(135deg, #1e1e34 0%, #252540 100%);
+      }
+      .preview-viewport {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+      }
+      .preview-panel,
+      .map-canvas {
+        width: 100%;
+      }
+      .preview-image {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: transparent;
+      }
+      .map-canvas {
+        display: block;
+      }
+      .location-popup .leaflet-popup-content {
+        font-size: 1.0rem;
+        font-weight: 500;
+        line-height: 1.25;
+        margin: 8px 10px;
+      }
+      .location-popup .leaflet-popup-content-wrapper {
+        padding: 3px;
+      }
+      .location-popup .leaflet-popup-close-button {
+        display: none;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .note {
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+      .error {
+        color: var(--danger);
+      }
+      @keyframes progress-stripes {
+        from { background-position: 0 0; }
+        to { background-position: 120px 0; }
+      }
+      @media (max-width: 900px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        main {
+          margin-top: 2rem;
+        }
+      }
+      @media (max-width: 560px) {
+        .meta-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <h1>Pinpoint Your Location</h1>
+        <button type="button" class="theme-toggle" disabled>&#9728;&#xFE0E; Light</button>
+      </section>
+      <section class="shell">
+        <div class="panel stack upload-panel">
+          <h2>Upload Image</h2>
+          <form id="upload-form" class="stack">
+            <div class="field">
+              <label for="token">Secret token</label>
+              <input id="token" name="token" type="password" autocomplete="off" required>
+              <small>Paste the token you were given.</small>
+            </div>
+            <div class="field">
+              <label for="image">Image</label>
+              <div id="image-dropzone" class="file-picker" aria-label="Choose or drop an image to upload">
+                <input id="image" class="file-input" name="image" type="file" accept="image/jpeg,image/png,image/webp" required>
+                <div class="file-picker-copy" aria-hidden="true">
+                  <div id="image-dropzone-text" class="file-picker-text">Choose or drop an image</div>
+                  <div class="file-picker-hint">JPEG, PNG, WebP</div>
+                </div>
+              </div>
+            </div>
+            <button id="submit-button" type="submit">Upload And Locate</button>
+          </form>
+          <div class="progress-wrap">
+            <div class="status-line">
+              <strong id="status-text">Waiting for upload</strong>
+              <span id="status-percent">0%</span>
+            </div>
+            <div class="progress-bar" aria-hidden="true">
+              <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <div id="status-note" class="note">Nothing uploaded yet.</div>
+          </div>
+          <div class="meta-grid upload-meta-grid">
+            <div class="meta-card">
+              <span class="meta-label">Job Status</span>
+              <div id="job-status" class="meta-value">Idle</div>
+            </div>
+            <div class="meta-card">
+              <span class="meta-label">Inference Time</span>
+              <div id="inference-time" class="meta-value">--</div>
+            </div>
+          </div>
+        </div>
+        <div class="results-shell">
+          <div class="panel stack results-panel">
+            <h2>Predicted Location</h2>
+            <div class="meta-grid">
+              <div class="meta-card">
+                <span class="meta-label">Latitude</span>
+                <div id="lat-value" class="meta-value">--</div>
+              </div>
+              <div class="meta-card">
+                <span class="meta-label">Longitude</span>
+                <div id="lon-value" class="meta-value">--</div>
+              </div>
+              <div class="meta-card">
+                <span class="meta-label">Actual Latitude</span>
+                <div id="actual-lat-value" class="meta-value">--</div>
+              </div>
+              <div class="meta-card">
+                <span class="meta-label">Actual Longitude</span>
+                <div id="actual-lon-value" class="meta-value">--</div>
+              </div>
+            </div>
+            <p id="error-text" class="note error hidden"></p>
+          </div>
+          <div class="panel map-panel">
+            <div id="image-preview-panel" class="preview-panel results-visual hidden">
+              <div class="preview-viewport">
+                <img id="image-preview" class="preview-image" alt="Selected image preview">
+              </div>
+            </div>
+            <div id="map-placeholder" class="map-placeholder results-visual">
+              <div>
+                <strong>Map preview</strong>
+                <div class="note">Predicted and EXIF-tagged locations will appear here after the job completes.</div>
+              </div>
+            </div>
+            <div id="map-canvas" class="map-canvas results-visual hidden" aria-label="Location map"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      const form = document.getElementById("upload-form");
+      const imageInput = document.getElementById("image");
+      const imageDropzone = document.getElementById("image-dropzone");
+      const imageDropzoneText = document.getElementById("image-dropzone-text");
+      const imageDropzoneHint = document.querySelector(".file-picker-hint");
+      const submitButton = document.getElementById("submit-button");
+      const progressFill = document.getElementById("progress-fill");
+      const statusText = document.getElementById("status-text");
+      const statusPercent = document.getElementById("status-percent");
+      const statusNote = document.getElementById("status-note");
+      const jobStatus = document.getElementById("job-status");
+      const inferenceTime = document.getElementById("inference-time");
+      const latValue = document.getElementById("lat-value");
+      const lonValue = document.getElementById("lon-value");
+      const actualLatValue = document.getElementById("actual-lat-value");
+      const actualLonValue = document.getElementById("actual-lon-value");
+      const errorText = document.getElementById("error-text");
+      const mapCanvas = document.getElementById("map-canvas");
+      const imagePreviewPanel = document.getElementById("image-preview-panel");
+      const imagePreview = document.getElementById("image-preview");
+      const mapPlaceholder = document.getElementById("map-placeholder");
+      let leafletMap = null;
+      let leafletLayer = null;
+      let selectedPreviewUrl = null;
+      let selectedImageFile = null;
+
+      function authHeaders() {
+        const token = document.getElementById("token").value.trim();
+        return token ? { "X-Pinpoint-Upload-Token": token } : {};
+      }
+
+      function setProgress(percent, message, note, processing = false) {
+        progressFill.classList.toggle("processing", processing);
+        if (processing) {
+          progressFill.style.width = "100%";
+          statusPercent.textContent = "processing";
+        } else {
+          const normalized = Math.max(0, Math.min(100, percent));
+          progressFill.style.width = `${normalized}%`;
+          statusPercent.textContent = `${Math.round(normalized)}%`;
+        }
+        statusText.textContent = message;
+        if (statusNote) {
+          statusNote.textContent = note;
+        }
+      }
+
+      function formatFileSize(file) {
+        if (file.size < 1024 * 1024) {
+          return `${Math.max(1, Math.round(file.size / 1024))} KB`;
+        }
+        return `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      }
+
+      function updateDropzoneState(file) {
+        imageDropzone.classList.toggle("has-file", file instanceof File);
+        imageDropzoneText.textContent = file instanceof File ? file.name : "Choose or drop an image";
+        imageDropzoneHint.textContent = file instanceof File ? formatFileSize(file) : "JPEG, PNG, WebP";
+      }
+
+      function syncNativeFileInput(file) {
+        if (!(file instanceof File) || typeof DataTransfer === "undefined") {
+          return;
+        }
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        imageInput.files = transfer.files;
+      }
+
+      function setSelectedFile(file) {
+        selectedImageFile = file instanceof File ? file : null;
+        if (selectedImageFile) {
+          syncNativeFileInput(selectedImageFile);
+        } else {
+          imageInput.value = "";
+        }
+        updateDropzoneState(selectedImageFile);
+      }
+
+      function revokePreviewUrl() {
+        if (!selectedPreviewUrl) {
+          return;
+        }
+        URL.revokeObjectURL(selectedPreviewUrl);
+        selectedPreviewUrl = null;
+      }
+
+      function showSelectedImagePreview(file) {
+        if (!(file instanceof File)) {
+          revokePreviewUrl();
+          imagePreview.removeAttribute("src");
+          imagePreviewPanel.classList.add("hidden");
+          mapPlaceholder.classList.remove("hidden");
+          return;
+        }
+        revokePreviewUrl();
+        selectedPreviewUrl = URL.createObjectURL(file);
+        imagePreview.src = selectedPreviewUrl;
+        imagePreview.alt = `Preview of ${file.name}`;
+        imagePreviewPanel.classList.remove("hidden");
+        mapPlaceholder.classList.add("hidden");
+      }
+
+      function syncResultsPanelWithSelection() {
+        mapCanvas.classList.add("hidden");
+        showSelectedImagePreview(selectedImageFile);
+      }
+
+      function resetResultState() {
+        errorText.classList.add("hidden");
+        errorText.textContent = "";
+        latValue.textContent = "--";
+        lonValue.textContent = "--";
+        actualLatValue.textContent = "--";
+        actualLonValue.textContent = "--";
+        jobStatus.textContent = "Idle";
+        inferenceTime.textContent = "--";
+        syncResultsPanelWithSelection();
+      }
+
+      function formatCoordinate(value) {
+        return Number(value).toFixed(5);
+      }
+
+      function formatInferenceTime(inferenceTimeMs) {
+        if (typeof inferenceTimeMs !== "number" || !Number.isFinite(inferenceTimeMs)) {
+          return "--";
+        }
+        if (inferenceTimeMs < 1000) {
+          return `${Math.max(0, Math.round(inferenceTimeMs))} ms`;
+        }
+        return `${(inferenceTimeMs / 1000).toFixed(2)} s`;
+      }
+
+      function ensureLeafletMap() {
+        if (leafletMap) {
+          return leafletMap;
+        }
+        leafletMap = L.map(mapCanvas, { zoomControl: true });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(leafletMap);
+        leafletLayer = L.layerGroup().addTo(leafletMap);
+        return leafletMap;
+      }
+
+      function renderMap(predicted, actual) {
+        const map = ensureLeafletMap();
+        leafletLayer.clearLayers();
+        const points = [];
+
+        const predictedMarker = L.circleMarker([predicted.lat, predicted.lon], {
+          radius: 9,
+          color: "#1f4c29",
+          weight: 2,
+          fillColor: "#2f6b3b",
+          fillOpacity: 0.88,
+        }).bindPopup("Predicted location", { className: "location-popup" });
+        predictedMarker.addTo(leafletLayer);
+        points.push([predicted.lat, predicted.lon]);
+
+        if (actual) {
+          const actualMarker = L.circleMarker([actual.lat, actual.lon], {
+            radius: 9,
+            color: "#8a4512",
+            weight: 2,
+            fillColor: "#c56a21",
+            fillOpacity: 0.88,
+          }).bindPopup("Actual location", { className: "location-popup" });
+          actualMarker.addTo(leafletLayer);
+          points.push([actual.lat, actual.lon]);
+        }
+
+        imagePreviewPanel.classList.add("hidden");
+        mapCanvas.classList.remove("hidden");
+        mapPlaceholder.classList.add("hidden");
+
+        const fitMapView = () => {
+          map.invalidateSize();
+          if (points.length === 1) {
+            map.setView(points[0], 5);
+          } else {
+            map.fitBounds(points, { padding: [48, 48] });
+          }
+        };
+
+        if (points.length === 1) {
+          fitMapView();
+        } else {
+          requestAnimationFrame(fitMapView);
+        }
+      }
+
+      function renderJob(payload) {
+        jobStatus.textContent = payload.status;
+        if (payload.status === "completed") {
+          latValue.textContent = formatCoordinate(payload.latitude);
+          lonValue.textContent = formatCoordinate(payload.longitude);
+          actualLatValue.textContent = payload.actual_latitude == null ? "Not in image" : formatCoordinate(payload.actual_latitude);
+          actualLonValue.textContent = payload.actual_longitude == null ? "Not in image" : formatCoordinate(payload.actual_longitude);
+          inferenceTime.textContent = formatInferenceTime(payload.inference_time_ms);
+          renderMap(
+            { lat: payload.latitude, lon: payload.longitude },
+            payload.actual_latitude == null || payload.actual_longitude == null
+              ? null
+              : { lat: payload.actual_latitude, lon: payload.actual_longitude }
+          );
+          setProgress(100, "Complete", "Prediction finished successfully.", false);
+          return;
+        }
+        if (payload.status === "failed") {
+          inferenceTime.textContent = "--";
+          errorText.textContent = payload.error || "The upload job failed.";
+          errorText.classList.remove("hidden");
+          setProgress(100, "Failed", payload.error || "Inference failed.", false);
+          return;
+        }
+        inferenceTime.textContent = payload.status === "running" ? "Running..." : "--";
+        setProgress(100, "Processing", "Upload complete. Running geolocation inference…", true);
+      }
+
+      async function poll(jobId) {
+        while (true) {
+          const response = await fetch(`/api/jobs/${jobId}`, { headers: authHeaders() });
+          const payload = await response.json();
+          renderJob(payload);
+          if (payload.status === "completed" || payload.status === "failed") {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+      }
+
+      function uploadFile(file) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/jobs");
+          const headers = authHeaders();
+          Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+          xhr.responseType = "json";
+
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) {
+              setProgress(20, "Uploading", "Sending image to the server…", true);
+              return;
+            }
+            const percent = Math.max(4, Math.min(96, (event.loaded / event.total) * 100));
+            setProgress(percent, "Uploading", "Sending image to the server…", false);
+          };
+
+          xhr.onerror = () => reject(new Error("Network error during upload"));
+          xhr.onload = () => {
+            const payload = xhr.response || {};
+            if (xhr.status < 200 || xhr.status >= 300) {
+              const detail = payload.detail || `Upload failed with status ${xhr.status}`;
+              reject(new Error(detail));
+              return;
+            }
+            resolve(payload);
+          };
+
+          const body = new FormData();
+          body.append("image", file);
+          xhr.send(body);
+        });
+      }
+
+      function handleSelectedFile(file) {
+        setSelectedFile(file);
+        resetResultState();
+        setProgress(
+          0,
+          "Waiting for upload",
+          file instanceof File ? "Selected image ready to upload." : "Nothing uploaded yet.",
+          false
+        );
+      }
+
+      imageInput.addEventListener("change", () => {
+        handleSelectedFile(imageInput.files.length ? imageInput.files[0] : null);
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        imageDropzone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          imageDropzone.classList.add("drag-active");
+        });
+      });
+
+      imageDropzone.addEventListener("dragleave", (event) => {
+        event.preventDefault();
+        if (imageDropzone.contains(event.relatedTarget)) {
+          return;
+        }
+        imageDropzone.classList.remove("drag-active");
+      });
+
+      ["dragend", "drop"].forEach((eventName) => {
+        imageDropzone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          imageDropzone.classList.remove("drag-active");
+        });
+      });
+
+      imageDropzone.addEventListener("drop", (event) => {
+        const files = event.dataTransfer && event.dataTransfer.files ? Array.from(event.dataTransfer.files) : [];
+        const imageFile = files.find((file) => file.type.startsWith("image/")) || files[0] || null;
+        handleSelectedFile(imageFile instanceof File ? imageFile : null);
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = selectedImageFile;
+        if (!(file instanceof File)) {
+          errorText.textContent = "Choose an image first.";
+          errorText.classList.remove("hidden");
+          return;
+        }
+        resetResultState();
+        jobStatus.textContent = "Uploading";
+        inferenceTime.textContent = "--";
+        submitButton.disabled = true;
+        setProgress(0, "Starting", "Preparing secure upload…", false);
+
+        try {
+          const payload = await uploadFile(file);
+          renderJob(payload);
+          if (!payload.job_id) {
+            throw new Error("The server did not return a job id.");
+          }
+          await poll(payload.job_id);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Upload failed.";
+          errorText.textContent = message;
+          errorText.classList.remove("hidden");
+          jobStatus.textContent = "Failed";
+          inferenceTime.textContent = "--";
+          setProgress(100, "Failed", message, false);
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+
+      window.addEventListener("beforeunload", revokePreviewUrl);
+    </script>
+  </body>
+</html>

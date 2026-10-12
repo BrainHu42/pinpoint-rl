@@ -21,10 +21,10 @@ experiments); full numbered lessons in `LESSONS.md`.**
   constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
   candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
   where the reranker is wrong but knowing the region would fix it (dev3k: 302 of 3,000, `agent_targets --tags dev3k`).
-- **Proposed next design (2026-10-12, pending user sign-off): `PINPOINT_SET_PLAN.md`**: Pinpoint looks, zooms into its top areas, and one
+- **Current plan (2026-10-12, user started an autonomous run on it): `PINPOINT_SET_PLAN.md`**: Pinpoint looks, zooms into its top areas, and one
   set-aware model reranks all candidates; text clues as optional tokens; the LLM / RL agent becomes a later extension. Benchmark result of
   the current pipeline: +4.6 pts at 25 km over Pinpoint (eval halves, `HYPOTHESIS_PLAN.md`).
-- **Current plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
+- **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
   in `TEXT_SEARCH_PLAN.md`.

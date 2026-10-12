@@ -1,4 +1,4 @@
-# Pinpoint-Set: look, zoom, rerank (proposed design, 2026-10-12; pending user sign-off)
+# Pinpoint-Set: look, zoom, rerank (2026-10-12; the user started an autonomous run on this plan)
 
 One set-aware model on top of Pinpoint replaces the hypothesis pipeline's hand-built parts. It is cleaner and keeps or improves
 performance. Background: `HYPOTHESIS_PLAN.md` (current pipeline, all results), `docs/pipeline_overview.png`, lessons 68-69.

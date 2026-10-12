@@ -152,6 +152,8 @@ def _load(path: Path | dict, pool: str) -> dict:
     z = dict(np.load(path)) if isinstance(path, Path) else dict(path)
     valid = z["rows"] >= 0
     in_pool = (z["features"][..., 6:9] > 0).any(-1)
+    if "is_global" in z:  # look-zoom pools: Pinpoint's own pool is the global search's shortlist only
+        in_pool &= z["is_global"]
     if pool == "original":
         valid &= in_pool
     s = np.where(valid, z["scores"], -np.inf)
@@ -163,7 +165,8 @@ def _load(path: Path | dict, pool: str) -> dict:
     # agreement (lesson 68) as explicit inputs: softmax mass within 1 / 5 / 25 / 100 km of each candidate
     support = [np.einsum("qij,qj->qi", (pair < r).astype(np.float32), soft) for r in (1.0, 5.0, 25.0, 100.0)]
     scalars = [np.where(valid, z["scores"], 0), np.where(valid, s - best, 0), soft] + [np.log(np.maximum(x, 1e-6)) for x in support]
-    z["scalars"] = np.concatenate([np.stack(scalars, -1), z["features"].astype(np.float32), in_pool[..., None]], -1).astype(np.float32)
+    parts = [np.stack(scalars, -1), z["features"].astype(np.float32), in_pool[..., None]] + ([z["cand_flags"]] if "cand_flags" in z else [])
+    z["scalars"] = np.concatenate(parts, -1).astype(np.float32)
     z["valid"], z["in_pool"] = valid, in_pool & valid
     z["pair_bucket"] = np.digitize(pair, DIST_EDGES_KM).astype(np.int8)
     km = _haversine_matrix(np.concatenate([z["truth"][:, None, :], lat], 1))[:, 0, 1:]
@@ -348,8 +351,9 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
     hypothesis_compare.EXTRA_HYPOTHESES.extend(extra_hyps)
     h = hypothesis_compare._merge_clue_hyps(tag)
     photos = json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))
-    queries = json.loads(QUERY_FILES["mp16"].read_text(encoding="utf-8"))
-    world = load_world(mp16_queries=queries)
+    from .hypotheses import photo_world
+
+    world, qrows = photo_world(photos)  # benchmark sets (full): the benchmark world
     model = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     captured: list[torch.Tensor] = []
     head = model.head.score_head
@@ -360,7 +364,7 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
             return head(x)
 
     model.head.score_head = _Capture()
-    query_index = np.asarray([p["index"] for p in photos])[h["photo"]]
+    query_index = qrows[h["photo"]]
     raw, projected = model.encode_queries(world.query_embeddings[np.unique(query_index)])
     position = np.searchsorted(np.unique(query_index), query_index)
     rows, features = h["rows"].astype(np.int64), h["features"].astype(np.float32)
@@ -373,6 +377,9 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path) -> None:
     print(f"{tag}: {len(rows)} hypotheses re-scored; max |score - stored| {np.abs(scores - h['scores'])[valid].max():.4f}", flush=True)
     hidden = torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1)
     truth = np.asarray([p["truth"] for p in photos], np.float32)[h["photo"]]
+    # the zoomed candidates with their CLS states, for the look-zoom-rerank model (PINPOINT_SET_PLAN.md step 1)
+    np.savez(OUT / f"zoom_{tag}.npz", photo=h["photo"], source=h["source"], rank=h["rank"], support=h["support"], center=h["center"],
+             rows=rows, latlon=h["latlon"].astype(np.float32), scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16))
     z = _load({"rows": rows, "latlon": h["latlon"].astype(np.float32), "scores": scores.astype(np.float32), "hidden": hidden,
                "features": features, "truth": truth}, "wide")
     ckpt = torch.load(model_path, map_location="cuda", weights_only=False)
@@ -430,9 +437,90 @@ def apply(tag: str, data: Path, model_path: Path) -> None:
     print(f"  -> {dst}")
 
 
+def _zoom_pools(tag: str, k: int = 5, sources: Sequence[int] = (0,)) -> dict:
+    """Look + zoom candidates per photo of a set (PINPOINT_SET_PLAN.md step 1): the global wide search (extract: mp16 / bench) followed by
+    the restricted searches of its hypotheses (restricted: zoom_{tag}.npz; Pinpoint areas ranked < k, plus clue / VLM places if in
+    sources), each candidate with its CLS state as scored in its own search. Per-candidate flags: zoomed, hypothesis source (3), area rank
+    (k), log area support. A row found by both searches appears twice (two views)."""
+
+    photos = json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))
+    idx = np.asarray([p["index"] for p in photos])
+    g = np.load(OUT / ("bench_32_8_8.npz" if "benchmark" in photos[0] else "mp16_32_8_8.npz"))
+    glob = {key: g[key][idx] for key in ("rows", "latlon", "scores", "hidden", "features", "truth")}
+    zm = np.load(OUT / f"zoom_{tag}.npz")
+    keep = np.isin(zm["source"], sources) & ((zm["source"] != 0) | (zm["rank"] < k))
+    zrows = np.flatnonzero(keep)
+    by_photo: dict[int, list[int]] = {}
+    for i in zrows:
+        by_photo.setdefault(int(zm["photo"][i]), []).append(int(i))
+    cg, cz = glob["rows"].shape[1], zm["rows"].shape[1]
+    cap = cg + cz * max((len(v) for v in by_photo.values()), default=0)
+    n = len(photos)
+    n_flags = 1 + 3 + k + 1
+    out = {"rows": np.full((n, cap), -1, np.int64), "latlon": np.full((n, cap, 2), np.nan, np.float32), "scores": np.full((n, cap), -np.inf, np.float32),
+           "hidden": np.zeros((n, cap, glob["hidden"].shape[-1]), np.float16), "features": np.zeros((n, cap, 9), np.float16),
+           "truth": glob["truth"].astype(np.float32), "cand_flags": np.zeros((n, cap, n_flags), np.float32), "is_global": np.zeros((n, cap), bool)}
+    for key in ("rows", "latlon", "scores", "hidden", "features"):
+        out[key][:, :cg] = glob[key]
+    out["is_global"][:, :cg] = glob["rows"] >= 0
+    zh, zr, zl, zs, zf = zm["hidden"], zm["rows"], zm["latlon"], zm["scores"], zm["features"]
+    for p, members in by_photo.items():
+        for j, i in enumerate(members):
+            sl = slice(cg + j * cz, cg + (j + 1) * cz)
+            out["rows"][p, sl], out["latlon"][p, sl], out["scores"][p, sl] = zr[i], zl[i], zs[i]
+            out["hidden"][p, sl], out["features"][p, sl] = zh[i], zf[i]
+            flags = np.zeros(n_flags, np.float32)
+            flags[0], flags[1 + int(zm["source"][i])] = 1.0, 1.0
+            if zm["source"][i] == 0:
+                flags[4 + int(zm["rank"][i])] = 1.0
+            flags[-1] = np.log(max(float(zm["support"][i]), 1e-6))
+            out["cand_flags"][p, sl] = np.where((zr[i] >= 0)[:, None], flags, 0.0)
+    out["scores"] = np.where(out["rows"] >= 0, out["scores"], 0.0).astype(np.float32)
+    print(f"{tag}: look + zoom pools, up to {cap} candidates ({(out['rows'] >= 0).sum(1).mean():.1f} per photo; {len(zrows)} zoomed areas)", flush=True)
+    return out
+
+
+def train_zoom(k: int, sources: Sequence[int], ensemble: int, save: Path | None, apply_tag: str | None) -> None:
+    """Step 1: the set model over look + zoom candidates. 5-fold CV on train, then trained on all of train and applied to dev3k (and, only
+    when asked, to a test set: apply_tag)."""
+
+    tr = _load(_zoom_pools("train", k, sources), "wide")
+    dv = _load(_zoom_pools("dev3k", k, sources), "wide")
+    n = len(tr["rows"])
+    print(f"look + zoom: K {k}, sources {tuple(sources)}, ensemble {ensemble}, {tr['scalars'].shape[-1]} scalars per candidate", flush=True)
+    folds = np.random.default_rng(0).permutation(n) % 5
+    cv = np.zeros(tr["rows"].shape, np.float32)
+    fold_fits = []
+    for f in range(5):
+        fits = [_fit_set(tr, np.flatnonzero(folds != f), True, seed=10 * f + j) for j in range(ensemble)]
+        cv[folds == f] = _predict_set([m for m, _, _ in fits], tr, np.flatnonzero(folds == f), fits[0][1], fits[0][2])
+        fold_fits.append(([m.state_dict() for m, _, _ in fits], fits[0][1], fits[0][2]))
+    _report("train, 5-fold CV", tr, np.arange(n), cv.argmax(1))
+    fits = [_fit_set(tr, np.arange(n), True, seed=100 + j) for j in range(ensemble)]
+    models, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
+    _report("dev3k (trained on all of train)", dv, np.arange(len(dv["rows"])), _predict_set(models, dv, np.arange(len(dv["rows"])), mu, sd).argmax(1))
+    if save:
+        import torch
+
+        torch.save({"models": [m.state_dict() for m in models], "mu": mu, "sd": sd, "hidden": True, "n_scalar": tr["scalars"].shape[-1], "hp": dict(HP),
+                    "k": k, "sources": tuple(sources), "fold_fits": fold_fits, "train_folds": folds}, save)
+        print(f"  saved -> {save}")
+    if apply_tag:
+        te = _load(_zoom_pools(apply_tag, k, sources), "wide")
+        photos = json.loads((Path("artifacts/photo_sets") / apply_tag / "photos.json").read_text(encoding="utf-8"))
+        picks = _predict_set(models, te, np.arange(len(te["rows"])), mu, sd).argmax(1)
+        for bench in sorted({p.get("benchmark", apply_tag) for p in photos}):
+            sel = np.flatnonzero([p.get("benchmark", apply_tag) == bench for p in photos])
+            _report(f"{apply_tag} / {bench} ({len(sel)})", te, sel, picks[sel])
+        _report(f"{apply_tag} / all ({len(picks)})", te, np.arange(len(picks)), picks)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom"))
+    parser.add_argument("--k", type=int, default=5, help="zoom: Pinpoint areas zoomed into")
+    parser.add_argument("--sources", type=int, nargs="*", default=(0,), help="zoom: hypothesis sources (0 areas, 1 clue places, 2 VLM places)")
+    parser.add_argument("--apply-tag", help="zoom: also apply to this photo set (test set only when the user asks)")
     parser.add_argument("--tag", default="dev3k", help="restricted: photo set (train, dev3k)")
     parser.add_argument("--extra-hyps", nargs="*", default=("vlmhyps",), help="restricted: hypothesis files merged as in hypothesis_compare")
     parser.add_argument("--model", type=Path, default=OUT / "set_wide.pt", help="restricted: saved set model (train --save)")
@@ -453,6 +541,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     HP.update({key: getattr(args, key) for key in HP})
     if args.cmd == "more-queries":
         more_queries(args.n)
+    elif args.cmd == "zoom":
+        train_zoom(args.k, args.sources, args.ensemble, args.save, args.apply_tag)
     elif args.cmd == "apply":
         apply(args.tag, args.data, args.model)
     elif args.cmd == "restricted":
