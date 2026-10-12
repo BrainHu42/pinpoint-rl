@@ -417,7 +417,7 @@ def ensure_attention_retrieval_index(
                     int(direct_manifest.get("version", -1)) == _INDEX_MANIFEST_VERSION
                     and int(direct_manifest.get("embedding_dim", -1)) == int(getattr(geo_module, "output_dim", 0))
                     and str(direct_manifest.get("split", "")) == split
-                    and direct_manifest.get("checkpoint_path") == str(checkpoint_path)
+                    # the released index records the authors' checkpoint path; a directly given index is trusted
                     and str(direct_manifest.get("retrieval_db_source", "mp16")) == retrieval_db_source
                 ):
                     return direct_index_dir

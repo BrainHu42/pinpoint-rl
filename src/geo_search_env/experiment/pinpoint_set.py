@@ -69,7 +69,7 @@ def more_queries(n: int, seed: int = 2) -> None:
     print(f"{len(queries)} more photos from buckets 0-98 -> {QUERY_FILES['mp16_more']}", flush=True)
 
 
-def extract(name: str, targets: Sequence[int], limit: int | None = None) -> None:
+def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: str = "") -> None:
     import torch
 
     from ..models.pinpoint_reranker import MODALITIES, PinpointReranker
@@ -106,6 +106,8 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None) -> None
         world = load_world(mp16_queries=json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))[:limit])
     model = _Wide(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     model.original = dict(model.targets)
+    # the released extraction searched 2x pools (tie order among equal fp16 scores depends on it); keep it for retrained rerankers
+    model.multiplier = max(model.multiplier, 2)
     model.targets = dict(zip(MODALITIES, (int(t) for t in targets)))
     captured: list[torch.Tensor] = []
     head = model.head.score_head
@@ -128,7 +130,7 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None) -> None
     valid = rows >= 0
     latlon = np.where(valid[..., None], np.asarray(model.latlon[np.where(valid, rows, 0)]), np.nan).astype(np.float32)
     OUT.mkdir(parents=True, exist_ok=True)
-    dst = OUT / f"{name}_{'_'.join(str(t) for t in targets)}{f'_first{limit}' if limit else ''}.npz"
+    dst = OUT / f"{name}_{'_'.join(str(t) for t in targets)}{f'_first{limit}' if limit else ''}{f'_{tag}' if tag else ''}.npz"
     np.savez(dst, rows=rows, latlon=latlon, scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16),
              truth=world.query_latlon.astype(np.float32))
     in_pool = (features[..., 6:9] > 0).any(-1)
@@ -160,15 +162,44 @@ def _load(path: Path | dict, pool: str) -> dict:
     best = s.max(1, keepdims=True)
     soft = np.exp(np.where(valid, (s - best) / 0.2, -np.inf))
     soft /= soft.sum(1, keepdims=True)
-    lat = np.where(valid[..., None], z["latlon"], 0.0)
-    pair = _haversine_matrix(lat)
+    lat = np.where(valid[..., None], z["latlon"], 0.0).astype(np.float32)
+    z["pair_bucket"] = np.zeros(valid.shape + valid.shape[-1:], np.int8)
+    for c in range(0, len(lat), 1024):  # in chunks: [Q, C, C] float64 temporaries do not fit for ~100-candidate pools
+        z["pair_bucket"][c:c + 1024] = np.digitize(_haversine_matrix(lat[c:c + 1024]), DIST_EDGES_KM)
+
+    def mass_within(weights):
+        """Softmax mass within 1 / 5 / 25 / 100 km of each candidate (bucket edges 1, 5, 25, 100 km = buckets <= 0..3)."""
+        out = [np.zeros(weights.shape, np.float32) for _ in range(4)]
+        for c in range(0, len(weights), 1024):
+            for i in range(4):
+                out[i][c:c + 1024] = np.einsum("qij,qj->qi", (z["pair_bucket"][c:c + 1024] <= i).astype(np.float32), weights[c:c + 1024])
+        return out
+
     # agreement (lesson 68) as explicit inputs: softmax mass within 1 / 5 / 25 / 100 km of each candidate
-    support = [np.einsum("qij,qj->qi", (pair < r).astype(np.float32), soft) for r in (1.0, 5.0, 25.0, 100.0)]
+    support = mass_within(soft)
     scalars = [np.where(valid, z["scores"], 0), np.where(valid, s - best, 0), soft] + [np.log(np.maximum(x, 1e-6)) for x in support]
+    z["prior"] = np.where(valid, z["scores"], 0.0).astype(np.float32)
+    if "group" in z:  # look-zoom pools: pool statistics from the global search only; zoomed candidates get their search's own too
+        glob = valid & z["is_global"]
+        s = np.where(glob, z["scores"], -np.inf)
+        best = s.max(1, keepdims=True)
+        soft = np.exp(np.where(glob, (s - best) / 0.2, -np.inf))
+        soft /= soft.sum(1, keepdims=True)
+        support = mass_within(soft)
+        sv = np.where(valid, z["scores"], -np.inf)
+        g_best, g_soft = np.zeros_like(z["prior"]), np.zeros_like(z["prior"])
+        for g in np.unique(z["group"]):
+            m = (z["group"] == g) & valid
+            gb = np.where(m, sv, -np.inf).max(1, keepdims=True)
+            e = np.exp(np.where(m, (sv - np.where(np.isfinite(gb), gb, 0)) / 0.2, -np.inf))
+            g_best = np.where(m, sv - gb, g_best)
+            g_soft = np.where(m, e / np.maximum(e.sum(1, keepdims=True), 1e-12), g_soft)
+        scalars = [z["prior"], np.where(valid, z["scores"] - best, 0), soft * glob] + [np.log(np.maximum(x, 1e-6)) for x in support] + [g_best, g_soft]
+        # zoomed candidates start 5 logits below their score: the untrained model is Pinpoint's global pick
+        z["prior"] = np.where(glob | ~valid, z["prior"], z["prior"] - 1.0).astype(np.float32)
     parts = [np.stack(scalars, -1), z["features"].astype(np.float32), in_pool[..., None]] + ([z["cand_flags"]] if "cand_flags" in z else [])
     z["scalars"] = np.concatenate(parts, -1).astype(np.float32)
     z["valid"], z["in_pool"] = valid, in_pool & valid
-    z["pair_bucket"] = np.digitize(pair, DIST_EDGES_KM).astype(np.int8)
     km = _haversine_matrix(np.concatenate([z["truth"][:, None, :], lat], 1))[:, 0, 1:]
     z["km"] = np.where(valid, km, np.inf).astype(np.float32)
     return z
@@ -223,7 +254,7 @@ def _batch(z, b, mu, sd, device):
     x = np.where(v[..., None], (z["scalars"][b] - mu) / sd, 0.0)
     return (torch.as_tensor(z["hidden"][b], device=device).float(), torch.as_tensor(x, device=device, dtype=torch.float32),
             torch.as_tensor(z["pair_bucket"][b], device=device), torch.as_tensor(v, device=device),
-            torch.as_tensor(np.where(v, z["scores"][b], 0.0), device=device, dtype=torch.float32))
+            torch.as_tensor(np.where(v, z["prior"][b], 0.0), device=device, dtype=torch.float32))
 
 
 def _fit_set(z: dict, photos: np.ndarray, hidden: bool, seed: int, epochs: int | None = None, device: str = "cuda"):
@@ -459,7 +490,8 @@ def _zoom_pools(tag: str, k: int = 5, sources: Sequence[int] = (0,)) -> dict:
     n_flags = 1 + 3 + k + 1
     out = {"rows": np.full((n, cap), -1, np.int64), "latlon": np.full((n, cap, 2), np.nan, np.float32), "scores": np.full((n, cap), -np.inf, np.float32),
            "hidden": np.zeros((n, cap, glob["hidden"].shape[-1]), np.float16), "features": np.zeros((n, cap, 9), np.float16),
-           "truth": glob["truth"].astype(np.float32), "cand_flags": np.zeros((n, cap, n_flags), np.float32), "is_global": np.zeros((n, cap), bool)}
+           "truth": glob["truth"].astype(np.float32), "cand_flags": np.zeros((n, cap, n_flags), np.float32), "is_global": np.zeros((n, cap), bool),
+           "group": np.zeros((n, cap), np.int16)}
     for key in ("rows", "latlon", "scores", "hidden", "features"):
         out[key][:, :cg] = glob[key]
     out["is_global"][:, :cg] = glob["rows"] >= 0
@@ -469,6 +501,7 @@ def _zoom_pools(tag: str, k: int = 5, sources: Sequence[int] = (0,)) -> dict:
             sl = slice(cg + j * cz, cg + (j + 1) * cz)
             out["rows"][p, sl], out["latlon"][p, sl], out["scores"][p, sl] = zr[i], zl[i], zs[i]
             out["hidden"][p, sl], out["features"][p, sl] = zh[i], zf[i]
+            out["group"][p, sl] = j + 1
             flags = np.zeros(n_flags, np.float32)
             flags[0], flags[1 + int(zm["source"][i])] = 1.0, 1.0
             if zm["source"][i] == 0:
@@ -515,9 +548,63 @@ def train_zoom(k: int, sources: Sequence[int], ensemble: int, save: Path | None,
         _report(f"{apply_tag} / all ({len(picks)})", te, np.arange(len(picks)), picks)
 
 
+def eval_head(data: Path, checkpoint: Path | None) -> None:
+    """Step 4: a retrained reranker (pinpoint_train/) on train and dev3k. Its own pick (top score over the original 8 / 2 / 2 pool) and,
+    with `checkpoint`, its set head's pick over the wide pool, against the released Pinpoint (mp16_32_8_8.npz)."""
+
+    import torch
+
+    from ..models.set_head import SetHead
+
+    z = np.load(data)
+    ref = np.load(OUT / "mp16_32_8_8.npz")
+    head = None
+    if checkpoint:
+        state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        sd = {k.removeprefix("set_head."): v for k, v in state["state_dict"].items() if k.startswith("set_head.")}
+        hp = state["hyper_parameters"]
+        head = SetHead(512, int(hp.get("set_head_dim", 128)), 4, int(hp.get("set_head_layers", 2))).cuda().eval()
+        head.load_state_dict(sd)
+    valid = z["rows"] >= 0
+    with torch.no_grad():
+        logits = []
+        for b in np.array_split(np.arange(len(valid)), max(1, len(valid) // 512)):
+            if head is None:
+                break
+            t = lambda x, dt=torch.float32: torch.as_tensor(x[b], device="cuda", dtype=dt)
+            logits.append(head(t(z["hidden"]), t(np.where(valid, z["scores"], 0.0)), t(np.nan_to_num(z["latlon"])), t(z["features"]),
+                               t(valid, torch.bool)).cpu().numpy())
+    set_pick = np.concatenate(logits).argmax(1) if logits else None
+
+    def km_of(zz, pick):
+        ll = zz["latlon"][np.arange(len(pick)), pick]
+        return _haversine_matrix(np.stack([zz["truth"], ll], 1))[:, 0, 1]
+
+    def own_pick(zz):
+        in_pool = (zz["features"][..., 6:9] > 0).any(-1) & (zz["rows"] >= 0)
+        return np.where(in_pool, zz["scores"], -np.inf).argmax(1)
+
+    from .strategy_search import _bootstrap
+
+    base_km = km_of(ref, own_pick(ref))
+    for tag in ("train", "dev3k"):
+        idx = np.asarray([p["index"] for p in json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))])
+        rows = [("retrained reranker", km_of(z, own_pick(z))[idx])] + ([("retrained + set head", km_of(z, set_pick)[idx])] if set_pick is not None else [])
+        b = base_km[idx]
+        print(f"  {tag}: released Pinpoint {np.mean(b < 25):.1%} / {np.mean(b < 1):.1%} (25 / 1 km)")
+        for label, k in rows:
+            parts = []
+            for t in (25, 1):
+                d = _bootstrap((k < t).astype(float) - (b < t))
+                parts.append(f"< {t} km {np.mean(k < t):.1%} ({100 * d[0]:+.1f} [{100 * d[1]:+.1f}, {100 * d[2]:+.1f}])")
+            print(f"    {label:24s} " + "; ".join(parts), flush=True)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom", "eval-head"))
+    parser.add_argument("--checkpoint", type=Path, help="eval-head: retrained reranker checkpoint with a set head")
+    parser.add_argument("--ckpt-tag", default="", help="extract: output suffix (with PINPOINT_RERANKER_CKPT set to a retrained reranker)")
     parser.add_argument("--k", type=int, default=5, help="zoom: Pinpoint areas zoomed into")
     parser.add_argument("--sources", type=int, nargs="*", default=(0,), help="zoom: hypothesis sources (0 areas, 1 clue places, 2 VLM places)")
     parser.add_argument("--apply-tag", help="zoom: also apply to this photo set (test set only when the user asks)")
@@ -548,7 +635,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.cmd == "restricted":
         restricted(args.tag, args.extra_hyps, args.model)
     elif args.cmd == "extract":
-        extract(args.name, args.targets, args.limit)
+        extract(args.name, args.targets, args.limit, args.ckpt_tag)
+    elif args.cmd == "eval-head":
+        eval_head(args.data, args.checkpoint)
     else:
         train(args.data, args.pool, not args.no_hidden, args.ensemble, args.save, args.extra, args.dump)
     return 0

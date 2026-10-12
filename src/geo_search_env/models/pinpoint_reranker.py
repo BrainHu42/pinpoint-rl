@@ -24,6 +24,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +35,8 @@ import torch.nn.functional as F
 from ..paths import PINPOINT_ROOT
 from ._pinpoint_torch import _load_image_tower
 
-RERANKER_CHECKPOINT = PINPOINT_ROOT / "exp/attention_reranker/checkpoints/ckpt_best.pt"
+# PINPOINT_RERANKER_CKPT: a retrained reranker (pinpoint_train/, PINPOINT_SET_PLAN.md step 4) instead of the released one
+RERANKER_CHECKPOINT = Path(os.environ.get("PINPOINT_RERANKER_CKPT", PINPOINT_ROOT / "exp/attention_reranker/checkpoints/ckpt_best.pt"))
 CONTRASTIVE_CHECKPOINT = PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/ckpt_best.pt"
 INDEX_ROOT = PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/attention_retrieval_index"
 MODALITIES = ("image", "raw_image", "gps")
@@ -66,7 +68,7 @@ class RerankedCandidates:
 class _RerankerHead(nn.Module):
     """The scoring layers of the checkpoint (contrastive model and unused projections stripped)."""
 
-    def __init__(self, *, output_dim: int, raw_dim: int, hidden: int, heads: int, layers: int, ffn: int) -> None:
+    def __init__(self, *, output_dim: int, raw_dim: int, hidden: int, heads: int, layers: int, ffn: int, metadata: bool = False) -> None:
         super().__init__()
 
         def projection(width: int) -> nn.Sequential:
@@ -77,6 +79,10 @@ class _RerankerHead(nn.Module):
         self.gps_fused_proj = projection(output_dim + 3)
         self.raw_image_fused_proj = projection(raw_dim + 3)
         self.osv_support_proj = projection(output_dim + 4)
+        # retrieval-feature projections added to the image / gps / raw tokens (zero in the submission, trained in retrained checkpoints)
+        self.metadata = metadata
+        if metadata:
+            self.candidate_image_metadata_proj, self.gps_metadata_proj, self.raw_image_metadata_proj = projection(3), projection(3), projection(3)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden))
         layer = nn.TransformerEncoderLayer(
             d_model=hidden, nhead=heads, dim_feedforward=ffn, dropout=0.0, activation="gelu", batch_first=True, norm_first=True
@@ -112,6 +118,8 @@ class PinpointReranker:
         checkpoint = torch.load(RERANKER_CHECKPOINT, map_location="cpu", weights_only=False, mmap=True)
         hp = checkpoint["hyper_parameters"]
         self.targets = {"image": int(hp["num_neighbors_image"]), "raw_image": int(hp["num_neighbors_raw_image"]), "gps": int(hp["num_neighbors_gps"])}
+        if hp.get("original_targets"):  # retrained on wide pools: its own pool is still the original lists' union
+            self.targets = dict(zip(MODALITIES, (int(t) for t in hp["original_targets"])))
         self.osv_k, self.osv_radius_km = int(hp["osv_support_neighbors_k"]), float(hp["osv_support_radius_km"])
         self.multiplier, self.chunk = int(hp["modality_pool_multiplier"]), int(hp["retrieval_chunk_size"])
         if not (hp["use_raw_image_features"] and hp["use_retrieval_features"] and hp["use_osv_support_token"]):
@@ -125,10 +133,15 @@ class PinpointReranker:
             output_dim=output_dim, raw_dim=raw_dim, hidden=int(hp["reranker_hidden_dim"]), heads=int(hp["reranker_num_heads"]),
             layers=int(hp["reranker_num_layers"]), ffn=int(hp["reranker_ffn_dim"]),
         )
-        skip = ("contrastive_model.", "query_raw_image_proj.", "best_val_median_km")  # unused at inference
+        skip = ("contrastive_model.", "query_raw_image_proj.", "best_val_median_km", "set_head.")  # unused at inference (set head: models.set_head)
         state = {k: v for k, v in checkpoint["state_dict"].items() if not k.startswith(skip)}
         if any("_metadata_proj." in k for k in state):
-            raise ValueError("checkpoint has metadata projections, which this port drops (they are zero in the submission)")
+            self.head = _RerankerHead(
+                output_dim=output_dim, raw_dim=raw_dim, hidden=int(hp["reranker_hidden_dim"]), heads=int(hp["reranker_num_heads"]),
+                layers=int(hp["reranker_num_layers"]), ffn=int(hp["reranker_ffn_dim"]), metadata=True,
+            )
+        self.set_head_state = {k.removeprefix("set_head."): v for k, v in checkpoint["state_dict"].items() if k.startswith("set_head.")}
+        self.hparams = hp
         self.head.load_state_dict(state, strict=True)
         self.head.to(self.device).eval()
         tower_state = {k.removeprefix("contrastive_model.image_tower."): v for k, v in checkpoint["state_dict"].items() if k.startswith("contrastive_model.image_tower.")}
@@ -340,6 +353,10 @@ class PinpointReranker:
                     osv_token,
                     self.head.raw_image_fused_proj(torch.cat((raw_c.float(), group["raw_image"]), dim=-1)).reshape(n * c, -1),
                 ]
+                if self.head.metadata:
+                    tokens[1] = tokens[1] + self.head.candidate_image_metadata_proj(group["image"]).reshape(n * c, -1)
+                    tokens[2] = tokens[2] + self.head.gps_metadata_proj(group["gps"]).reshape(n * c, -1)
+                    tokens[4] = tokens[4] + self.head.raw_image_metadata_proj(group["raw_image"]).reshape(n * c, -1)
                 scores = self.head(tokens).float().view(n, c)
             all_scores.append(scores.masked_fill(~mask, float("-inf")).cpu().numpy())
             all_features.append(features.cpu().numpy())

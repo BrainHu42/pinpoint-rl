@@ -19,6 +19,11 @@ from pinpoint.attention_reranker.retrieval_index import (
 )
 from pinpoint.utils import _resolve_device, _resolve_inference_dtype, geodesic_km
 
+try:  # set head shared with the offline evaluation (pinpoint-rl src/geo_search_env/models/set_head.py)
+    from geo_search_env.models.set_head import SetHead, expected_hit_loss
+except ImportError:  # pragma: no cover
+    SetHead = expected_hit_loss = None
+
 
 _SUPPORTED_HALF_DTYPES = (torch.float16, torch.bfloat16)
 _OSV5M_LEAVE_ONE_OUT_EXCLUSION_KM = 1.0
@@ -208,6 +213,13 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         modality_pool_multiplier: int = 1,
         margin_loss_weight: float = 1.0,
         margin_loss_margin: float = 0.2,
+        set_head: bool = False,
+        set_head_dim: int = 128,
+        set_head_layers: int = 2,
+        set_head_lr_mult: float = 10.0,
+        freeze_base: bool = False,
+        expected_hit_weight: float = 1.0,
+        original_targets: Sequence[int] | None = None,
         **unused_checkpoint_hparams: Any,
     ):
         super().__init__()
@@ -265,6 +277,10 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         self.modality_pool_multiplier = int(modality_pool_multiplier)
         self.margin_loss_weight = float(margin_loss_weight)
         self.margin_loss_margin = float(margin_loss_margin)
+        self.expected_hit_weight = float(expected_hit_weight)
+        # Wide pools (PINPOINT_SET_PLAN step 4): search num_neighbors_* per modality without sampling, but compute rank / in-shortlist
+        # features against the original list sizes (a hit beyond them gets rank 1, flag 0), as pinpoint-rl's pinpoint_set extract does.
+        self.original_targets = None if original_targets is None else tuple(int(t) for t in original_targets)
 
         if self.num_neighbors_image <= 0 and self.num_neighbors_raw_image <= 0 and self.num_neighbors_gps <= 0:
             raise ValueError("At least one modality candidate budget must be > 0")
@@ -457,6 +473,14 @@ class AttentionInterpolateLightningModule(L.LightningModule):
             nn.Linear(head_hidden_dim, 1),
         )
 
+        self.set_head = SetHead(hidden_dim, int(set_head_dim), 4, int(set_head_layers)) if set_head else None
+        self.freeze_base = bool(freeze_base)
+        if self.freeze_base:
+            if self.set_head is None:
+                raise ValueError("freeze_base needs set_head")
+            for name, parameter in self.named_parameters():
+                if not name.startswith("set_head."):
+                    parameter.requires_grad = False
         self._retrieval_device: torch.device | None = None
         self._union_retrieval_cache: dict[str, dict[str, dict[str, torch.Tensor]]] | None = None
         self._union_retrieval_cache_source_sizes: dict[str, int] = {}
@@ -473,6 +497,10 @@ class AttentionInterpolateLightningModule(L.LightningModule):
     def train(self, mode: bool = True):
         super().train(mode)
         self.contrastive_model.eval()
+        if getattr(self, "freeze_base", False):  # frozen reranker: no dropout, only the set head trains
+            for name, child in self.named_children():
+                if name != "set_head":
+                    child.eval()
         return self
 
     @classmethod
@@ -1019,12 +1047,13 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         sampled_modality_parts: list[torch.Tensor] = []
         sampled_rank_pos_parts: list[torch.Tensor] = []
         sampled_rank_parts: list[torch.Tensor] = []
+        sampled_flag_parts: list[torch.Tensor] = []
 
         for modality_id, modality_indices, modality_scores, target_k in modality_results:
             selected_indices = modality_indices
             selected_scores = modality_scores
             pool_size = int(selected_indices.shape[1])
-            if self.training and pool_size > target_k:
+            if self.training and pool_size > target_k and self.original_targets is None:
                 random_scores = torch.rand((batch_size, pool_size), dtype=torch.float32)
                 sample_order = torch.topk(random_scores, k=target_k, dim=1).indices
                 selected_indices = torch.gather(selected_indices, dim=1, index=sample_order)
@@ -1039,8 +1068,15 @@ class AttentionInterpolateLightningModule(L.LightningModule):
                 selected_scores = torch.gather(selected_scores, dim=1, index=sorted_order)
 
             rank_pos = torch.arange(selected_indices.shape[1], dtype=torch.long).unsqueeze(0).expand(batch_size, -1)
-            rank_denom = max(float(target_k - 1), 1.0)
-            rank_values = rank_pos.to(torch.float32) / rank_denom
+            if self.original_targets is not None:
+                keep_k = self.original_targets[modality_id]
+                rank_values = torch.where(rank_pos < keep_k, rank_pos.to(torch.float32) / max(float(keep_k - 1), 1.0), 1.0)
+                flag_values = (rank_pos < keep_k).to(torch.float32)
+            else:
+                rank_denom = max(float(target_k - 1), 1.0)
+                rank_values = rank_pos.to(torch.float32) / rank_denom
+                flag_values = torch.ones_like(rank_values)
+            sampled_flag_parts.append(flag_values)
 
             sampled_indices_parts.append(selected_indices.to(torch.long))
             sampled_scores_parts.append(selected_scores.to(torch.float32))
@@ -1053,6 +1089,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         all_modalities = torch.cat(sampled_modality_parts, dim=1)
         all_rank_pos = torch.cat(sampled_rank_pos_parts, dim=1)
         all_rank_values = torch.cat(sampled_rank_parts, dim=1)
+        all_flag_values = torch.cat(sampled_flag_parts, dim=1)
 
         valid = (all_indices >= 0) & torch.isfinite(all_scores)
         if not torch.any(valid):
@@ -1068,6 +1105,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         valid_modalities = all_modalities[valid]
         valid_rank_pos = all_rank_pos[valid]
         valid_rank_values = all_rank_values[valid]
+        valid_flag_values = all_flag_values[valid]
 
         unique_keys, inverse = torch.unique(valid_keys, sorted=True, return_inverse=True)
         unique_batch_idx = torch.div(unique_keys, int(num_rows), rounding_mode="floor").to(torch.long)
@@ -1094,6 +1132,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
                 continue
             modality_inverse = inverse[modality_mask]
             modality_rank_values = valid_rank_values[modality_mask]
+            modality_flag_values = valid_flag_values[modality_mask]
             merged_ranks[:, modality_id].scatter_reduce_(
                 0,
                 modality_inverse,
@@ -1104,7 +1143,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
             merged_flags[:, modality_id].scatter_reduce_(
                 0,
                 modality_inverse,
-                torch.ones_like(modality_rank_values),
+                modality_flag_values,
                 reduce="amax",
                 include_self=True,
             )
@@ -1455,8 +1494,10 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         candidate_latlon_deg: torch.Tensor,
         retrieval_features: torch.Tensor,
         candidate_mask: torch.Tensor,
-    ) -> torch.Tensor:
+        return_hidden: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_candidates, _ = retrieved_image.shape
+        hidden_chunks: list[torch.Tensor] = []
 
         with self._reranker_autocast_context():
             if self.use_retrieval_features:
@@ -1506,9 +1547,14 @@ class AttentionInterpolateLightningModule(L.LightningModule):
                 encoded_chunk = self.interaction_encoder(seq_chunk)
                 cls_hidden_chunk = encoded_chunk[:, 0, :]
                 score_chunks.append(self.score_head(cls_hidden_chunk))
+                if return_hidden:
+                    hidden_chunks.append(cls_hidden_chunk)
 
             scores = score_chunks[0] if len(score_chunks) == 1 else torch.cat(score_chunks, dim=0)
             scores = scores.to(torch.float32).reshape(batch_size, num_candidates)
+        if return_hidden:
+            hidden = torch.cat(hidden_chunks, dim=0).reshape(batch_size, num_candidates, -1)
+            return scores, hidden
         return scores
 
     def _pairwise_margin_ranking_loss(
@@ -1576,13 +1622,26 @@ class AttentionInterpolateLightningModule(L.LightningModule):
             batch_outputs["candidate_latlon_deg"],
             batch_outputs["retrieval_features"],
             batch_outputs["candidate_mask"],
+            return_hidden=self.set_head is not None,
         )
+        base_scores = None
+        if self.set_head is not None:
+            base_scores, hidden = rerank_scores
+            base_scores = base_scores.masked_fill(~batch_outputs["candidate_mask"], -float("inf"))
+            rerank_scores = self.set_head(
+                hidden,
+                base_scores,
+                batch_outputs["candidate_latlon_deg"],
+                batch_outputs["retrieval_features"],
+                batch_outputs["candidate_mask"],
+            )
         rerank_scores = rerank_scores.masked_fill(~batch_outputs["candidate_mask"], -float("inf"))
 
         return {
             "top_indices": batch_outputs["top_indices"].masked_fill(~batch_outputs["candidate_mask"], -1),
             "top_scores": batch_outputs["top_scores"].masked_fill(~batch_outputs["candidate_mask"], -float("inf")),
             "rerank_scores": rerank_scores,
+            "base_scores": rerank_scores if base_scores is None else base_scores,
             "candidate_latlon_deg": batch_outputs["candidate_latlon_deg"],
             "candidate_mask": batch_outputs["candidate_mask"],
             "shortlist_flags": batch_outputs["shortlist_flags"],
@@ -1603,7 +1662,7 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         candidate_distance_km = self._candidate_haversine_km(outputs["candidate_latlon_deg"], targets_deg)
         candidate_distance_km = candidate_distance_km.masked_fill(~candidate_mask, float("inf"))
         margin_loss, pair_acc = self._pairwise_margin_ranking_loss(
-            outputs["rerank_scores"],
+            outputs["base_scores"],
             candidate_distance_km,
             candidate_mask,
         )
@@ -1611,6 +1670,12 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         rerank_top_pos = rerank_order[:, :1]
 
         loss = self.margin_loss_weight * margin_loss
+        hit_loss = margin_loss.new_tensor(0.0)
+        if self.set_head is not None:
+            hit_loss, _ = expected_hit_loss(outputs["rerank_scores"], candidate_distance_km, candidate_mask)
+            loss = loss + self.expected_hit_weight * hit_loss
+        base_top_pos = torch.argmax(outputs["base_scores"], dim=-1, keepdim=True)
+        base_top_km = torch.gather(candidate_distance_km, dim=1, index=base_top_pos).squeeze(1)
 
         retrieval_top_pos = torch.argmax(outputs["top_scores"], dim=-1, keepdim=True)
 
@@ -1626,6 +1691,8 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         return {
             "loss": loss,
             "margin_loss": margin_loss,
+            "hit_loss": hit_loss,
+            "base_top_km": base_top_km,
             "final_pred_deg": rerank_top_deg,
             "pair_acc": pair_acc,
             "rerank_top_deg": rerank_top_deg,
@@ -1661,6 +1728,9 @@ class AttentionInterpolateLightningModule(L.LightningModule):
                 logger=True,
                 batch_size=batch_size,
             )
+            self.log("train/hit_loss", out["hit_loss"], on_step=True, on_epoch=False, logger=True, batch_size=batch_size)
+            self.log("train/acc25_set", (out["rerank_top_km"] < 25).float().mean(), on_step=True, on_epoch=False, logger=True, batch_size=batch_size)
+            self.log("train/acc25_base", (out["base_top_km"] < 25).float().mean(), on_step=True, on_epoch=False, logger=True, batch_size=batch_size)
             self.log(
                 "train/pairwise_acc",
                 out["pair_acc"],
@@ -1782,6 +1852,9 @@ class AttentionInterpolateLightningModule(L.LightningModule):
         trainer = getattr(self, "_trainer", None)
         if trainer is not None:
             batch_size = int(out["targets_deg"].shape[0])
+            for name, km in (("set", out["rerank_top_km"]), ("base", out["base_top_km"])):
+                for r in (1, 25):
+                    self.log(f"val/acc{r}_{name}", (km < r).float().mean(), on_step=False, on_epoch=True, logger=True, batch_size=batch_size)
             self.log(
                 "val/loss",
                 out["loss"],
@@ -1921,8 +1994,14 @@ class AttentionInterpolateLightningModule(L.LightningModule):
             self.best_val_median_km.fill_(median_km)
 
     def configure_optimizers(self):
+        head_params = [p for n, p in self.named_parameters() if n.startswith("set_head.") and p.requires_grad]
+        base_params = [p for n, p in self.named_parameters() if not n.startswith("set_head.") and p.requires_grad]
+        groups = [g for g in (
+            {"params": base_params, "lr": self.hparams.lr},
+            {"params": head_params, "lr": self.hparams.lr * float(self.hparams.get("set_head_lr_mult", 10.0))},
+        ) if g["params"]]
         optimizer = torch.optim.AdamW(
-            self.parameters(),
+            groups,
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay,
         )

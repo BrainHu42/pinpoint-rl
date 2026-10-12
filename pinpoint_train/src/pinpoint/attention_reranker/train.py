@@ -213,6 +213,20 @@ def main() -> None:
         default=0.2,
         help="Margin for pairwise ranking: max(0, margin - (s_pos - s_neg)).",
     )
+    parser.add_argument("--set-head", action="store_true", help="Set head over the whole pool, trained with the expected-hit loss.")
+    parser.add_argument("--set-head-dim", type=int, default=128)
+    parser.add_argument("--set-head-layers", type=int, default=2)
+    parser.add_argument("--set-head-lr-mult", type=float, default=10.0)
+    parser.add_argument("--expected-hit-weight", type=float, default=1.0)
+    parser.add_argument("--freeze-base", action="store_true", help="Train only the set head on the frozen reranker.")
+    parser.add_argument(
+        "--original-targets",
+        type=int,
+        nargs=3,
+        default=None,
+        help="Wide pools: rank / shortlist features against these image / raw / gps list sizes, no sampling (e.g. 8 2 2).",
+    )
+    parser.add_argument("--init-checkpoint", type=str, default=None, help="Initialise the reranker from this checkpoint (fine-tune).")
     parser.add_argument(
         "--inference-dtype",
         type=str,
@@ -365,9 +379,22 @@ def main() -> None:
         osv_support_radius_km=args.osv_support_radius_km,
         margin_loss_weight=args.margin_loss_weight,
         margin_loss_margin=args.margin_loss_margin,
+        set_head=args.set_head,
+        set_head_dim=args.set_head_dim,
+        set_head_layers=args.set_head_layers,
+        set_head_lr_mult=args.set_head_lr_mult,
+        expected_hit_weight=args.expected_hit_weight,
+        freeze_base=args.freeze_base,
+        original_targets=args.original_targets,
         inference_device=args.device,
         inference_dtype=args.inference_dtype,
     )
+    if args.init_checkpoint:
+        init_state = torch.load(args.init_checkpoint, map_location="cpu", weights_only=False)["state_dict"]
+        init_state = {k: v for k, v in init_state.items() if not k.startswith("contrastive_model.") and k != "best_val_median_km"}
+        result = module.load_state_dict(init_state, strict=False)
+        print(f"Initialised from {args.init_checkpoint}: missing {[k for k in result.missing_keys if not k.startswith('contrastive_model.')]}, "
+              f"unexpected {result.unexpected_keys}")
     print(f"Embedding dim: {module.embed_dim}")
     trainable_params = sum(p.numel() for p in module.parameters() if p.requires_grad)
     print(f"Geolocation reranker trainable parameters: {trainable_params:,}")
