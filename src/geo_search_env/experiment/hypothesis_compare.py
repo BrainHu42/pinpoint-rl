@@ -30,6 +30,7 @@ OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 AUTHORS = OUT / "mp16_author_by_cache_row.npy"
 BOX_KM = 25.0
+SET_DUMP = None  # --set-dump: set-aware Pinpoint pick probabilities (pinpoint_set train --dump); adds set features, output ..._set.npz
 VLM_NAME = ""  # --vlm-name: plausibility from that judge (hypvlm_*_{name}.npy) instead of the base 4B
 EXTRA_HYPOTHESES = ["cluehyps"]  # merged after the Pinpoint areas in --e4 features (add "more10", "vlmhyps" with --extra-hyps)
 
@@ -128,6 +129,27 @@ def _restricted_features(z: dict, truth: np.ndarray) -> dict:
     return out
 
 
+def _set_features(tag: str, z: dict, truth: np.ndarray) -> dict:
+    """Set-aware Pinpoint (pinpoint_set --dump: out-of-fold pick probabilities on train, all-of-train model on dev3k) per hypothesis: its
+    probability mass within the hypothesis's box radius, whether its top pick is inside, and the distance to that pick; per row, km_set =
+    the set model's top pick when it is inside the hypothesis, else the agreement pick (an answer option)."""
+
+    from .strategy_search import _haversine_km
+
+    d = np.load(SET_DUMP)
+    probs, latlon, valid = d[f"{tag}_probs"], d[f"{tag}_latlon"].astype(np.float64), d[f"{tag}_valid"]
+    top = latlon[np.arange(len(probs)), probs.argmax(1)]
+    set_km = np.asarray([_haversine_km(*truth[p], top[p:p + 1])[0] for p in range(len(probs))])
+    n = len(z["photo"])
+    out = {"set_mass": np.zeros(n), "set_top_in": np.zeros(n), "d_settop": np.zeros(n), "set_km": set_km}
+    for i, p in enumerate(z["photo"]):
+        dist = _haversine_km(*z["center"][i], latlon[p][valid[p]])
+        out["set_mass"][i] = probs[p][valid[p]][dist < BOX_KM].sum()
+        out["d_settop"][i] = _haversine_km(*z["center"][i], top[p:p + 1])[0]
+        out["set_top_in"][i] = out["d_settop"][i] < BOX_KM
+    return out
+
+
 def features(tag: str, clues: bool, e4: bool = False, extra_name: str = "") -> None:
     from scipy.spatial import cKDTree
 
@@ -170,6 +192,8 @@ def features(tag: str, clues: bool, e4: bool = False, extra_name: str = "") -> N
         f["vlm_p"] = z["vlm_p"]
         top1 = np.asarray([e["pool"][0] for e in photos], np.float64)
         f["d_top1"] = np.asarray([_haversine_km(*top1[ph], z["center"][i:i + 1])[0] for i, ph in enumerate(z["photo"])])
+        if SET_DUMP:
+            f |= _set_features(tag, z, truth)
     np.savez(dst, **f)
     print(f"{n} hypotheses for {len(photos)} photos -> {dst}")
 
@@ -226,13 +250,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--clues", action="store_true")
     parser.add_argument("--e4", action="store_true", help="features: Pinpoint areas + clue hypotheses + clue features -> hypothesis_features_{tag}_e4.npz")
     parser.add_argument("--extra-hyps", nargs="*", default=(), help="also merge these hypothesis files (more10, vlmhyps); output ..._e4_<names>.npz")
+    parser.add_argument("--set-dump", type=Path, help="set-aware Pinpoint pick probabilities (pinpoint_set train --dump)")
     parser.add_argument("--vlm-name", default="", help="plausibility judge name (fine-tuned run); output ..._vlm<name>.npz")
     args = parser.parse_args(argv)
-    global VLM_NAME
+    global VLM_NAME, SET_DUMP
     VLM_NAME = args.vlm_name
+    SET_DUMP = args.set_dump
     if args.extra_hyps:
         EXTRA_HYPOTHESES.extend(args.extra_hyps)
-    features(args.tag, args.clues, args.e4, "_".join(list(args.extra_hyps) + ([f"vlm{VLM_NAME}"] if VLM_NAME else []))) if args.cmd == "features" else report(args.tag, args.clues)
+    features(args.tag, args.clues, args.e4, "_".join(list(args.extra_hyps) + ([f"vlm{VLM_NAME}"] if VLM_NAME else []) + (["set"] if SET_DUMP else []))) if args.cmd == "features" else report(args.tag, args.clues)
     return 0
 
 

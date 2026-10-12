@@ -23,7 +23,7 @@ FEATURES = {"train": OUT / "hypothesis_features_train.npz", "dev3k": OUT / "hypo
 FEATURES_E4 = {"train": OUT / "hypothesis_features_train_e4.npz", "dev3k": OUT / "hypothesis_features_dev3k_e4.npz"}
 CLUE_KEYS = [f"{kind}_{stat}" for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")]
 RESTRICTED_KEYS = [f"rf_{j}" for j in range(9)] + ["r_support", "r_areas", "r_spread"]
-GROUPS = {"clues": [], "restricted": [], "vlm": [], "dist": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
+GROUPS = {"clues": [], "restricted": [], "vlm": [], "dist": [], "set": [], "mass": ["mass_0.1", "mass_0.2", "mass_0.5"], "scores": ["top1", "top3"], "support": ["support"], "rank": ["rank"],
           "photographers": ["photographers"], "candidates": ["n_cand"], "density": ["density"]}
 
 
@@ -55,6 +55,8 @@ def _matrix(f: dict, drop: Sequence[str], e4: bool = False, extra: bool = False)
     if e4 and "vlm" not in drop and "vlm_p" in f and np.isfinite(f["vlm_p"]).any():
         v = f["vlm_p"][keep]
         cols += [np.where(np.isfinite(v), v, 0.5), np.isfinite(v).astype(float)]
+    if e4 and "set" not in drop and "set_mass" in f:  # set-aware Pinpoint (pinpoint_set)
+        cols += [np.log(np.maximum(f["set_mass"][keep], 1e-6)), f["set_top_in"][keep], np.log1p(f["d_settop"][keep])]
     if extra and "restricted" not in drop:
         cols += [np.log1p(f[k][keep]) if k == "r_spread" else f[k][keep] for k in RESTRICTED_KEYS]
     X = np.stack(cols, 1)
@@ -150,11 +152,17 @@ def _predict(model, mu, sd, X, groups, photos) -> dict[int, int]:
     return out
 
 
-def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = False, agree: bool = False) -> None:
+def _evaluate(name: str, f: dict, groups, picks: dict[int, int], e4: bool = False, agree: bool | str = False) -> None:
+    """agree: False = the chosen hypothesis's restricted top-1; True = its agreement pick; "set" = set-aware Pinpoint's top pick when it is
+    inside the chosen hypothesis, else the agreement pick."""
+
     from .strategy_search import _bootstrap
 
     keep = np.arange(len(f["source"])) if e4 else np.flatnonzero(f["source"] == 0)
-    km = (f["km_agree"] if agree else f["km"])[keep]
+    if agree == "set":
+        km = np.where(f["set_top_in"] > 0, f["set_km"][f["photo"]], f["km_agree"])[keep]
+    else:
+        km = (f["km_agree"] if agree else f["km"])[keep]
     base = f["base_km"]
     chosen25 = np.asarray([km[picks[p]] < 25 if p in picks else base[p] < 25 for p in range(len(base))], float)
     chosen1 = np.asarray([km[picks[p]] < 1 if p in picks else base[p] < 1 for p in range(len(base))], float)
@@ -212,6 +220,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _evaluate("train, 5-fold cross-validation", tr, gt, cv, args.e4)
         if args.agree:
             _evaluate("train, 5-fold CV, agreement pick inside the hypothesis", tr, gt, cv, args.e4, agree=True)
+            if "set_km" in tr:
+                _evaluate("train, 5-fold CV, set-model pick inside the hypothesis", tr, gt, cv, args.e4, agree="set")
         for seed in range(args.seeds if not ablated else 1):
             fits = [_fit(Xt, gt, okt, np.arange(len(gt)), seed=100 * seed + j) for j in range(args.ensemble)]  # train (+ extra)
             model, mu, sd = [m for m, _, _ in fits], fits[0][1], fits[0][2]
@@ -231,6 +241,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _evaluate(f"dev3k, trained on all of train (seed {seed})", dv, gd, picks, args.e4)
             if args.agree:
                 _evaluate(f"dev3k, agreement pick inside (seed {seed})", dv, gd, picks, args.e4, agree=True)
+                if "set_km" in dv:
+                    _evaluate(f"dev3k, set-model pick inside (seed {seed})", dv, gd, picks, args.e4, agree="set")
     return 0
 
 

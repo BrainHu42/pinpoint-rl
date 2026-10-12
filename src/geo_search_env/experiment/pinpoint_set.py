@@ -29,7 +29,44 @@ import numpy as np
 OUT = Path("artifacts/pinpoint_set")
 SFT_ROOT = Path("artifacts/sft")
 NVME_INDEX = Path("/opt/dlami/nvme/pinpoint/attention_retrieval_index")  # staged copy of the index (hypotheses.NVME_INDEX), if present
-QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json"}
+QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json"}
+
+
+def more_queries(n: int, seed: int = 2) -> None:
+    """n more training photos from buckets 0-98 with pinpoint_reference.extra's rules (no benchmark or dev photographers, no near-duplicates of
+    benchmark photos), none already in queries.json or queries_extra.json -> artifacts/pinpoint_set/queries_more.json (extract --name mp16_more)."""
+
+    import torch
+    import torch.nn.functional as F
+
+    from .sft_data import HELD_OUT_BUCKET, NEAR_DUPLICATE_SIM, VAL_AUTHOR_BUCKETS, _md5_bucket
+    from .strategy_search import MP16_EMBED, load_world
+
+    world = load_world()
+    image_ids = (MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    author_names = np.empty(len(world.vocab["author"]), dtype=object)
+    for author, index in world.vocab["author"].items():
+        author_names[index] = author
+    used = {q["row"] for f in (QUERY_FILES["mp16"], QUERY_FILES["mp16_extra"]) for q in json.loads(f.read_text(encoding="utf-8"))}
+    val_author = np.asarray([_md5_bucket(a, VAL_AUTHOR_BUCKETS) == 0 for a in author_names])[world.mp16["author"]]
+    eligible = ~np.isin(world.mp16["author"], world.query_author[world.query_author >= 0]) & ~val_author
+    rows = []
+    for r in np.random.default_rng(seed).permutation(np.flatnonzero(eligible)):
+        if int(r) not in used and _md5_bucket(image_ids[r], 100) < HELD_OUT_BUCKET:
+            rows.append(int(r))
+            if len(rows) >= int(n * 1.05):
+                break
+    rows = np.sort(np.asarray(rows))
+    bench = F.normalize(torch.as_tensor(world.query_embeddings, device="cuda"), dim=-1).half()
+    near = np.concatenate([
+        (F.normalize(torch.as_tensor(np.asarray(world.mp16["embeddings"][rows[i : i + 8192]]), device="cuda").float(), dim=-1).half() @ bench.T)
+        .max(dim=1).values.float().cpu().numpy()
+        for i in range(0, len(rows), 8192)
+    ])
+    rows = rows[near < NEAR_DUPLICATE_SIM][:n]
+    queries = [{"row": int(r), "image_id": image_ids[r], "group": "trained_on", "split": "train"} for r in rows]
+    QUERY_FILES["mp16_more"].write_text(json.dumps(queries) + "\n", encoding="utf-8")
+    print(f"{len(queries)} more photos from buckets 0-98 -> {QUERY_FILES['mp16_more']}", flush=True)
 
 
 def extract(name: str, targets: Sequence[int], limit: int | None = None) -> None:
@@ -214,14 +251,14 @@ def _fit_set(z: dict, photos: np.ndarray, hidden: bool, seed: int, epochs: int |
 
 
 def _predict_set(models, z, photos, mu, sd, device="cuda") -> np.ndarray:
-    """Top candidate per photo; an ensemble averages softmax probabilities."""
+    """Pick probabilities [photos, C] (an ensemble averages its softmaxes); argmax(1) is the answer."""
 
     import torch
 
     out = []
     with torch.no_grad():
         for b in np.array_split(photos, max(1, len(photos) // 512)):
-            out.append(sum(torch.softmax(m(*_batch(z, b, mu, sd, device)), 1) for m in models).argmax(1).cpu().numpy())
+            out.append((sum(torch.softmax(m(*_batch(z, b, mu, sd, device)), 1) for m in models) / len(models)).cpu().numpy())
     return np.concatenate(out)
 
 
@@ -240,7 +277,7 @@ def _report(label: str, z: dict, photos: np.ndarray, picks: np.ndarray) -> None:
           + f"; oracle {np.mean((km < 25).any(1)):.1%}", flush=True)
 
 
-def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None, extra: Path | None = None) -> None:
+def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None, extra: Sequence[Path] = (), dump: Path | None = None) -> None:
     z = _load(path, pool)
     queries = json.loads(QUERY_FILES["mp16"].read_text(encoding="utf-8"))
     assert len(queries) == len(z["rows"]), "train needs the extraction of all of queries.json"
@@ -252,19 +289,25 @@ def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None,
     tr, dv = sets["train"], sets["dev3k"]
     fit_extra = np.zeros(0, dtype=int)
     if extra:  # more training photos (buckets 0-98, which Pinpoint trained on): appended, used for fitting only
-        e = _load(extra, pool)
-        fit_extra = len(z["rows"]) + np.arange(len(e["rows"]))
-        z = {k: np.concatenate([z[k], e[k]]) for k in z}
-        print(f"  + {len(fit_extra)} extra training photos ({extra.name})")
+        parts = [_load(path_, pool) for path_ in extra]
+        fit_extra = len(z["rows"]) + np.arange(sum(len(e["rows"]) for e in parts))
+        z = {k: np.concatenate([z[k]] + [e[k] for e in parts]) for k in z}
+        del parts
+        print(f"  + {len(fit_extra)} extra training photos ({', '.join(p_.name for p_ in extra)})")
     print(f"{path.name}: pool {pool}, hidden {hidden}, ensemble {ensemble}; {z['valid'][tr].sum(1).mean():.1f} candidates per photo", flush=True)
     folds = np.random.default_rng(0).permutation(len(tr)) % 5
-    cv = np.zeros(len(tr), dtype=int)
+    cv = np.zeros(z["rows"][tr].shape, dtype=np.float32)
     for k in range(5):
         fits = [_fit_set(z, np.concatenate([tr[folds != k], fit_extra]), hidden, seed=10 * k + j) for j in range(ensemble)]
         cv[folds == k] = _predict_set([m for m, _, _ in fits], z, tr[folds == k], fits[0][1], fits[0][2])
-    _report("train, 5-fold CV", z, tr, cv)
+    _report("train, 5-fold CV", z, tr, cv.argmax(1))
     fits = [_fit_set(z, np.concatenate([tr, fit_extra]), hidden, seed=100 + j) for j in range(ensemble)]
-    _report("dev3k (trained on all of train)", z, dv, _predict_set([m for m, _, _ in fits], z, dv, fits[0][1], fits[0][2]))
+    dev = _predict_set([m for m, _, _ in fits], z, dv, fits[0][1], fits[0][2])
+    _report("dev3k (trained on all of train)", z, dv, dev.argmax(1))
+    if dump:  # out-of-fold pick probabilities for train, all-of-train model for dev3k (photo-set order), for the hypothesis comparator
+        np.savez(dump, train_probs=cv, dev3k_probs=dev, train_latlon=z["latlon"][tr], dev3k_latlon=z["latlon"][dv],
+                 train_valid=z["valid"][tr], dev3k_valid=z["valid"][dv])
+        print(f"  pick probabilities -> {dump}")
     if save:
         import torch
 
@@ -275,7 +318,8 @@ def train(path: Path, pool: str, hidden: bool, ensemble: int, save: Path | None,
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("extract", "train"))
+    parser.add_argument("cmd", choices=("extract", "train", "more-queries"))
+    parser.add_argument("--n", type=int, default=100_000, help="more-queries: how many")
     parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
     parser.add_argument("--limit", type=int, help="first N queries only (plumbing)")
@@ -284,15 +328,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-hidden", action="store_true", help="train: scores, features and geometry only (no CLS states)")
     parser.add_argument("--ensemble", type=int, default=1)
     parser.add_argument("--save", type=Path)
-    parser.add_argument("--extra", type=Path, help="train: extracted candidates of more training photos (e.g. mp16_extra_32_8_8.npz)")
+    parser.add_argument("--dump", type=Path, help="train: save pick probabilities (train out-of-fold, dev3k)")
+    parser.add_argument("--extra", type=Path, nargs="*", default=(), help="train: extracted candidates of more training photos (e.g. mp16_extra_32_8_8.npz)")
     for key, value in HP.items():
         parser.add_argument(f"--{key}", type=type(value), default=value)
     args = parser.parse_args(argv)
     HP.update({key: getattr(args, key) for key in HP})
-    if args.cmd == "extract":
+    if args.cmd == "more-queries":
+        more_queries(args.n)
+    elif args.cmd == "extract":
         extract(args.name, args.targets, args.limit)
     else:
-        train(args.data, args.pool, not args.no_hidden, args.ensemble, args.save, args.extra)
+        train(args.data, args.pool, not args.no_hidden, args.ensemble, args.save, args.extra, args.dump)
     return 0
 
 
