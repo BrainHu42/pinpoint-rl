@@ -28,7 +28,7 @@ def _pre_zoom(f: dict) -> np.ndarray:
     lg = lambda x: np.log(np.maximum(x, 1e-12))
     photo = f["photo"]
     cols = []
-    for k in ("mass_0.2", "support", "photographers", "density"):
+    for k in ("support", "density"):  # global-pool support and gallery density: known before the restricted search runs
         x = lg(f[k])
         mx = np.full(photo.max() + 1, -np.inf)
         np.maximum.at(mx, photo, x)
@@ -40,12 +40,61 @@ def _pre_zoom(f: dict) -> np.ndarray:
     return np.nan_to_num(np.stack(cols, 1).astype(np.float32))
 
 
+POST_ZOOM = ("mass_0.1", "mass_0.2", "mass_0.5", "photographers", "n_cand", "top1", "top3", "setr_max", "setr_lse") + tuple(hl.RESTRICTED_KEYS)
+
+
+def _chooser_matrix(f: dict) -> np.ndarray:
+    """A hypothesis's own evidence once zoomed: its pre-zoom features plus its restricted search's (no statistic relative to the
+    photo's other hypotheses, so an unzoomed hypothesis's search never leaks into the choice)."""
+
+    post = []
+    for k in POST_ZOOM:
+        x = f[k].astype(np.float64)
+        post.append(np.log(np.maximum(x, 1e-12)) if k.startswith("mass") or k in ("photographers", "n_cand") else np.where(np.isfinite(x), x, -1.0))
+    return np.concatenate([_pre_zoom(f), np.nan_to_num(np.stack(post, 1)).astype(np.float32)], 1)
+
+
+class _NoContext(hl._Model):
+    """The comparator's encoder and head with the set context zeroed: each hypothesis is scored from its own evidence only."""
+
+    def scores(self, x, seg, n_seg):
+        import torch
+
+        e = self.enc(x)
+        return self.head(torch.cat([e, torch.zeros_like(e)], 1)).squeeze(1)
+
+
+def _fit_chooser(X, g, ok, photos, seed, epochs=30):
+    import torch
+
+    mu, sd = X.mean(0), X.std(0) + 1e-6
+    usable = [p for p in photos if len(g[p]) and ok[g[p]].any() and not ok[g[p]].all()]
+    model = _NoContext(X.shape[1], seed)
+    opt = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-4)
+    rng = np.random.default_rng(seed)
+    for _ in range(epochs):
+        for b in np.array_split(rng.permutation(usable), max(1, len(usable) // 256)):
+            rows = np.concatenate([g[p] for p in b])
+            seg = torch.as_tensor(np.concatenate([np.full(len(g[p]), j) for j, p in enumerate(b)]))
+            sc = model.scores(torch.as_tensor((X[rows] - mu) / sd, dtype=torch.float32), seg, len(b))
+            target = torch.as_tensor(ok[rows], dtype=torch.float32)
+            m = torch.full((len(b),), -1e9).scatter_reduce(0, seg, sc, "amax")
+            lse = torch.log(torch.zeros(len(b)).index_add_(0, seg, torch.exp(sc - m[seg]))) + m
+            pos = torch.log(torch.zeros(len(b)).index_add_(0, seg, torch.exp(sc - m[seg]) * target)) + m
+            loss = (lse - pos).mean()
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    return model, mu, sd
+
+
 def _chooser_scores(f: dict, groups, folds: np.ndarray | None, fit_photos: np.ndarray | None, ensemble: int = 3) -> np.ndarray:
-    """Comparator log-probability of each hypothesis given the photo's full hypothesis set (out-of-fold when folds is given)."""
+    """Chooser score of each hypothesis from its own evidence (out-of-fold when folds is given)."""
 
     import torch
 
-    X, g = hl._matrix(f, ("vlm",), True)
+    X, g = _chooser_matrix(f), groups
+    hl_fit = _fit_chooser
     ok = f["km"] < 25
     out = np.zeros(len(X))
 
@@ -60,17 +109,17 @@ def _chooser_scores(f: dict, groups, folds: np.ndarray | None, fit_photos: np.nd
 
     if folds is not None:
         for k in range(5):
-            fits = [hl._fit(X, g, ok, np.flatnonzero(folds != k), seed=10 * k + j) for j in range(ensemble)]
+            fits = [hl_fit(X, g, ok, np.flatnonzero(folds != k), seed=10 * k + j) for j in range(ensemble)]
             score([m for m, _, _ in fits], fits[0][1], fits[0][2], np.flatnonzero(folds == k))
         return out, None
-    fits = [hl._fit(X, g, ok, fit_photos, seed=j) for j in range(ensemble)]
+    fits = [hl_fit(X, g, ok, fit_photos, seed=j) for j in range(ensemble)]
     return out, fits
 
 
 def _apply_chooser(fits, f, groups) -> np.ndarray:
     import torch
 
-    X, g = hl._matrix(f, ("vlm",), True)
+    X, g = _chooser_matrix(f), groups
     out = np.zeros(len(X))
     photos = np.arange(len(g))
     rows = np.concatenate([g[p] for p in photos if len(g[p])])

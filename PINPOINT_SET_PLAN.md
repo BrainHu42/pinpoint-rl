@@ -75,7 +75,64 @@ Removed:
 - **The agent.** The LLM / RL agent becomes a well-defined extension: spending lookups and zooms where they help. It is no longer the
   core.
 
-## Open decision (user)
-This moves the LLM / RL agent from the centre of the project (CLAUDE.md "Direction") to a later extension (step 5). If agreed:
-1. Update CLAUDE.md's Direction and research plan.
-2. Start step 1.
+## Results of the autonomous run (2026-10-12; lesson 70)
+All numbers: % within 25 km, change vs the released Pinpoint top-1 (train 32.4%, dev3k 33.4%). Train = 5-fold CV on the 35k train photos,
+dev3k = trained on all of train. 1 km in brackets where it matters. The test set was not touched.
+
+**Headline: step 4 is the lever.** Fine-tuning Pinpoint's own reranker on its training photos for 1.5M photos (6,000 steps of 256, about 1 h
+on the L40S) gives **+3.1 train / +3.3 dev3k** (1 km +1.6 / +1.0) as one model with no LLM and no zoom. That matches the whole Pinpoint-only
+hypothesis pipeline (+3.4 / +3.9).
+The run changed four things at once:
+- wide pools (32 / 8 / 8 hits);
+- same-photographer exclusion in training, so training pools look like evaluation pools;
+- the leave-one-out fix below;
+- a co-trained set head.
+
+The control run below separates them.
+
+| Step | What was built | Train CV | dev3k | Verdict |
+|---|---|---|---|---|
+| 1 | Flat set model over global + zoomed candidates (~92 per photo; `pinpoint_set zoom`) | +1.4 (+0.8) | +1.3 (+0.4) | **no-go**: same as the global wide set layer (+1.4 / +1.4); the zoomed tokens add nothing |
+| 2 | Area model: one token per hypothesis, attention-pooled from Pinpoint's CLS states in its zoom + hand features (`area_model.py`) | agree pick +4.4; set pick +4.2 (+1.7) | +4.9; +4.7 (+1.6) | **go**: +0.3 over the comparator (+4.1 / +4.7) |
+| 2' | Same, 16 Pinpoint-only features + states (no clue features) | +4.0; +3.7 (+1.7) | +4.5; +4.2 (+1.2) | matches the comparator with 16 instead of ~36 hand features |
+| 3 | Clue tokens = clue places as hypotheses + their clue-search statistics (all features, areas + clues, no 4B proposals) | +4.2; +3.9 (+1.7) | **+5.2**; +5.0 (+1.8) | clues add +0.7 over Pinpoint areas only (+3.5 / +3.9); 4B place proposals add +0.2 train, -0.3 dev3k: drop them |
+| 4 | Pinpoint reranker fine-tuned (pinpoint-main code in `pinpoint_train/`, `models/set_head.py`); its pick over the wide pool | **+3.1 (+1.6)** | **+3.3 (+1.0)** | **go** (one model; the set layer was +1.4 / +2.0 with extra photos) |
+| 4 | ... its own 8 / 2 / 2 pool | +2.5 (+1.2) | +2.7 (+0.8) | |
+| 4 | ... + its co-trained set head (trained on photos the reranker has seen) | +2.6 (+1.5) | +2.9 (+0.9) | set head no gain |
+| 4 | ... + the offline set layer (bucket 99) on its states | +2.1 | +2.2 | no gain: the retrained reranker already does what the set layer did |
+| 5 | RL zoom agent: which hypotheses to zoom under a budget (`zoom_agent.py`) | see below | | **go**: 1 zoom reaches ~90% of the full gain, 2 zooms all of it |
+
+Step 5 table. The leak-free version: the chooser scores each zoomed hypothesis from its own evidence only.
+
+| Budget (restricted searches) | Pinpoint's top-B areas | RL policy | All ~6.2 hypotheses zoomed |
+|---|---|---|---|
+| 1 | +1.1 / +2.1 | **+3.5 / +3.8** | +4.0 / +4.2 |
+| 2 | +2.8 / +3.6 | **+4.0 / +4.2** | |
+| 3 | +3.3 / +4.0 | +3.9 / +4.1 | |
+
+(train CV / dev3k)
+- Policy: a DeepSets MLP over pre-zoom evidence (source, area rank, pool support, gallery density, clue-search statistics, distance to
+  Pinpoint's top-1, set-layer mass).
+- Training: Gumbel top-B sampling and REINFORCE with the greedy picks as baseline. Reward: the zoomed answer is within 25 km.
+- Fixed mixes of areas and clue / 4B places are all worse than top-B areas.
+
+**Bugs found in the training setup** (they matter for anyone retraining Pinpoint):
+1. **Leave-one-out was off.** The released index names its source "source_0" while the data module tags samples "mp16", so no training
+   query was mapped to its own index row. Every training pool contained the query itself; train accuracy was 100%.
+   Fixed with an alias in `retrieval_index._build_source_lookup`.
+   - The released reranker was presumably trained with a working mapping (its own index build); we could not check this.
+2. **No same-photographer exclusion in training**, while our evaluation excludes the query's photographer.
+   Added `--exclude-author-path`, with authors per cache row in `artifacts/pinpoint_train/author_by_cache_row.npy`.
+
+**Control run (no set head, otherwise identical):** pending at the time of writing; see lesson 70 for its result.
+
+**What this means for the design.**
+- The zoom tokens and the set head trained on seen photos do not help.
+- What helps:
+  1. retrain the reranker so its training pools match evaluation;
+  2. choose between areas from per-area evidence (area model);
+  3. spend zooms where they help (RL agent).
+- Next steps:
+  1. Run the hypothesis pipeline (areas, zooms, area model) on top of the retrained reranker.
+  2. Train longer (a full epoch is ~4 h) and with an expected-hit loss on the base scores.
+  3. Re-run the agent on the new states.

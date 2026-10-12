@@ -589,7 +589,9 @@ def eval_head(data: Path, checkpoint: Path | None) -> None:
     base_km = km_of(ref, own_pick(ref))
     for tag in ("train", "dev3k"):
         idx = np.asarray([p["index"] for p in json.loads((Path("artifacts/photo_sets") / tag / "photos.json").read_text(encoding="utf-8"))])
-        rows = [("retrained reranker", km_of(z, own_pick(z))[idx])] + ([("retrained + set head", km_of(z, set_pick)[idx])] if set_pick is not None else [])
+        wide_pick = np.where(z["rows"] >= 0, z["scores"], -np.inf).argmax(1)
+        rows = [("retrained, own pool", km_of(z, own_pick(z))[idx]), ("retrained, wide pool", km_of(z, wide_pick)[idx])]
+        rows += [("retrained + set head", km_of(z, set_pick)[idx])] if set_pick is not None else []
         b = base_km[idx]
         print(f"  {tag}: released Pinpoint {np.mean(b < 25):.1%} / {np.mean(b < 1):.1%} (25 / 1 km)")
         for label, k in rows:
