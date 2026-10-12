@@ -111,6 +111,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   - Soft kernels match it at 25 km and keep 1 km (Laplace 10 km).
   - A learned per-candidate weight + spread, and coverage-trained proposals (best-of-K, multiple-choice heads), don't beat it.
   - Top-5 coverage stays at ~51 / 53% vs a 62 / 63% candidate-list ceiling.
+- **73: merged pipeline on the test set** (user asked): 2 zooms, agreement pick **42.1 % < 25 km, +4.9** [+4.0, +5.9] over Pinpoint
+  (set pick +4.1, +1.5 at 1 km). Ties the previous pipeline (41.8; paired +0.2): simpler, not more accurate.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

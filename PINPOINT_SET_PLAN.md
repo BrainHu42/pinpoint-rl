@@ -182,3 +182,28 @@ Agreement pick throughout. The set pick keeps 1 km at about +1.7 train / +1.1 de
 - The learned policy beats the fixed rule (top-B Pinpoint areas) by only +0.0 to +0.3.
 - Most of the gain needs no zoom at all: area-level choice over the global pool and clue places gives +3.9 / +3.8.
 - So the action head has little to decide among areas alone. It needs costlier, more varied actions (clue reading on demand, live tools) to matter: steps 3 onward.
+
+## Merged pipeline on the test set (2026-10-13, the user asked; lesson 73)
+
+Frozen: answer head and budget-2 action head trained on all of train (retrained reranker setft_a), inputs normalised with train statistics.
+The benchmark photos only went through the pipeline (`pinpoint_set extract --name bench --ckpt-tag setft_a`, `photo-set --tags full`,
+`BASES=full scripts/retrained_pipeline.sh`, `hypothesis_agent --ckpt-tag setft_a --budgets 0 1 2 --apply-tag full`).
+Pre-declared main config: 2 zooms by the agent, agreement pick. % within 1 / 25 / 200 / 750 / 2500 km (change vs Pinpoint at 1 / 25 km, 95% CI):
+
+| | im2gps3k (1,480) | yfcc4k (2,315) | both (3,795) |
+|---|---|---|---|
+| Pinpoint top-1 | 21.8 / 48.9 / 64.6 / 79.6 / 89.8 | 14.8 / 29.8 / 47.0 / 66.1 / 81.3 | 17.5 / 37.2 / 53.9 / 71.4 / 84.6 |
+| Retrained reranker top-1 | 22.4 / 50.5 / 65.8 / 79.3 / 90.0 | 16.4 / 33.3 / 49.5 / 67.9 / 81.6 | 18.8 / 40.0 / 55.9 / 72.3 / 84.9 (+1.3 [+0.6, +1.9], +2.8 [+2.0, +3.7]) |
+| No zoom, agreement pick | 22.5 / 51.4 / 66.1 / 79.7 / 90.3 | 16.5 / 33.5 / 49.8 / 67.6 / 81.4 | 18.8 / 40.5 / 56.2 / 72.3 / 84.9 (+1.3, +3.3) |
+| **2 zooms (agent), agreement pick** | 20.1 / 53.2 / 66.8 / 79.5 / 90.1 | 14.8 / 35.0 / 50.5 / 67.6 / 80.9 | 16.8 / **42.1** / 56.8 / 72.2 / 84.5 (-0.7 [-1.5, +0.2], **+4.9** [+4.0, +5.9]) |
+| 2 zooms (agent), set pick | 22.6 / 52.1 / 66.4 / 79.5 / 90.1 | 16.6 / 34.5 / 50.4 / 67.6 / 80.9 | **19.0** / 41.3 / 56.7 / 72.2 / 84.5 (**+1.5** [+0.8, +2.2], +4.1 [+3.2, +5.1]) |
+| All areas zoomed, agreement pick | 20.0 / 52.7 / 66.6 / 79.9 / 90.5 | 15.0 / 35.2 / 50.8 / 68.4 / 82.1 | 17.0 / 42.0 / 56.9 / 72.9 / 85.4 (-0.5, +4.8) |
+| Previous pipeline, agreement pick | 20.3 / 52.5 / 65.5 / 79.7 / 89.9 | 14.7 / 35.0 / 50.9 / 67.9 / 81.1 | 16.9 / 41.8 / 56.6 / 72.5 / 84.6 (-0.6, +4.6) |
+
+- **Merged = previous pipeline on test.** Paired, at 25 km: agreement pick +0.2 [-0.5, +1.0] over the previous agreement pick; set pick
+  +0.0 at 25 km, -0.3 at 1 km vs the previous set-layer pick. On dev3k the merged pipeline looked +0.8 better (+5.5 vs +4.7).
+- What it buys: the same accuracy with 2 zooms instead of a restricted search in every area, one network instead of a set layer + comparator,
+  and a retrained reranker that alone gives +2.8 / +1.3 (25 / 1 km) on test.
+- Matches train / dev3k in size (+4.7 / +5.5 there); yfcc4k gains more (+5.2) than im2gps3k (+4.3). Gains sit at 1-200 km; 750 / 2500 km don't move.
+- The agreement pick costs 1 km (-0.7); the set pick keeps it (+1.5) for 0.8 less at 25 km. A soft kernel (lesson 72) is the obvious fix.
+

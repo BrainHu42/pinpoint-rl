@@ -27,7 +27,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   - RL zoom agent: 2 zooms = the full gain.
   - Next: run the area pipeline on the retrained reranker.
 
-  Benchmark result of the previous pipeline: +4.6 pts at 25 km over Pinpoint (eval halves, `HYPOTHESIS_PLAN.md`).
+  Benchmark result (eval halves, lesson 73): merged pipeline (retrained reranker, 2 agent zooms, answer head) 42.1% < 25 km,
+  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, `HYPOTHESIS_PLAN.md`).
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are

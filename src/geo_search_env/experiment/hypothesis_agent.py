@@ -12,7 +12,10 @@ Action head: from the current tokens, which unzoomed area to zoom next (sequenti
 Trained with REINFORCE (self-critical: the greedy rollout's reward is the baseline) against the frozen answer head; reward = the final answer
 < 25 km. Compared at each budget with zooming Pinpoint's top-B areas and with zooming everything.
 
-  python -m geo_search_env.experiment.hypothesis_agent [--ckpt-tag setft_a] [--budgets 0 1 2 3]
+  python -m geo_search_env.experiment.hypothesis_agent [--ckpt-tag setft_a] [--budgets 0 1 2 3] [--apply-tag full]
+
+--apply-tag: the models trained on all of train applied to another photo set (full = the test set, only when the user asks), per benchmark at
+1 / 25 / 200 / 750 / 2500 km; inputs are normalised with train statistics.
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ def _unzoomed_km(f: dict, photos: list[dict]) -> np.ndarray:
     return out
 
 
-def load(tag: str, ckpt_tag: str, device: str = "cuda") -> dict:
+def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None) -> dict:
     import torch
 
     feat_path, zoom_path = _paths(tag, ckpt_tag)
@@ -67,7 +70,8 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda") -> dict:
     photos = json.loads((Path("artifacts/photo_sets") / photo_tag / "photos.json").read_text(encoding="utf-8"))
     from .area_model import FEATURES
 
-    released_base = np.load(FEATURES[tag])["base_km"]
+    released = FEATURES.get(tag, hl_out() / f"hypothesis_features_{tag}_e4_vlmhyps_set.npz")
+    released_base = np.load(released)["base_km"]
     keep = np.isin(f["source"], SOURCES)
     if "center" not in f:
         f["center"] = zm["center"]
@@ -90,9 +94,11 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda") -> dict:
     cand = np.concatenate([np.stack([np.where(valid, zm["scores"][rows], 0), np.where(valid, s - best, 0), soft], -1), zm["features"][rows].astype(np.float32)], -1)
     un_km = _unzoomed_km({"photo": photo, "center": f["center"][rows]}, photos)
     set_km = np.where(f["set_top_in"][rows] > 0, f["set_km"][photo], f["km_agree"][rows])
-    norm = lambda x: (x - x.mean(0)) / (x.std(0) + 1e-6)
     cell = cand[valid]
-    cand = np.where(valid[..., None], (cand - cell.mean(0)) / (cell.std(0) + 1e-6), 0.0)
+    if stats is None:  # train: its own statistics; other sets reuse them
+        stats = {"pre": (pre.mean(0), pre.std(0) + 1e-6), "post": (post.mean(0), post.std(0) + 1e-6), "cand": (cell.mean(0), cell.std(0) + 1e-6)}
+    norm = lambda x, key: (x - stats[key][0]) / stats[key][1]
+    cand = np.where(valid[..., None], norm(cand, "cand"), 0.0)
 
     def pad(x, fill=0.0, dtype=np.float32):
         out = np.full((n, h_max) + x.shape[1:], fill, dtype)
@@ -100,7 +106,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda") -> dict:
         return out
 
     d = {
-        "pre": pad(norm(pre)), "post": pad(norm(post)), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
+        "pre": pad(norm(pre, "pre")), "post": pad(norm(post, "post")), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
         "km_zoom": pad(f["km_agree"][rows], np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
         "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
@@ -110,6 +116,8 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda") -> dict:
     t["n"] = n
     t["base_km"] = released_base
     t["rt_base_km"] = f["base_km"]
+    t["stats"] = stats
+    t["benchmark"] = np.asarray([e.get("benchmark", tag) for e in photos])
     return t
 
 
@@ -151,7 +159,13 @@ def _net(n_pre: int, n_post: int, n_c: int, dim: int = 64):
 
 
 def _sub(d, idx):
-    return {k: v[idx] for k, v in d.items() if hasattr(v, "shape") and k not in ("base_km", "rt_base_km")}
+    return {k: v[idx] for k, v in d.items() if hasattr(v, "shape") and k not in ("base_km", "rt_base_km", "benchmark")}
+
+
+def hl_out() -> Path:
+    from .hypothesis_learn import OUT as out
+
+    return out
 
 
 def _right(b, zoomed, rule="agree", r=25.0):
@@ -288,10 +302,43 @@ def evaluate(net, d, photos, budgets, action_states=None):
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
+def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str) -> None:
+    """All-of-train answer and action heads on another photo set, per benchmark."""
+
+    tr = load("train", ckpt_tag)
+    te = load(apply_tag, ckpt_tag, stats=tr["stats"])
+    n = tr["n"]
+    print(f"agent ({ckpt_tag or 'released Pinpoint'}) trained on all of train, applied to {apply_tag} ({te['n']} photos)", flush=True)
+    net = fit_answer(tr, np.arange(n), seed=100)
+    states = {B: fit_policy(net, tr, np.arange(n), B, seed=100 + B) for B in budgets if B > 0}
+    res = evaluate(net, te, np.arange(te["n"]), budgets, states)
+    answers = {"Pinpoint (released) top-1": te["base_km"], f"retrained reranker top-1": te["rt_base_km"]}
+    for key in [(0, "top", "agree")] + [(B, "agent", r) for B in budgets if B > 0 for r in ("agree", "set")] + [("all", "all", "agree"), ("all", "all", "set")]:
+        if key in res:
+            answers[f"budget {key[0]}, {key[1]}, {key[2]} pick"] = res[key]
+    thresholds = (1, 25, 200, 750, 2500)
+    for bench in sorted(set(te["benchmark"])) + ["all"]:
+        sel = np.ones(te["n"], bool) if bench == "all" else te["benchmark"] == bench
+        print(f"\n {bench} ({sel.sum()} photos): % within " + " / ".join(f"{t} km" for t in thresholds))
+        for name, km in answers.items():
+            d25 = 100 * (np.mean(km[sel] < 25) - np.mean(te["base_km"][sel] < 25))
+            d1 = 100 * (np.mean(km[sel] < 1) - np.mean(te["base_km"][sel] < 1))
+            print(f"   {name:34s} " + "  ".join(f"{100 * np.mean(km[sel] < t):5.1f}" for t in thresholds) + f"   ({d25:+.1f} at 25 km, {d1:+.1f} at 1 km)")
+    if apply_tag != "dev3k":
+        from .strategy_search import _bootstrap
+
+        km = answers.get("budget 2, agent, agree pick", answers.get(("budget all, all, agree pick")))
+        c = _bootstrap((km < 25).astype(float) - (te["base_km"] < 25))
+        print(f"\n budget-2 agent vs released Pinpoint at 25 km, all photos: {100 * c[0]:+.1f} [{100 * c[1]:+.1f}, {100 * c[2]:+.1f}]")
+    np.savez(hl_out() / f"agent_{apply_tag}_{ckpt_tag or 'released'}_answers.npz",
+             **{k.replace(" ", "_").replace(",", "").replace("(", "").replace(")", ""): v for k, v in answers.items()}, benchmark=te["benchmark"])
+
+
 def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1) -> None:
     from .strategy_search import _bootstrap
 
-    tr, dv = load("train", ckpt_tag), load("dev3k", ckpt_tag)
+    tr = load("train", ckpt_tag)
+    dv = load("dev3k", ckpt_tag, stats=tr["stats"])
     n = tr["n"]
     print(f"agent ({ckpt_tag or 'released Pinpoint'}): {n} train photos, up to {tr['mask'].shape[1]} areas, "
           f"{tr['mask'].sum().item() / n:.2f} per photo", flush=True)
@@ -327,8 +374,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ckpt-tag", default="", help="photo sets on a retrained reranker (pinpoint_set photo-set)")
     parser.add_argument("--budgets", type=int, nargs="*", default=(0, 1, 2, 3))
+    parser.add_argument("--apply-tag", help="apply the all-of-train models to this photo set (full = test set, only when the user asks)")
     args = parser.parse_args(argv)
-    run(args.ckpt_tag, args.budgets)
+    if args.apply_tag:
+        apply(args.ckpt_tag, args.budgets, args.apply_tag)
+    else:
+        run(args.ckpt_tag, args.budgets)
     return 0
 
 

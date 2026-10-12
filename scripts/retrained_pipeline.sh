@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."  # repo root
 ckpt_tag=${CKPT_TAG:-setft_a}
 export PINPOINT_RERANKER_CKPT=${CKPT:-artifacts/pinpoint_train/$ckpt_tag/checkpoints/ckpt_final.pt}
 py() { systemd-run --user --scope --quiet -p MemoryMax=${MEM:-20G} -p MemorySwapMax=0 env PYTHONPATH=src PINPOINT_RERANKER_CKPT=$PINPOINT_RERANKER_CKPT .venv/bin/python -m "$@"; }
-for base in dev3k train; do
+for base in ${BASES:-dev3k train}; do  # BASES=full: the test set (only when the user asks)
   tag=${base}_${ckpt_tag}
   echo "$(date +%T) $tag: Pinpoint areas + restricted searches"
   [ -s artifacts/agent/hypotheses_${tag}.npz ] || py geo_search_env.experiment.hypotheses run --tag $tag --k 5 || exit 1

@@ -553,7 +553,7 @@ def train_zoom(k: int, sources: Sequence[int], ensemble: int, save: Path | None,
 
 def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
     """The hypothesis pipeline on a retrained reranker (lesson 70; the merged-pipeline plan, step 1): its wide pool (extract --ckpt-tag) becomes
-    the photo sets' Pinpoint pool. Writes pinpoint_reference/mp16_{ckpt_tag}.npz (+ queries), photo_sets/{tag}_{ckpt_tag}/ (photos.json with the
+    the photo sets' Pinpoint pool. Writes pinpoint_reference/{mp16,bench}_{ckpt_tag}.npz (+ queries), photo_sets/{tag}_{ckpt_tag}/ (photos.json with the
     new pool sorted by score, labels.json and the clue inputs of the original set linked), and set_probs_{tag}_{ckpt_tag}.npz: the retrained
     reranker's softmax (T 0.2) over its pool, in the set-dump format (it replaces the offline set layer). Run hypotheses / hypothesis_compare /
     restricted with PINPOINT_RERANKER_CKPT set to the same checkpoint."""
@@ -563,27 +563,36 @@ def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
 
     from ..models.pinpoint_reranker import _discover_index
 
-    z = {k: v for k, v in np.load(OUT / f"mp16_32_8_8_{ckpt_tag}.npz").items() if k != "hidden"}  # read each array once
-    valid = z["rows"] >= 0
     index_dir = _discover_index()
     manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
     cache_indices = np.fromfile(index_dir / manifest["files"]["cache_indices"], dtype=np.int64)
     ref = Path("artifacts/pinpoint_reference")
-    np.savez(ref / f"mp16_{ckpt_tag}.npz", rows=z["rows"], cache_rows=np.where(valid, cache_indices[np.where(valid, z["rows"], 0)], -1),
-             latlon=z["latlon"], scores=np.where(valid, z["scores"], -np.inf), features=z["features"], truth=z["truth"])
-    shutil.copyfile(ref / "mp16_queries.json", ref / f"mp16_{ckpt_tag}_queries.json")
-    s_ = np.where(valid, z["scores"], -np.inf)
-    probs = np.exp((s_ - s_.max(1, keepdims=True)) / 0.2)
-    probs /= probs.sum(1, keepdims=True)
+    sources = {}
+
+    def source(kind):
+        """The retrained reranker's wide pools for MP16 queries (mp16) or both benchmark halves (bench), saved as a pinpoint_reference set."""
+        if kind not in sources:
+            z = {k: v for k, v in np.load(OUT / f"{kind}_32_8_8_{ckpt_tag}.npz").items() if k != "hidden"}  # read each array once
+            valid = z["rows"] >= 0
+            np.savez(ref / f"{kind}_{ckpt_tag}.npz", rows=z["rows"], cache_rows=np.where(valid, cache_indices[np.where(valid, z["rows"], 0)], -1),
+                     latlon=z["latlon"], scores=np.where(valid, z["scores"], -np.inf), features=z["features"], truth=z["truth"])
+            shutil.copyfile(ref / f"{kind}_queries.json", ref / f"{kind}_{ckpt_tag}_queries.json")
+            s_ = np.where(valid, z["scores"], -np.inf)
+            probs = np.exp((s_ - s_.max(1, keepdims=True)) / 0.2)
+            sources[kind] = (z, valid, probs / probs.sum(1, keepdims=True))
+        return sources[kind]
+
     agent = Path("artifacts/agent")
     for tag in tags:
         src, dst = Path("artifacts/photo_sets") / tag, Path("artifacts/photo_sets") / f"{tag}_{ckpt_tag}"
         dst.mkdir(parents=True, exist_ok=True)
         photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
+        kind = "bench" if "benchmark" in photos[0] else "mp16"
+        z, valid, probs = source(kind)
         for e in photos:
             v = valid[e["index"]]
             ll = z["latlon"][e["index"]][v].astype(float).tolist()
-            e["pool"], e["pool_rows"], e["pools"] = ll, z["rows"][e["index"]][v].tolist(), f"mp16_{ckpt_tag}"
+            e["pool"], e["pool_rows"], e["pools"] = ll, z["rows"][e["index"]][v].tolist(), f"{kind}_{ckpt_tag}"
             e["candidates"] = [["", a, b] for a, b in ll]
         (dst / "photos.json").write_text(json.dumps(photos), encoding="utf-8")
         shutil.copyfile(src / "labels.json", dst / "labels.json")
@@ -655,6 +664,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("cmd", choices=("extract", "train", "more-queries", "restricted", "apply", "zoom", "eval-head", "photo-set"))
     parser.add_argument("--checkpoint", type=Path, help="eval-head: retrained reranker checkpoint with a set head")
+    parser.add_argument("--tags", nargs="*", default=("train", "dev3k"), help="photo-set: photo sets to rebuild (full = test set, only when asked)")
     parser.add_argument("--ckpt-tag", default="", help="extract: output suffix (with PINPOINT_RERANKER_CKPT set to a retrained reranker)")
     parser.add_argument("--k", type=int, default=5, help="zoom: Pinpoint areas zoomed into")
     parser.add_argument("--sources", type=int, nargs="*", default=(0,), help="zoom: hypothesis sources (0 areas, 1 clue places, 2 VLM places)")
@@ -688,7 +698,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.cmd == "extract":
         extract(args.name, args.targets, args.limit, args.ckpt_tag)
     elif args.cmd == "photo-set":
-        photo_set(args.ckpt_tag)
+        photo_set(args.ckpt_tag, args.tags)
     elif args.cmd == "eval-head":
         eval_head(args.data, args.checkpoint)
     else:

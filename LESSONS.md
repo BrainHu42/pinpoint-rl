@@ -891,3 +891,12 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - The candidate list holds a right answer for 61.6 / 63.4%. The ~10-point gap to the proposals is not recoverable from the reranker's
       states with 35k photos.
     - Decision: swap the box rule for a small soft kernel (elegance, 1 km); look for coverage in new evidence, not in a better grouping.
+
+73. **Merged pipeline on the test set ties the previous pipeline (2026-10-13, the user asked; `PINPOINT_SET_PLAN.md`).** Frozen models
+    trained on all of train, eval halves (3,795 photos), % within 25 km vs Pinpoint's 37.2:
+    - 2 zooms by the agent, agreement pick: 42.1, **+4.9** [+4.0, +5.9] (im2gps3k +4.3, yfcc4k +5.2); 1 km -0.7.
+    - Set pick: +4.1 at 25 km, +1.5 [+0.8, +2.2] at 1 km. Retrained reranker alone: +2.8 / +1.3.
+    - Paired vs the previous pipeline (41.8): +0.2 [-0.5, +1.0]. The +0.8 dev3k edge did not transfer, so the merged pipeline is a
+      simplification (one network, 2 zooms, no offline set layer), not an accuracy gain.
+    - Lesson: gains below ~1 pt between pipelines on dev3k are within its noise for decisions; the next gain has to come from new evidence.
+
