@@ -95,6 +95,13 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   restricted to each, a learned set-level comparator picks one: **+2.9 / +3.5 pts on train** (CV; top-1 / agreement pick inside), **+3.8 /
   +4.6 on dev3k**. Oracle 49-51%. More hypotheses, more training photos and a 4B plausibility judge (zero-shot or fine-tuned) add nothing:
   misses are evidence-ambiguous (the right hypothesis has the weaker retrieval evidence in ~70%).
+- **70 (positive): look-zoom-rerank** (`PINPOINT_SET_PLAN.md`):
+  - Fine-tuning Pinpoint's own reranker (1.5M of its training photos, wide pools, photographer exclusion, co-trained set head) gives
+    **+3.1 / +3.3** as one model; +2.1 / +2.3 without the set head.
+  - Area model over zoomed CLS states: **+4.4 / +4.9**; areas + clues **+4.2 / +5.2**.
+  - RL zoom agent: 1 zoom reaches ~90% of the gain, 2 zooms all of it.
+  - A flat global + zoom set model doesn't help (+1.4).
+  - Pinpoint's training code has a leave-one-out bug with the released index (fixed in `pinpoint_train/`).
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

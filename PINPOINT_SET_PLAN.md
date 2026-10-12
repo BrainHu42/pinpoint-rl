@@ -1,4 +1,4 @@
-# Pinpoint-Set: look, zoom, rerank (2026-10-12; the user started an autonomous run on this plan)
+# Pinpoint-Set: look, zoom, rerank (2026-10-12; autonomous run done, results at the end)
 
 One set-aware model on top of Pinpoint replaces the hypothesis pipeline's hand-built parts. It is cleaner and keeps or improves
 performance. Background: `HYPOTHESIS_PLAN.md` (current pipeline, all results), `docs/pipeline_overview.png`, lessons 68-69.
@@ -124,7 +124,11 @@ Step 5 table. The leak-free version: the chooser scores each zoomed hypothesis f
 2. **No same-photographer exclusion in training**, while our evaluation excludes the query's photographer.
    Added `--exclude-author-path`, with authors per cache row in `artifacts/pinpoint_train/author_by_cache_row.npy`.
 
-**Control run (no set head, otherwise identical):** pending at the time of writing; see lesson 70 for its result.
+**Control run (no set head, otherwise identical, `artifacts/pinpoint_train/ft_nohead`):** wide-pool pick +2.1 / +2.3 (1 km +1.2 / +0.4),
+own pool +1.7 / +2.0. So:
+- matching training pools to evaluation (fine-tune with leave-one-out working, photographer exclusion, wide pools) gives about +2;
+- co-training the set head adds +1.0 / +1.0 to the reranker's *own* scores, though the head's picks are no better. The set objective
+  shapes the states.
 
 **What this means for the design.**
 - The zoom tokens and the set head trained on seen photos do not help.

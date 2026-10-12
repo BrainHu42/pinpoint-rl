@@ -21,9 +21,13 @@ experiments); full numbered lessons in `LESSONS.md`.**
   constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
   candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
   where the reranker is wrong but knowing the region would fix it (dev3k: 302 of 3,000, `agent_targets --tags dev3k`).
-- **Current plan (2026-10-12, user started an autonomous run on it): `PINPOINT_SET_PLAN.md`**: Pinpoint looks, zooms into its top areas, and one
-  set-aware model reranks all candidates; text clues as optional tokens; the LLM / RL agent becomes a later extension. Benchmark result of
-  the current pipeline: +4.6 pts at 25 km over Pinpoint (eval halves, `HYPOTHESIS_PLAN.md`).
+- **Current plan (2026-10-12): `PINPOINT_SET_PLAN.md`**: look, zoom, rerank. Results of the autonomous run (lesson 70):
+  - retrained Pinpoint reranker +3.1 / +3.3 (train CV / dev3k) as one model;
+  - area model over zoomed states +4.4 / +4.9;
+  - RL zoom agent: 2 zooms = the full gain.
+  - Next: run the area pipeline on the retrained reranker.
+
+  Benchmark result of the previous pipeline: +4.6 pts at 25 km over Pinpoint (eval halves, `HYPOTHESIS_PLAN.md`).
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
@@ -92,6 +96,14 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator; best:
   `--e4 --variant vlmhyps --drop vlm --agree --ensemble 5`, saved `artifacts/agent/hyp_final_comparator.pt`), `hypothesis_vlm.py` +
   `scripts/hypvlm_run.sh` (plausibility judge, zero-shot / fine-tuned; no gain).
+- **Look-zoom-rerank (lesson 70):**
+  - `pinpoint_set.py`: set layer, wide extraction (`extract --ckpt-tag`), zoom pools, `eval-head`.
+  - `area_model.py`: area-then-spot model over zoomed CLS states.
+  - `zoom_agent.py`: RL zoom policy.
+  - `models/set_head.py`.
+  - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and the leave-one-out fix. Run it with
+    `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
+  - Retrained checkpoints: `artifacts/pinpoint_train/{setft_a,ft_nohead}`. The port loads one via `PINPOINT_RERANKER_CKPT`.
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).

@@ -838,3 +838,26 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Why it stops here: of 1,519 dev3k photos with a right hypothesis, the comparator misses 426; in ~70% of those the right hypothesis has
       the weaker retrieval evidence (score mass larger in only 26%). The fine-tuned judge prefers the right one in 58% of such pairs, too
       weak to move the choice. The remaining headroom (oracle 48-51% vs 37-38%) needs evidence the gallery doesn't have.
+
+70. **Look-zoom-rerank (2026-10-12, autonomous run; `PINPOINT_SET_PLAN.md`): retraining Pinpoint's reranker is the lever; zoom choice is
+    learnable.** % within 25 km vs the released Pinpoint, train CV / dev3k:
+    - Step 1, one flat set model over global + zoomed candidates (~92 per photo): +1.4 / +1.3, the same as the global wide set layer.
+      Zoomed candidates' scores are not comparable with global ones; with only 35k photos a flat model doesn't learn area-level reasoning.
+    - Step 2, area model (`area_model.py`): one token per hypothesis, attention-pooled from Pinpoint's CLS states in its zoom, plus hand
+      features. +4.4 / +4.9 (agreement pick; set pick +4.2 / +4.7, 1 km +1.7 / +1.6), vs the comparator's +4.1 / +4.7.
+      - With 16 Pinpoint-only features + states: +4.0 / +4.5.
+      - States without hand features: +3.3 / +3.2.
+      - Clue places add +0.7 over Pinpoint areas only. The 4B place proposals add +0.2 / -0.3: areas + clues reach **+4.2 / +5.2**.
+    - Step 4, Pinpoint's reranker fine-tuned with pinpoint-main's code (`pinpoint_train/`; 6,000 steps x 256 photos from its 4M training
+      photos, lr 5e-5, wide 32 / 8 / 8 pools with original-list rank features, same-photographer exclusion, co-trained set head):
+      - its own pick over the wide pool: **+3.1 / +3.3** (1 km +1.6 / +1.0), one model, no LLM;
+      - control without the set head: +2.1 / +2.3;
+      - the co-trained set head's picks: +2.6 / +2.9. Trained on photos the reranker has seen, its picks don't transfer, but co-training
+        improves the reranker's own scores by +1.0;
+      - the offline set layer on the retrained states: no gain.
+    - Bug: the released index's source is named "source_0" and the data module's "mp16", so leave-one-out never removed the query from
+      its own pool (training accuracy 100%). Fixed with an alias in `retrieval_index._build_source_lookup`.
+    - Step 5, RL zoom agent (`zoom_agent.py`): REINFORCE policy over pre-zoom evidence picks which hypotheses to zoom. The chooser sees
+      only zoomed hypotheses' own evidence, so there is no leak.
+      - 1 zoom: +3.5 / +3.8, vs +1.1 / +2.1 for Pinpoint's top area.
+      - 2 zooms: +4.0 / +4.2, equal to zooming all ~6.2 hypotheses.
