@@ -111,10 +111,10 @@ class _Labeller:
 def _search_chunk(args: tuple[list[dict], dict[str, dict[str, str]], dict[str, str]]) -> list[dict[str, Any]]:
     from .text_search import TextSearch, haversine_km
 
-    photos, phrases, authors = args
+    photos, phrases, owns = args
     tool, rows = TextSearch(), []
     for e in photos:
-        own = (int(e["image_id"].split("_")[-1].split(".")[0]), authors.get(e["image_id"], ""))
+        own = owns[e["image_id"]]
         for q, src in phrases.get(e["image_id"], {}).items():
             r = tool.search(q, exclude=own)
             row: dict[str, Any] = {"image_id": e["image_id"], "query": q, "source": src, "kind": r.kind, "hint": r.hint, "loose": r.loose,
@@ -127,23 +127,56 @@ def _search_chunk(args: tuple[list[dict], dict[str, dict[str, str]], dict[str, s
     return rows
 
 
+def _owns(photos: list[dict]) -> dict[str, tuple[int, str]]:
+    """(Flickr photo id, user) of each photo, excluded from the YFCC title search (the photo and its photographer). MP16 ids end in the photo
+    id (user from the MP16 metadata); im2gps3k ids are "<photo id>_<secret>_<server>_<user>.jpg"; yfcc4k ids are "<photo id>.jpg" (user
+    looked up in the YFCC table). Benchmark photos are themselves in YFCC100M, so this exclusion matters."""
+
+    import sqlite3
+
+    from .text_search import NVME, ROOT
+    from .yfcc_names import _mp16_authors
+
+    out: dict[str, tuple[int, str]] = {}
+    mp16 = [e for e in photos if "benchmark" not in e]
+    if mp16:
+        authors = _mp16_authors({e["image_id"] for e in mp16})
+        out |= {e["image_id"]: (int(e["image_id"].split("_")[-1].split(".")[0]), authors.get(e["image_id"], "")) for e in mp16}
+    bench = [e for e in photos if "benchmark" in e]
+    lookup = []
+    for e in bench:
+        parts = e["image_id"].rsplit(".", 1)[0].split("_")
+        if len(parts) >= 4:
+            out[e["image_id"]] = (int(parts[0]), parts[-1])
+        else:
+            lookup.append(e["image_id"])
+    if lookup:
+        db = NVME / "yfcc.db" if (NVME / "yfcc.db").exists() else ROOT / "yfcc.db"
+        ids = {int(i.rsplit(".", 1)[0]): i for i in lookup}
+        con = sqlite3.connect(db)
+        con.execute("CREATE TEMP TABLE want (photo_id INTEGER PRIMARY KEY)")
+        con.executemany("INSERT INTO want VALUES (?)", [(i,) for i in ids])
+        uid = dict(con.execute("SELECT m.photo_id, m.uid FROM meta m JOIN want w ON m.photo_id = w.photo_id").fetchall())
+        out |= {name: (pid, uid.get(pid, "")) for pid, name in ids.items()}
+        print(f"  yfcc users found for {sum(p in uid for p in ids)} of {len(ids)} photos", flush=True)
+    return out
+
+
 def search(tag: str, clues: str = "9b", workers: int = 8) -> None:
     import multiprocessing
     import os
     import time
 
-    from .yfcc_names import _mp16_authors
-
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     phrases = _raw_phrases(tag, clues)
     photos = [e for e in photos if e["image_id"] in phrases]
-    authors = _mp16_authors({e["image_id"] for e in photos})
+    owns = _owns(photos)
     chunks = [photos[i:i + 200] for i in range(0, len(photos), 200)]
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):  # one BLAS thread per worker: clustering is 2x faster
         os.environ.setdefault(var, "1")
     start, rows = time.time(), []
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
-        for k, part in enumerate(pool.imap(_search_chunk, [(c, {e["image_id"]: phrases[e["image_id"]] for e in c}, authors) for c in chunks])):
+        for k, part in enumerate(pool.imap(_search_chunk, [(c, {e["image_id"]: phrases[e["image_id"]] for e in c}, {e["image_id"]: owns[e["image_id"]] for e in c}) for c in chunks])):
             rows += part
             if k % 10 == 0:
                 print(f"  {min((k + 1) * 200, len(photos))} of {len(photos)} photos, {len(rows)} searches, {time.time() - start:.0f} s", flush=True)

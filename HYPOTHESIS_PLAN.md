@@ -330,3 +330,19 @@ train features are out-of-fold; 5-model comparator ensembles; change vs Pinpoint
   0.004; train scored by out-of-fold models): no gain. As a within-hypothesis pick +3.7 / +1.4 on train CV (dev3k +4.0 / +1.5), below the
   global set pick (+3.9 / +1.6); its best / log-sum-exp logits as comparator features leave the comparator at +3.6 / +4.1 (was +3.5 / +4.1).
   Trained on global pools, it does not transfer to the tight +-25 km pools.
+
+## Test-set result (2026-10-12, run once at the user's request; eval halves, photo set `full`, 3,795 photos)
+Everything trained / chosen on train and dev3k beforehand; the benchmark photos only went through the frozen pipeline (`scripts/full_pipeline.sh`,
+`pinpoint_set extract --name bench` + `apply --tag full`, `hypothesis_learn --e4 --variant vlmhyps_set --drop vlm setr --agree --ensemble 5
+--apply full`, comparator saved `artifacts/agent/hyp_final_set_comparator.pt`). The YFCC title search excludes each test photo and its
+photographer (all yfcc4k photos are in YFCC100M; `region_evidence._owns`). % within 1 / 25 / 200 / 750 / 2500 km (change vs Pinpoint at 1 / 25 km, 95% CI):
+
+| | im2gps3k (1,480) | yfcc4k (2,315) | both (3,795) |
+|---|---|---|---|
+| Pinpoint top-1 | 21.8 / 48.9 / 64.6 / 79.6 / 89.8 | 14.8 / 29.8 / 47.0 / 66.1 / 81.3 | 17.5 / 37.2 / 53.9 / 71.4 / 84.6 |
+| Set layer alone | 21.8 / 48.2 / 64.7 / 79.3 / 89.7 | 16.3 / 32.7 / 49.4 / 66.9 / 81.4 | 18.5 / 38.7 / 55.3 / 71.8 / 84.6 (+1.0, +1.5) |
+| Pipeline, agreement pick | 20.3 / 52.5 / 65.5 / 79.7 / 89.9 | 14.7 / 35.0 / 50.9 / 67.9 / 81.1 | 16.9 / **41.8** / 56.6 / 72.5 / 84.6 (-0.6, **+4.6** [+3.7, +5.6]) |
+| Pipeline, set-layer pick | 23.0 / 51.9 / 65.4 / 79.7 / 89.9 | 16.9 / 34.6 / 51.0 / 67.9 / 81.1 | **19.3** / 41.3 / 56.6 / 72.5 / 84.6 (**+1.8** [+1.0, +2.6], +4.1 [+3.2, +5.1]) |
+- Matches dev3k (+4.7 agree / +4.5 set pick at 25 km): no sign of overfitting to dev. Gains are at 1-200 km; 750 / 2500 km barely move.
+- im2gps3k: set layer alone -0.6 at 25 km (n.s.), pipeline +3.0-3.6. yfcc4k: set layer alone +2.9, pipeline +4.8-5.3.
+- Caveat: the clue code drops clues for photos whose true location has no Overture region label (it can only remove evidence).

@@ -159,7 +159,7 @@ def oracle(tag: str, clues: bool = False) -> None:
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     z = dict(np.load(OUT / f"hypotheses_{tag}{'_clues' if clues else ''}.npz"))
-    pools = load_pools(photos[0].get("pools", "mp16"))
+    pools = load_pools(pools_name(photos))
     truth = np.asarray([e["truth"] for e in photos])
     n = len(photos)
     base = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] < 25 for e in photos])
