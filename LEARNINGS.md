@@ -107,6 +107,10 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   Pinpoint).
   - One network with answer + RL action heads: 2 zooms +4.7 / +5.5, no zoom +3.9 / +3.8.
   - The learned zoom policy adds only +0.0 to +0.3 over zooming the top areas.
+- **72 (negative): replacing the agreement rule** (`location_density.py`):
+  - Soft kernels match it at 25 km and keep 1 km (Laplace 10 km).
+  - A learned per-candidate weight + spread, and coverage-trained proposals (best-of-K, multiple-choice heads), don't beat it.
+  - Top-5 coverage stays at ~51 / 53% vs a 62 / 63% candidate-list ceiling.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

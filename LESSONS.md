@@ -874,3 +874,20 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       - no zoom at all: +3.9 / +3.8.
     - Most of the gain is area-level choice, not zooming. The policy adds +0.0 to +0.3 over a fixed rule, so an action head needs
       costlier, more varied actions to matter.
+
+72. **Replacing the agreement rule: soft kernels are free, learned versions don't help (2026-10-13; `location_density.py`).** On the
+    retrained reranker's ~46 candidates (train CV / dev3k):
+    - The fixed rule adds little there: agreement T 0.2 picks 35.0 / 36.9% < 25 km vs the reranker's top-1 35.5 / 36.8%.
+    - Hand-made kernels (box, Gaussian 2-50 km, Laplace, multi-scale; NMS at 25 km) are all within ~0.5 at 25 km.
+      Small soft kernels keep 1 km: Laplace 10 km, T 0.1 gives 17.4 / 18.4% vs 15.0 / 15.8% for the box rule.
+      Right area among the top 5 proposals: ~51 / 53% for every kernel.
+    - Learned location distribution: per-candidate weight + Gaussian spread from the reranker's states, mixture NLL with a 10% uniform
+      floor.
+      - 25 km-mass pick: -0.3 / -0.1 vs the reranker's top-1.
+      - Peak pick: +0.4 / +0.1 at 1 km, -0.9 at 25 km.
+      - Top-5 coverage: 50.9 / 53.0%, the same as the fixed rule.
+    - Training proposals for coverage hurt, using either a soft best-of-5 loss or multiple-choice learning with 5 winner-takes-all
+      heads: 48.3 / 50.8% and 47.9 / 50.0% top-5 coverage.
+    - The candidate list holds a right answer for 61.6 / 63.4%. The ~10-point gap to the proposals is not recoverable from the reranker's
+      states with 35k photos.
+    - Decision: swap the box rule for a small soft kernel (elegance, 1 km); look for coverage in new evidence, not in a better grouping.
