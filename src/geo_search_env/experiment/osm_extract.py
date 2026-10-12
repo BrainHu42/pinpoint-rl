@@ -11,10 +11,11 @@ FEATURES tags (churches, towers, bridges, peaks, rivers, stations...: what featu
 first name-like tag, else ''), tags (JSON of all tags minus DROP_PREFIXES). Runs in the osm env (pyosmium, pyarrow, numpy).
 
 Passes: (1) nodes: libosmium stores every node location in the dense cache, Python sees only the kept nodes; (2) relations: kept
-multipolygon / boundary relations and their non-inner member ways; (3) kept ways and (4) member ways: node ids collected in Python (at
-most MAX_REFS per way, evenly spaced), their locations read from the cache with numpy in sorted batches. Letting libosmium add locations
-instead looks up every node of all ~1.1B planet ways (mostly unnamed buildings) and crawled at ~12 MB/min once the cache outgrew RAM.
-A relation's box is the union of its member ways' boxes."""
+multipolygon / boundary relations and their non-inner member ways; (3) kept ways and (4) member ways: Python writes (way, node id)
+pairs (at most MAX_REFS nodes per way, evenly spaced) to N_RANGES files by node-id range on the NVMe drive and the kept ways' tags to
+temporary Parquet; then each node-id range of the cache is read once, sequentially, and the pairs of that range give every way's box.
+Random lookups don't work at planet scale: libosmium's location handler visits every node of all ~1.1B ways (~12 MB/min once the cache
+outgrew RAM) and memory-mapped lookups for kept ways only manage ~3k page faults/s. A relation's box is the union of its member ways'."""
 
 from __future__ import annotations
 
@@ -43,8 +44,10 @@ FEATURES = {  # key -> values kept without a name ("*" = any value)
 DROP_PREFIXES = ("source", "note", "fixme", "FIXME", "created_by", "tiger:", "gnis:", "NHD:", "nhd:", "lacounty:", "osak:", "massgis:",
                  "yh:", "kms:", "naptan:", "at_bev:", "linz:", "canvec:", "geobase:", "check_date", "survey:", "mapillary", "attribution")
 AREA_TYPES = {"multipolygon", "boundary"}
-MAX_REFS = 64  # node locations read per way (evenly spaced, ends included); enough for a bounding box
-BATCH_WAYS = 1_000_000
+MAX_REFS = 32  # node locations read per way (evenly spaced, ends included); enough for a bounding box
+BATCH_WAYS = 5_000_000  # ways between flushes of their (way, node) pairs to the range files
+N_RANGES = 16  # node-id ranges of the cache (~7 GB each on the planet), each read into RAM once
+PAIR = np.dtype([("seq", "<i8"), ("id", "<i8")])
 PART_ROWS = 2_000_000
 UNDEFINED = np.iinfo(np.int32).max  # libosmium's undefined Location coordinate
 SCHEMA = pa.schema([("osm_type", pa.string()), ("osm_id", pa.int64()), ("lat", pa.float32()), ("lon", pa.float32()),
@@ -68,15 +71,21 @@ def _key_filter():
     return osmium.filter.KeyFilter(*NAME_KEYS, *FEATURES)  # C++ pre-filter; _wanted makes the exact decision
 
 
+def _tags_json(tags: dict[str, str]) -> str:
+    return json.dumps({k: v for k, v in tags.items() if not k.startswith(DROP_PREFIXES)}, ensure_ascii=False, separators=(",", ":"))
+
+
 class _Parts:
     def __init__(self, out: Path, first: int = 0) -> None:
         self.out, self.rows, self.part, self.count = out, {f: [] for f in SCHEMA.names}, first, {"n": 0, "w": 0, "r": 0}
 
     def add(self, kind: str, osm_id: int, box: tuple[float, float, float, float], tags: dict[str, str]) -> None:
+        self.add_json(kind, osm_id, box, _name(tags), _tags_json(tags))
+
+    def add_json(self, kind: str, osm_id: int, box: tuple[float, float, float, float], name: str, tags_json: str) -> None:
         lat_min, lat_max, lon_min, lon_max = box
-        kept = {k: v for k, v in tags.items() if not k.startswith(DROP_PREFIXES)}
         for f, v in zip(SCHEMA.names, (kind, osm_id, (lat_min + lat_max) / 2, (lon_min + lon_max) / 2, lat_min, lat_max, lon_min, lon_max,
-                                       _name(tags), json.dumps(kept, ensure_ascii=False, separators=(",", ":")))):
+                                       name, tags_json)):
             self.rows[f].append(v)
         self.count[kind] += 1
         if len(self.rows["osm_id"]) >= PART_ROWS:
@@ -97,25 +106,52 @@ def _refs(way) -> list[int]:
     return [nodes[i].ref for i in np.linspace(0, n - 1, MAX_REFS).astype(int)]
 
 
-def _boxes(cache: np.memmap, refs: list[list[int]]) -> np.ndarray:
-    """[ways, 4] lat_min, lat_max, lon_min, lon_max (NaN when no node has a location), reading the cache in id order."""
-    counts = np.fromiter((len(r) for r in refs), dtype=np.int64, count=len(refs))
-    ids = np.fromiter((i for r in refs for i in r), dtype=np.int64, count=int(counts.sum()))
-    order = np.argsort(ids, kind="stable")
-    xy = np.empty((len(ids), 2), dtype=np.int32)
-    inside = ids[order] < len(cache)
-    xy[order[inside]] = cache[ids[order][inside]]
-    xy[order[~inside]] = UNDEFINED
-    lon, lat = xy[:, 0].astype(np.float64) / 1e7, xy[:, 1].astype(np.float64) / 1e7
-    bad = xy[:, 0] == UNDEFINED
-    lon[bad], lat[bad] = np.nan, np.nan
-    starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
-    out = np.full((len(refs), 4), np.nan)
-    nonempty = counts > 0
-    with np.errstate(invalid="ignore"):
-        for col, (values, reduce) in enumerate(((lat, np.fmin), (lat, np.fmax), (lon, np.fmin), (lon, np.fmax))):
-            out[nonempty, col] = reduce.reduceat(values, starts[nonempty])
-    return out
+class _Pairs:
+    """(way sequence number, node id) pairs, appended to one file per node-id range."""
+
+    def __init__(self, work: Path, tag: str, cache_ids: int) -> None:
+        self.files = [work / f"{tag}-{r:02d}.bin" for r in range(N_RANGES)]
+        for f in self.files:
+            f.unlink(missing_ok=True)
+        self.cache_ids, self.span = cache_ids, -(-cache_ids // N_RANGES)
+        self.seq, self.ids = [], []
+
+    def add(self, seq: int, refs: list[int]) -> None:
+        self.seq.extend([seq] * len(refs))
+        self.ids.extend(refs)
+
+    def flush(self) -> None:
+        if not self.ids:
+            return
+        pairs = np.empty(len(self.ids), dtype=PAIR)
+        pairs["seq"], pairs["id"] = self.seq, self.ids
+        ranges = np.minimum(pairs["id"] // self.span, N_RANGES - 1)
+        for r in np.unique(ranges):
+            with self.files[r].open("ab") as f:
+                pairs[ranges == r].tofile(f)
+        self.seq, self.ids = [], []
+
+    def boxes(self, cache_file: Path, n: int) -> np.ndarray:
+        """[n, 4] float32 lat_min, lat_max, lon_min, lon_max per way (NaN when none of its nodes has a location); deletes the files."""
+        box = np.full((n, 4), np.nan, dtype=np.float32)
+        for r, f in enumerate(self.files):
+            if not f.exists():
+                continue
+            pairs = np.fromfile(f, dtype=PAIR)
+            pairs = pairs[pairs["id"] < self.cache_ids]  # nodes missing from the planet (deleted, or beyond the cache)
+            if len(pairs) == 0:
+                f.unlink()
+                continue
+            first = int(pairs["id"].min())
+            count = int(pairs["id"].max()) - first + 1
+            xy = np.fromfile(cache_file, dtype=np.int32, count=2 * count, offset=8 * first).reshape(-1, 2)[pairs["id"] - first]
+            ok = xy[:, 0] != UNDEFINED
+            seq, lon, lat = pairs["seq"][ok], (xy[ok, 0] / 1e7).astype(np.float32), (xy[ok, 1] / 1e7).astype(np.float32)
+            for col, (values, reduce) in enumerate(((lat, np.fmin), (lat, np.fmax), (lon, np.fmin), (lon, np.fmax))):
+                reduce.at(box[:, col], seq, values)
+            del pairs, xy
+            f.unlink()
+        return box
 
 
 def _nodes(pbf: Path, parts: _Parts, cache: Path) -> None:
@@ -143,44 +179,55 @@ def _relations(pbf: Path) -> tuple[list[tuple[int, dict[str, str]]], np.ndarray,
     return relations, np.asarray(rel_index, dtype=np.int64), np.asarray(way_ids, dtype=np.int64)
 
 
-def _ways(pbf: Path, parts: _Parts, cache: np.memmap) -> None:
-    batch: list[tuple[int, dict[str, str]]] = []
-    refs: list[list[int]] = []
+def _ways(pbf: Path, parts: _Parts, cache_file: Path, work: Path, cache_ids: int) -> None:
+    """Kept ways: tags to temporary Parquet in pass order, node pairs to the range files; then boxes, then the final parts."""
+    pairs, rows, temp, n = _Pairs(work, "ways", cache_ids), {"osm_id": [], "name": [], "tags": []}, [], 0
 
-    def flush() -> None:
-        for (way_id, tags), box in zip(batch, _boxes(cache, refs)):
-            if not np.isnan(box[0]):
-                parts.add("w", way_id, tuple(float(v) for v in box), tags)
-        batch.clear()
-        refs.clear()
+    def flush_rows() -> None:
+        if rows["osm_id"]:
+            temp.append(work / f"ways-rows-{len(temp):04d}.parquet")
+            pq.write_table(pa.table(rows), temp[-1])
+            for v in rows.values():
+                v.clear()
 
     for way in osmium.FileProcessor(str(pbf), osmium.osm.WAY).with_filter(_key_filter()):
         tags = dict(way.tags)
         if _wanted(tags):
-            batch.append((way.id, tags))
-            refs.append(_refs(way))
-            if len(batch) >= BATCH_WAYS:
-                flush()
-    flush()
+            rows["osm_id"].append(way.id)
+            rows["name"].append(_name(tags))
+            rows["tags"].append(_tags_json(tags))
+            pairs.add(n, _refs(way))
+            n += 1
+            if n % BATCH_WAYS == 0:
+                pairs.flush()
+                flush_rows()
+                print(f"  ways: {n / 1e6:.0f}M collected", flush=True)
+    pairs.flush()
+    flush_rows()
+    box = pairs.boxes(cache_file, n)
+    seq = 0
+    for f in temp:
+        t = pq.read_table(f).to_pydict()
+        for way_id, name, tags_json in zip(t["osm_id"], t["name"], t["tags"]):
+            if not np.isnan(box[seq, 0]):
+                parts.add_json("w", way_id, tuple(float(v) for v in box[seq]), name, tags_json)
+            seq += 1
+        f.unlink()
 
 
-def _member_boxes(pbf: Path, cache: np.memmap, way_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _member_boxes(pbf: Path, cache_file: Path, work: Path, cache_ids: int, way_ids: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Sorted member way ids and their boxes."""
-    ids: list[int] = []
-    boxes: list[np.ndarray] = []
-    refs: list[list[int]] = []
+    pairs, found = _Pairs(work, "members", cache_ids), []
     for way in osmium.FileProcessor(str(pbf), osmium.osm.WAY).with_filter(osmium.filter.IdFilter(np.unique(way_ids).tolist())):
-        ids.append(way.id)
-        refs.append(_refs(way))
-        if len(refs) >= BATCH_WAYS:
-            boxes.append(_boxes(cache, refs))
-            refs.clear()
-    if refs:
-        boxes.append(_boxes(cache, refs))
-    found = np.asarray(ids, dtype=np.int64)
-    box = np.concatenate(boxes) if boxes else np.empty((0, 4))
-    order = np.argsort(found)
-    return found[order], box[order]
+        pairs.add(len(found), _refs(way))
+        found.append(way.id)
+        if len(found) % BATCH_WAYS == 0:
+            pairs.flush()
+    pairs.flush()
+    box = pairs.boxes(cache_file, len(found))
+    ids = np.asarray(found, dtype=np.int64)
+    order = np.argsort(ids)
+    return ids[order], box[order]
 
 
 def extract(pbf: Path, out: Path, cache_file: Path, skip_nodes: bool) -> None:
@@ -207,12 +254,14 @@ def extract(pbf: Path, out: Path, cache_file: Path, skip_nodes: bool) -> None:
         _nodes(pbf, parts, cache_file)
         parts.flush()
         print(f"nodes: {parts.count['n']:,} kept, {(time.time() - start) / 60:.0f} min", flush=True)
-    cache = np.memmap(cache_file, dtype=np.int32, mode="r").reshape(-1, 2)
+    cache_ids = cache_file.stat().st_size // 8
+    work = cache_file.parent / "work"
+    work.mkdir(exist_ok=True)
     relations, rel_index, way_ids = _relations(pbf)
     print(f"relations: {len(relations):,} kept, {len(way_ids):,} member ways, {(time.time() - start) / 60:.0f} min", flush=True)
-    _ways(pbf, parts, cache)
+    _ways(pbf, parts, cache_file, work, cache_ids)
     print(f"ways: {parts.count['w']:,} kept, {(time.time() - start) / 60:.0f} min", flush=True)
-    found, boxes = _member_boxes(pbf, cache, way_ids)
+    found, boxes = _member_boxes(pbf, cache_file, work, cache_ids, way_ids)
     pos = np.clip(np.searchsorted(found, way_ids), 0, max(len(found) - 1, 0))
     hit = (found[pos] == way_ids) if len(found) else np.zeros(len(way_ids), bool)
     union = np.full((len(relations), 4), np.nan)
