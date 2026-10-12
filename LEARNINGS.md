@@ -95,6 +95,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   restricted to each, a learned set-level comparator picks one: **+2.9 / +3.5 pts on train** (CV; top-1 / agreement pick inside), **+3.8 /
   +4.6 on dev3k**. Oracle 49-51%. More hypotheses, more training photos and a 4B plausibility judge (zero-shot or fine-tuned) add nothing:
   misses are evidence-ambiguous (the right hypothesis has the weaker retrieval evidence in ~70%).
+- 70-72 (other machine, merged 2026-10-12): Pinpoint's attention reranker without the photographer filter (29.5 / 47.4 / 61.9);
+  by-eye diagnosis of 140 of its misses; **commons26**, a new benchmark of 2026 Commons photos (reranker test 4.6 / 16.8 / 33.7 at 1 / 25 / 200 km,
+  oracle over its 12 33.5 at 25 km), built by `commons_bench.py`, scored by `commons26_score.py`.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

@@ -92,6 +92,8 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   and the benchmark harness for any VLM chooser (`vlm_sampling`; `scripts/eval_run.sh`, `scripts/full_eval.sh`).
 - `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
 - `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
+- `experiment/commons_bench.py`: the commons26 benchmark (lesson 72): Commons scan, selection, download, gallery near-duplicates,
+  27B tiers, release (`data/pinpoint/commons26/release/`, loader entry `commons26`) and `score`; `commons26_score.py` is the standalone scorer.
 - Shared helpers from the knowledge SFT line: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool),
   `knowledge_data.py`, `knowledge_check.py`, `name_score.py`.
 - Removed lines: the agent-tool, landmark and text-search checks (`geo_tools`, `poi_query`, `poi_near`, `landmark_match`, `landmark_id`,

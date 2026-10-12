@@ -838,3 +838,109 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Why it stops here: of 1,519 dev3k photos with a right hypothesis, the comparator misses 426; in ~70% of those the right hypothesis has
       the weaker retrieval evidence (score mass larger in only 26%). The fine-tuned judge prefers the right one in 58% of such pairs, too
       weak to move the choice. The remaining headroom (oracle 48-51% vs 37-38%) needs evidence the gallery doesn't have.
+
+<!-- Lessons 70-72 were written on the other machine (GitHub main, merged 2026-10-12), where they were numbered 51-53 and
+     "lesson 51" inside them means lesson 70. They measure benchmarks without the photographer filter and use that machine's
+     wrapper of the submission (pinpoint_reranker_eval.py, not merged; ours is models/pinpoint_reranker.py, lesson 54). -->
+70. **Pinpoint's attention reranker is the baseline from now on, evaluated without the photographer filter as in prior work; with the filter it ties
+    the one-step reranker (2026-10-07;
+    `models/pinpoint_reranker.py`, `pinpoint_reranker_eval.py`, outputs in `artifacts/pinpoint_reranker/`).** The submission's full model (contrastive
+    retrieval -> union of 8 image + 2 raw-image + 2 GPS neighbours from MP16 buckets 0-98 -> attention reranker with an OSV support token), run through
+    the submission's own code with one change: its exact MP16 search drops the query photographer's rows. Without the filter it matches the submission's
+    unchanged inference on all 7,533 im2gps3k + yfcc4k photos (same 12 candidates and top-1 on 100%). One photo per call, as the submission evaluates:
+    batches of 64 change the candidate set on ~25% of photos and the top-1 on ~4% (bf16 search numerics).
+    - Whole benchmarks, % within 1 / 25 / 200 / 750 / 2500 km:
+
+      | | n | filtered | no filter |
+      |---|---|---|---|
+      | im2gps3k | 2,997 | 20.3 / 47.2 / 62.9 / 78.4 / 90.1 | same (no im2gps3k photographer is in MP16) |
+      | yfcc4k | 4,536 | 14.6 / 29.3 / 45.6 / 65.3 / 80.6 | 32.8 / 44.1 / 56.4 / 71.8 / 84.1 |
+      | wikimedia | 6,017 | 8.5 / 24.7 / 57.5 / 82.5 / 92.6 | (no overlap) |
+
+      3,111 of 4,536 yfcc4k photos are by an MP16 photographer; without the filter yfcc4k gains 18 pts at 1 km and 15 at 25 km from the photographer's
+      own gallery photos. Any unfiltered number for yfcc4k (including the submission's own benchmark script) is not comparable.
+    - Against the one-step reranker on the 3,713 eval-half photos (placeholders dropped), paired change [95% bootstrap CI]: 1 km +0.9 [+0.0, +1.8],
+      25 km -0.9 [-1.9, +0.2], 200 km -1.3 [-2.4, -0.2]; im2gps3k +2.0 / +1.1 / +0.1, yfcc4k +0.1 / -2.1 / -2.2. Wikimedia: +0.5 / -0.3 / -1.9.
+      The one-step reranker was fitted on the benchmark tune halves, so it has a small home advantage; the attention reranker saw only MP16.
+    - Oracle over the attention reranker's 12 candidates: 30.6 / 55.9 / 75.8 (one-step pool of ~17: 34.2 / 60.2 / 80.3); wikimedia 16.4 / 44.9 / 81.2
+      (18.1 / 49.4 / 83.3). Choosing headroom is about 18 pts at 25 km with either.
+    - Unfiltered (the baseline from now on, user's decision, comparable to prior work), 3,713 eval-half photos: 29.5 / 47.4 / 61.9 / 76.7 / 88.1
+      (im2gps3k 21.5 / 48.9 / 64.4, yfcc4k 34.8 / 46.4 / 60.2); oracle over its 12: 43.7 / 64.2 / 80.6.
+    - So lessons 1-50 hold against the new baseline to within about a point when both are filtered. The choosers, comparator data and name scores still use the one-step pool
+      and order, built with the filter: on yfcc4k they must be rebuilt unfiltered before comparing with the unfiltered baseline (im2gps3k and wikimedia
+      are unaffected).
+
+71. **Where Pinpoint's attention reranker fails, by eye (2026-10-07; one reader, the agent; 140 random > 25 km misses, 70 per benchmark, eval half, no
+    filter; two scans of 40 and 100).** Misses are ~750 of 1,480 im2gps3k and ~1,190 of 2,233 yfcc4k eval-half photos; a candidate < 25 km is among its
+    12 for ~31% of them. Each photo was guessed blind (guesses written down), then checked against the label.
+    - Within 25 km by eye, reranker wrong: 8 of 140 (+1 low-confidence: Mendoza's grape-harvest parade). im2gps3k 6 of 70: Qingdao TV tower, Athens'
+      Acropoli metro station (Parthenon-frieze copy), Duxbury's Powder Point Bridge, the Prince Charles Edward cairn at Arnish near Stornoway (a plaque),
+      Mount Kinabalu's summit, a Porsche dealer in Luxembourg (porsche.lu on the car). yfcc4k 2 of 70: Toledo (a "San Silvestre Toledana" race banner),
+      Moab (Colorado River canyon). Right answer among the 12: 4 of 8 (Athens 3rd, Kinabalu 2nd, Toledo 6th, Moab 2nd); never proposed: 4 (Qingdao,
+      Duxbury, Stornoway, Luxembourg). Readable text drives 3 of the 8; SigLIP2 retrieval barely uses it.
+    - Right country where the reranker had the wrong country or continent: 3 (Thai temple statue vs Arkansas, Spanish graffiti vs Valparaiso, Iberian
+      roller hockey vs Switzerland).
+    - Shared errors, where the photo points somewhere else: 5 (a German shop window in Shanghai; Chicago-like towers in San Francisco; Seville-style tiled
+      pergola in Buenos Aires' Rosedal; a Polish Coca-Cola ad at Atlanta's Coca-Cola museum; a French-plated car at a UK show). Plus my own outright misses
+      (a "UNIS" gym I put in Hanoi was in Beijing).
+    - Region only, usually the reranker's region too: ~50 (Valais, Scottish Highlands, Tuscany, Patagonia, Morocco, Japan, Vietnam, Taiwan, California...).
+      Getting the exact place would need a landmark.
+    - No place signal: 73 of 140 (pets, people, interiors, food, sky, close-ups, sports halls, fireworks); yfcc4k 39 of 70, im2gps3k 34 of 70.
+    - Choosing: of 45 misses with a right candidate among the 12, a person would pick it for ~4 (Athens, Kinabalu, Toledo, Moab); ~15 of the 45 have no
+      place signal at all (the right candidate is there by luck), the rest are look-alike neighbours (Saint-Ouen vs Bordeaux, Evolene vs Gampel, Suzhou vs
+      Shanghai). Agrees with lesson 35: little of the gap to the 12-candidate oracle is recoverable by inspection.
+    - So the visible wins are landmarks and text, ~6% of misses (~3% of all photos at 25 km), half outside the candidate list. A gain there needs a
+      recognizer or a text reader that can propose new places, not a better chooser.
+    - Expert-with-tools estimate (same 140, second pass, labels already known so optimistic; methods: web search of visible text, landmark and object
+      identification, terrain / peak and coastline matching on satellite or 3D maps, skyline matching, Street View, regional knowledge; reverse image search
+      of the photo itself excluded as leakage): better than the reranker on ~30 (13 high + 17 medium confidence; +3 low), im2gps3k 17, yfcc4k 13; 26 of them
+      within 25 km, 4 only country-level. Methods: landmark / object ~9, text search ~8, terrain matching ~7, skyline ~4, regional knowledge ~2. 17 of the 30
+      had a right answer among the 12 candidates, so verification against candidates (terrain, skyline, a found landmark) could fix about half; the rest need
+      new places. Unaided, by eye: 8. Roughly 10 pts at 25 km over all photos (~12 im2gps3k, ~8 yfcc4k) is the expert ceiling on these error types.
+
+72. **The old benchmarks are flawed; commons26 is a replacement built to fix them (2026-10-07/08; `commons_bench.py`, data `/data/pinpoint/commons26/`).**
+    - im2gps3k (n = 2,997): 198 photographers, 85% of photos from photographers with >= 10; 51% share an exact coordinate with another photo (43 at one
+      point); 62% have a same-photographer photo within 1 km. Errors cluster by photographer: attention-reranker SE at 25 km 2.25 pts clustered vs
+      0.91 iid (design effect 6.1; effective n ~500). yfcc4k: 3,481 photographers, design effect 1.3.
+    - Our tune / eval halves hash each photo alone (`strategy_search.py:102`): 97.5% of im2gps3k eval-half photos have their photographer in the tune
+      half, 47% a same-photographer tune photo within 1 km (yfcc4k 24% / 4%). Anything fitted on the tune halves can learn album locations.
+    - Also: 19.5% of yfcc4k has Flickr accuracy <= 12 (city level or coarser; reranker < 1 km 27 vs 34%); US 26-33%, southern hemisphere 6-8%;
+      Places365 says 18% of im2gps3k is indoor; Flickr placeholders not flagged by yfcc4k's `Placeholder` column.
+    - commons26 construction: every geotagged JPEG uploaded to Commons 2026-07-01 to 10-06 (search `haswbstatement:P1259`, ~10k / day; 4 days hit the
+      20k read cap), kept if EXIF GPS + capture date >= 2026-01-01 (GPS date stamp first) + camera model + long side >= 1024 px + GPS within 50 m of
+      the page's camera location, not bots / Mapillary: 293,881 photos from 4,794 uploaders (61% Europe, 2.1% Africa). Pick: continents in turn to
+      5,100, <= 5 per uploader, >= 1 km from any other photo, no country > 10%; 3 photos gone from Commons before download, 65 non-photos and 3 with
+      printed coordinates dropped, and 6 with open deletion requests / licence review on Commons (`check`, 2026-10-08) -> 5,023 from 2,345
+      uploaders (2.1 each; EU ~1,565, AS ~1,570, NA ~830, SA ~480, AF 333, OC 247; split by uploader, dev 977, test 4,046). Released for
+      Hugging Face with random IMG_IDs (the Commons page id is a lookup key to the answer; map in `id_map.json`, not released), a CC BY 4.0
+      licence for labels / embeddings (images keep their own licences), a canary GUID and a standalone `score.py`. 1,257 were taken January-June 2026 (slice `taken` >= 2026-07-01 for the strict post-cutoff check). The headline weights
+      the six continents equally (SE clustered by uploader); the plain mean is reported too.
+    - Commons can't supply equal continents: Africa has 215 uploaders in the window, and 833 photos per continent would need ~3x that (Oceania ~4x).
+      Supply levers measured on sample days: capture date >= 2026-01 instead of >= 2026-07 (+45% Africa uploaders; adopted), <= 5 per uploader at
+      >= 1 km instead of 3 at >= 2 km (adopted), accepting page coordinates without EXIF GPS (+3 Africa uploaders over 3 days; most such photos are
+      older or undated, rejected). Uploaders, not photos, are the limit: 10 per uploader or no cap barely helps, since one person's photos come from
+      one trip. Reaching equal continents would take a second source (e.g. Flickr, needs an API key) or an earlier upload window (loses the
+      post-cutoff guarantee).
+    - Gallery near-duplicates are not a problem by construction: 15 of 5,097 have an MP16 photo at cosine >= 0.95 (OSV-5M 0); >= 0.90 (431) are mostly
+      look-alikes hundreds of km away (clouds, altars, roads), so they are flagged, not dropped.
+    - Tiers (Qwen3.6-27B Q4, no location shown, JSON-schema output; without the schema it writes an analysis and runs out of tokens): landmark 1,581,
+      city 558, region 1,435, none 1,455. Against one blind reader (the agent) on 198 photos: exact 113 / 198, locatable vs none 175 / 198 (a first,
+      looser prompt: 99, 159; its non-photo flags still count, `tiers_prompt1.jsonl`); the 27B over-calls landmark (59 vs 29). Tiers are slices only:
+      excluding `none` from the headline, and not weighting continents, flattered Europe-heavy, locatable-looking photos by ~21 pts at 750 km.
+    - Top-1 MP16 SigLIP2 retrieval, no photographer filter (the only baseline run so far), < 1 / 25 / 200 / 750 / 2500 km:
+      | set | n | result |
+      |---|---|---|
+      | im2gps3k | 2,997 | 14.9 / 37.6 / 50.7 / 67.8 / 83.5 |
+      | yfcc4k | 4,536 | 29.5 / 38.1 / 47.0 / 61.9 / 76.5 |
+      | commons26 test, continent-balanced (headline) | 4,046 | 2.8 / 10.4 / 22.8 / 46.4 / 68.4 (± 0.3 / 0.7 / 1.0 / 1.2 / 1.1) |
+      | commons26 test, plain mean | 4,046 | 3.0 / 11.3 / 26.7 / 52.8 / 75.4 (AF 1.1 / 4.5 / 10.4 / 24.3 / 48.5, n = 268; EU 3.4 / 9.2 / 30.5 / 69.8 / 91.4) |
+      Coarse accuracy is similar; fine-scale accuracy collapses. The old sets reward finding the same scene in a 2010-era Flickr gallery.
+    - Pinpoint's attention reranker (the baseline; `pinpoint_reranker_eval run --benchmarks commons26`, unfiltered: no uploader is in MP16) on
+      commons26, continent-balanced, < 1 / 25 / 200 / 750 / 2500 km (predictions in `/data/pinpoint/commons26/pred_*.csv`):
+      | commons26 | n | retrieval top-1 | reranker top-1 | oracle over its 12 |
+      |---|---|---|---|---|
+      | dev | 977 | 3.1 / 12.1 / 25.2 / 44.8 / 67.7 | 6.2 / 22.1 / 38.7 / 62.7 / 78.5 | 11.0 / 38.1 / 64.0 / 79.8 / 91.8 |
+      | test | 4,046 | 2.8 / 10.4 / 22.8 / 46.4 / 68.4 | 4.6 / 16.8 / 33.7 / 58.4 / 78.0 (± 0.5 / 0.9 / 1.1 / 1.2 / 1.1) | 9.9 / 33.5 / 59.8 / 80.7 / 92.4 |
+      Test plain mean 4.7 / 17.6 / 38.8 / 65.4 / 83.3. By continent at 25 km: AS 21.7, OC 21.3, NA 20.0, EU 14.3, SA 13.2, AF 10.4; tier none 7.0.
+      Versus the old benchmarks (29.5 / 47.4 / 61.9 at 1 / 25 / 200 km), 1 km falls ~6x and 25 km ~3x. The headroom in choosing among the 12 is
+      the same in points as before (+16.7 at 25 km, old sets +16.8) but doubles the score here, so the project's choosing problem carries over.
