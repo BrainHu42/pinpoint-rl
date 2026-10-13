@@ -74,7 +74,11 @@ def pools_name(photos: list[dict]) -> str:
 def _queries(photos: list[dict]) -> list[dict]:
     """The query entries (MP16 rows) of a photo set, from the pool file its indices refer to."""
 
-    name = "queries_extra.json" if photos[0].get("pools") == "mp16_extra" else "queries.json"
+    pools = photos[0].get("pools") or ""
+    if pools.startswith("xfit"):  # cross-fitting halves (lesson 75): the query list saved with the pool set
+        queries = json.loads((Path("artifacts/pinpoint_reference") / f"{pools}_queries.json").read_text(encoding="utf-8"))
+        return [queries[e["index"]] for e in photos]
+    name = "queries_extra.json" if pools == "mp16_extra" else "queries.json"
     queries = json.loads((SFT_ROOT / name).read_text(encoding="utf-8"))
     return [queries[e["index"]] for e in photos]
 

@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import pickle
 from pathlib import Path
 
@@ -352,6 +353,14 @@ class MP16EmbedDataset(Dataset):
 
         self._indices = np.asarray(keep_rows, dtype=np.int64)
         self._selected_image_ids = keep_image_ids
+        # cross-fitting (geo_search_env lesson 75): train on one photographer half only; the retrieval index keeps every photo
+        mask_path = os.environ.get("PINPOINT_TRAIN_ROW_MASK")
+        if mask_path and self.split == "train":
+            keep = np.load(mask_path)[self._indices]
+            self._indices = self._indices[keep]
+            if self._selected_image_ids is not None:
+                self._selected_image_ids = [i for i, k in zip(self._selected_image_ids, keep) if k]
+            print(f"PINPOINT_TRAIN_ROW_MASK {mask_path}: {len(self._indices)} training rows")
 
     def _ensure_memmaps(self):
         if self._embeddings_mm is not None:

@@ -83,6 +83,9 @@ def _clue_features(tag: str, z: dict, judge: str = "4b") -> dict:
     from .clue_judge import _judge_path, _items
     from .strategy_search import _haversine_km
 
+    if not _judge_path(tag, judge, "4b").exists():  # photo sets without clue data (cross-fitting halves, lesson 75): no clue evidence
+        print(f"{tag}: no clue judgements, clue features are zero", flush=True)
+        return {f"{kind}_{stat}": np.zeros(len(z["photo"])) for kind in ("read", "recall") for stat in ("n", "p", "share", "rare")}
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     position = {e["image_id"]: i for i, e in enumerate(photos)}
     p_yes = {(r["image_id"], r["query"]): r["p_yes"] for r in json.loads(_judge_path(tag, judge, "4b").read_text(encoding="utf-8"))}

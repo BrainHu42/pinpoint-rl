@@ -29,7 +29,8 @@ import numpy as np
 OUT = Path("artifacts/pinpoint_set")
 SFT_ROOT = Path("artifacts/sft")
 NVME_INDEX = Path("/opt/dlami/nvme/pinpoint/attention_retrieval_index")  # staged copy of the index (hypotheses.NVME_INDEX), if present
-QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json"}
+QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json",
+               "xfit0": OUT / "queries_xfit0.json", "xfit1": OUT / "queries_xfit1.json"}  # cross-fitting halves (scripts/xfit_halves.py)
 
 
 def more_queries(n: int, seed: int = 2) -> None:
@@ -583,7 +584,9 @@ def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
             valid = z["rows"] >= 0
             np.savez(ref / f"{kind}_{ckpt_tag}.npz", rows=z["rows"], cache_rows=np.where(valid, cache_indices[np.where(valid, z["rows"], 0)], -1),
                      latlon=z["latlon"], scores=np.where(valid, z["scores"], -np.inf), features=z["features"], truth=z["truth"])
-            shutil.copyfile(ref / f"{kind}_queries.json", ref / f"{kind}_{ckpt_tag}_queries.json")
+            queries_src = ref / f"{kind}_queries.json" if (ref / f"{kind}_queries.json").exists() else OUT / f"queries_{kind}.json"  # xfit halves
+            queries_list = json.loads(queries_src.read_text(encoding="utf-8"))[:len(z["truth"])]
+            (ref / f"{kind}_{ckpt_tag}_queries.json").write_text(json.dumps(queries_list), encoding="utf-8")
             s_ = np.where(valid, z["scores"], -np.inf)
             probs = np.exp((s_ - s_.max(1, keepdims=True)) / 0.2)
             sources[kind] = (z, valid, probs / probs.sum(1, keepdims=True))
@@ -593,16 +596,23 @@ def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
     for tag in tags:
         src, dst = Path("artifacts/photo_sets") / tag, Path("artifacts/photo_sets") / f"{tag}_{ckpt_tag}"
         dst.mkdir(parents=True, exist_ok=True)
-        photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
-        kind = "bench" if "benchmark" in photos[0] else "mp16"
-        z, valid, probs = source(kind)
+        if tag.startswith("xfit"):  # cross-fitting halves (lesson 75): a new photo set over the half's trained-on queries, no clue data
+            kind = tag
+            z, valid, probs = source(kind)
+            queries = json.loads((OUT / f"queries_{kind}.json").read_text(encoding="utf-8"))[:len(z["truth"])]  # (--limit extractions)
+            photos = [{"index": i, "image_id": q["image_id"], "row": q["row"], "truth": z["truth"][i].astype(float).tolist()} for i, q in enumerate(queries)]
+        else:
+            photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
+            kind = "bench" if "benchmark" in photos[0] else "mp16"
+            z, valid, probs = source(kind)
         for e in photos:
             v = valid[e["index"]]
             ll = z["latlon"][e["index"]][v].astype(float).tolist()
             e["pool"], e["pool_rows"], e["pools"] = ll, z["rows"][e["index"]][v].tolist(), f"{kind}_{ckpt_tag}"
             e["candidates"] = [["", a, b] for a, b in ll]
         (dst / "photos.json").write_text(json.dumps(photos), encoding="utf-8")
-        shutil.copyfile(src / "labels.json", dst / "labels.json")
+        if (src / "labels.json").exists():
+            shutil.copyfile(src / "labels.json", dst / "labels.json")
         for name in (f"region_evidence_{tag}_4b.json", f"clue_judge_{tag}_4b_4b.json", f"observe_{tag}_4b.json", f"queries_{tag}_4b.json"):
             link = agent / name.replace(f"_{tag}_", f"_{tag}_{ckpt_tag}_", 1)
             if (agent / name).exists() and not link.exists():

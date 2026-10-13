@@ -108,7 +108,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     from .area_model import FEATURES
 
     released = FEATURES.get(tag, hl_out() / f"hypothesis_features_{tag}_e4_vlmhyps_set.npz")
-    released_base = np.load(released)["base_km"]
+    released_base = np.load(released)["base_km"] if released.exists() else f["base_km"]  # no released-Pinpoint run (cross-fitting halves)
     keep = np.isin(f["source"], SOURCES)
     if "center" not in f:
         f["center"] = zm["center"]
