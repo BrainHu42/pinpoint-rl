@@ -14,7 +14,7 @@ first name-like tag, else ''), tags (JSON of all tags minus DROP_PREFIXES). Runs
 
 Passes: (1) nodes: libosmium stores every node location in the dense cache, Python sees only the kept nodes; (2) relations: kept
 multipolygon / boundary relations and their non-inner member ways; (3) kept ways and (4) member ways: Python writes (way, node id)
-pairs (at most MAX_REFS nodes per way, evenly spaced) to N_RANGES files by node-id range on the NVMe drive and the kept ways' tags to
+pairs (at most MAX_REFS nodes per way, evenly spaced) to N_RANGES files by node-id range next to the cache and the kept ways' tags to
 temporary Parquet; then each node-id range of the cache is read once, sequentially, and the pairs of that range give every way's box.
 Random lookups don't work at planet scale: libosmium's location handler visits every node of all ~1.1B ways (~12 MB/min once the cache
 outgrew RAM) and memory-mapped lookups for kept ways only manage ~3k page faults/s. A relation's box is the union of its member ways'."""
