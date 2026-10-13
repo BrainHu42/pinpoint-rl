@@ -278,8 +278,9 @@ def _snippet(body: str, words: list[str]) -> str:
 
 
 class WebSearch:
-    def __init__(self) -> None:
-        self.dbs = [(p.stem.split("_", 1)[1], sqlite3.connect(f"file:{p}?mode=ro", uri=True, check_same_thread=False)) for p in _db_paths()]
+    def __init__(self, langs: Sequence[str] | None = None) -> None:
+        paths = [p for p in _db_paths() if langs is None or p.stem.split("_", 1)[1] in langs]
+        self.dbs = [(p.stem.split("_", 1)[1], sqlite3.connect(f"file:{p}?mode=ro", uri=True, check_same_thread=False)) for p in paths]
         self.pool = ThreadPoolExecutor(max_workers=max(len(self.dbs), 1))
 
     def _one(self, lang: str, con: sqlite3.Connection, match: str, words: list[str]) -> list[Hit]:
@@ -324,6 +325,51 @@ def format_hits(query: str, hits: list[Hit], loose: bool) -> str:
     return "\n".join(lines)
 
 
+def report(tag: str) -> None:
+    """Coverage on Pinpoint's mistakes against the live English-Wikipedia search (web_geocode.py, same clues and metric): a clue's first
+    result with a coordinate (of the top 5) within 25 km of the truth; offline over all languages and English only; shuffled-clue luck."""
+    import json
+
+    import numpy as np
+
+    from .web_geocode import OUT, PHOTO_SETS, _mistakes
+    from .text_search import haversine_km
+
+    mistakes, phrases = _mistakes(tag)
+    ids = [e["image_id"] for e in mistakes]
+    perm = np.random.default_rng(0).permutation(len(ids))
+    perm = np.where(perm == np.arange(len(ids)), (perm + 1) % len(ids), perm)
+    shuffled = {ids[i]: phrases[ids[perm[i]]] for i in range(len(ids))}
+    n_photos = len(json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8")))
+    live = {}
+    for line in (OUT / f"web_wikipedia_{tag}.jsonl").read_text(encoding="utf-8").splitlines():
+        row = json.loads(line)
+        live[row["query"]] = [r[:2] for r in row["results"]]
+    clues = sorted({q for i in ids for q in phrases[i]} | {q for i in ids for q in shuffled[i]})
+    tables = {"live en Wikipedia": live}
+    for name, langs in (("offline all languages", None), ("offline en only", ["en"])):
+        search, table = WebSearch(langs), {}
+        for q in clues:
+            hits, _ = search.query(q, top=5)
+            table[q] = [[h.lat, h.lon] for h in hits if h.lat is not None]
+        tables[name] = table
+    print(f"{tag}: {len(mistakes)} of Pinpoint's mistakes have 4B clues ({len(clues)} distinct clues incl. shuffled); {n_photos} photos")
+    reached = {}
+    for name, table in tables.items():
+        for label, sets in (("real", {i: phrases[i] for i in ids}), ("shuffled", shuffled)):
+            hit = set()
+            for e in mistakes:
+                firsts = [r[0] for r in (table.get(q) or [] for q in sets[e["image_id"]]) if r]
+                if firsts and (haversine_km(*e["truth"], np.asarray([f[0] for f in firsts]), np.asarray([f[1] for f in firsts])) < 25).any():
+                    hit.add(e["image_id"])
+            reached[name, label] = hit
+            print(f"  {name:22s} {label:8s} first result < 25 km: {len(hit):4d} (+{100 * len(hit) / n_photos:.1f} pts)")
+    live_hit = reached["live en Wikipedia", "real"]
+    for name in ("offline all languages", "offline en only"):
+        mine = reached[name, "real"]
+        print(f"  {name}: of live's {len(live_hit)}, also reached {len(mine & live_hit)}; reached that live misses: {len(mine - live_hit)}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -332,12 +378,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("stage")
     q = sub.add_parser("query")
     q.add_argument("text")
+    r = sub.add_parser("report")
+    r.add_argument("--tag", default="dev3k")
     args = parser.parse_args(argv)
     if args.cmd == "build":
         for lang in args.langs:
             build(lang)
     elif args.cmd == "stage":
         stage()
+    elif args.cmd == "report":
+        report(args.tag)
     else:
         print(format_hits(args.text, *WebSearch().query(args.text)))
     return 0
