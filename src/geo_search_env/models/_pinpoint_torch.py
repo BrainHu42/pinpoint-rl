@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .pinpoint import SUPPORTED_INDEX_VERSIONS, index_matches_checkpoint
+
 
 class _ResidualMLPBlock(nn.Module):
     def __init__(self, dimension: int, expansion: int) -> None:
@@ -153,6 +155,27 @@ def _load_image_tower(checkpoint_path: Path) -> tuple[_ImageTower, int, int, tup
     return tower, input_dimension, output_dimension, sources
 
 
+# Pinpoint wrote its MP16 SigLIP2 cache with 4 loader workers, each reading every 4th row of MP16_Pro_filtered.csv in
+# batches of 32, batches interleaved round-robin; CSV row 45,573 (86_04_6194717807.jpg) failed to load. Reconstructed
+# from the version-6 index: this order reproduces its float32 coordinates exactly on all 4,080,926 rows.
+PINPOINT_MP16_WORKERS = 4
+PINPOINT_MP16_BATCH = 32
+PINPOINT_MP16_SKIPPED_CSV_ROWS = (45_573,)
+
+
+def pinpoint_mp16_csv_rows(cache_rows: int) -> np.ndarray:
+    """Row of MP16_Pro_filtered.csv (data rows, header excluded) for each row of Pinpoint's MP16 embedding cache."""
+
+    total = cache_rows + len(PINPOINT_MP16_SKIPPED_CSV_ROWS)
+    kept = np.setdiff1d(np.arange(total), PINPOINT_MP16_SKIPPED_CSV_ROWS)
+    streams = [kept[kept % PINPOINT_MP16_WORKERS == w] for w in range(PINPOINT_MP16_WORKERS)]
+    batches = max(-(-len(stream) // PINPOINT_MP16_BATCH) for stream in streams)
+    order = [
+        stream[b * PINPOINT_MP16_BATCH : (b + 1) * PINPOINT_MP16_BATCH] for b in range(batches) for stream in streams
+    ]
+    return np.concatenate(order)
+
+
 class TorchRetrievalRuntime:
     """Inference-only port of Pinpoint's exact contrastive retriever."""
 
@@ -202,10 +225,10 @@ class TorchRetrievalRuntime:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ValueError(f"invalid retrieval index manifest: {manifest_path}") from error
-        if manifest.get("version") != 3:
+        version = manifest.get("version")
+        if version not in SUPPORTED_INDEX_VERSIONS:
             raise ValueError("unsupported Pinpoint retrieval index version")
-        manifest_checkpoint = manifest.get("checkpoint_path")
-        if not isinstance(manifest_checkpoint, str) or Path(manifest_checkpoint).resolve() != checkpoint_path:
+        if not index_matches_checkpoint(manifest, index_dir, checkpoint_path):
             raise ValueError("retrieval index was built for a different checkpoint")
         if manifest.get("retrieval_db_source") != source:
             raise ValueError("retrieval index source does not match the requested image tower")
@@ -245,6 +268,18 @@ class TorchRetrievalRuntime:
             mode="r",
             shape=(self.num_locations, 2),
         )
+        self.mp16_csv_rows: np.ndarray | None = None
+        if version == 6:
+            # Rows are a subset of Pinpoint's own MP16 SigLIP2 cache; cache_indices maps each to its row there.
+            sources = manifest.get("sources", [])
+            if len(sources) != 1 or source != "mp16" or shapes.get("cache_indices") != [self.num_locations]:
+                raise ValueError("expected a single-source MP16 version-6 index with cache_indices")
+            rows_path = (index_dir / str(files.get("cache_indices", ""))).resolve()
+            rows_path.relative_to(index_dir)
+            cache_rows = np.fromfile(rows_path, dtype=np.int64)
+            if len(cache_rows) != self.num_locations:
+                raise ValueError("retrieval cache_indices file size is invalid")
+            self.mp16_csv_rows = pinpoint_mp16_csv_rows(int(sources[0]["num_samples"]))[cache_rows]
 
     def encode_embeddings(self, image_embeddings: Any, *, source: str) -> np.ndarray:
         """Project one or more backbone features through a frozen source adapter."""

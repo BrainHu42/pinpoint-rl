@@ -1,7 +1,8 @@
 # pinpoint-rl
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
-inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read it before proposing experiments).** **Current state and the next step: `HANDOFF.md`.**
+inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read its summary before proposing
+experiments); full numbered lessons in `LESSONS.md`.**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -9,100 +10,122 @@ inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (r
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research state (2026-10-06; details in `HANDOFF.md`, numbers in `LEARNINGS.md`)
-- **Baseline: Pinpoint's attention reranker top-1**, the submission's full model run as in prior work, without a photographer filter
-  (LEARNINGS 51): 29.5 / 47.4 / 61.9% within 1 / 25 / 200 km on the 3,713 benchmark eval-half photos (im2gps3k 21.5 / 48.9 / 64.4, yfcc4k
-  34.8 / 46.4 / 60.2), 8.5 / 24.7 / 57.5 on wikimedia; oracle over its 12 candidates 43.7 / 64.2 / 80.6. Results before 2026-10-07
-  (LEARNINGS 1-50) were measured with the filter against our **one-step reranker** (17.0 / 38.9 / 56.4); the attention reranker with the
-  filter ties it (17.9 / 38.1 / 55.1). The one-step ~17-candidate pool (filtered; oracle 34.2 / 60.2 / 80.3) still feeds the choosers and
-  comparator data. Either way the headroom is in **choosing among candidates**.
-- Closed (LEARNINGS 1-49): SFT / single-turn GRPO of the 4B as a chooser (reranker parity); new evidence from search queries,
-  Wikipedia, place names, text, attributes ("stage 1", 11-21; old plan in `archive/stage1_plan.md`); zero-shot choosers up to 27B;
-  comparator scaling and combiners (best confirmed **+0.9 [+0.3, +1.6] at 25 km**, fine-tuned 4B comparator, 24-29, 39-46);
-  near-miss refinement, keypoint matching and map search (43-49).
-- **Open: knowledge SFT** (LEARNINGS 50): train the 4B to name a photo's place (country > region > city > neighbourhood, Overture
-  labels on MP16), score each candidate's name, combine with the rank. Labels and training photos are built; training has not run
-  (`scripts/knowledge_run.sh`). Then, depending on the result: combine with the comparator and scale, or bring options to the user.
-- Long-term goal unchanged: an RL agent over tools (what to check, how to read it, when to stop), once a tool has a strong signal.
-- Protocol: develop on MP16 dev (tag `dev`, 1,000 photos), validate on the 1,000-photo benchmark mix (tag `val`), confirm on all
-  benchmark eval-half photos (tag `full`) and wikimedia. Choose scorers and combiners on dev only. Go / no-go: what a change adds
-  beyond the reranker top-1 (and the pool oracle for new evidence), not against current greedy; the usual bar is +2 pts.
+## Research plan (2026-10-07)
+- **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
+  exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
+  (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; dev3k 17.0 / 33.4 (oracle 27.5 / 50.3).
+- Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
+  over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
+  visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
+- **Direction: `AGENT_DIRECTION.md`** (agreed 2026-10-07): train an agent that geolocates like a professional, using
+  constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
+  candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
+  where the reranker is wrong but knowing the region would fix it (dev3k: 302 of 3,000, `agent_targets --tags dev3k`).
+- **Current plan (2026-10-12): `PINPOINT_SET_PLAN.md`**: look, zoom, rerank. Results of the autonomous run (lesson 70):
+  - retrained Pinpoint reranker +3.1 / +3.3 (train CV / dev3k) as one model;
+  - area model over zoomed states +4.4 / +4.9;
+  - RL zoom agent: 2 zooms = the full gain.
+  - Next: run the area pipeline on the retrained reranker.
+
+  Benchmark result (eval halves, lesson 73): merged pipeline (retrained reranker, 2 agent zooms, answer head) 42.1% < 25 km,
+  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, `HYPOTHESIS_PLAN.md`).
+  Lesson 74: gated final pick (default), longer lists and more reranker training don't help (fine-tune saturates at ~+3; photographer
+  exclusion is its key ingredient). Training throughput notes in lesson 74.
+  Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
+  in-distribution. Next: new evidence (clues, tools) with RL deciding when to use it.
+  Lesson 76 (`read_agent.py`): clue reading as a costly action; a learned read policy keeps +0.5 / +0.8 of the clue gain with 20% of the reads.
+- **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
+  areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
+  agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
+  in `archive/TEXT_SEARCH_PLAN.md`.
+- Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
+- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
+  and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
+
+## Data (simplified 2026-10-07, user)
+One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
+| Split | What | Size |
+|---|---|---|
+| **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 35,359 |
+| **dev** | `dev3k` (photo set `artifacts/photo_sets/dev3k`, Pinpoint's pool): choose and tune everything here | 3,000 |
+| **test** | im2gps3k + yfcc4k eval halves (photo set `full`) | 3,795 |
+- **Leave the test set alone** (user, 2026-10-07): no training, tuning, model runs, feature extraction, diagnostics or measurements on
+  it unless the user asks. Everything is chosen and measured on dev.
+- No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
+- Target: improvements of **>= 1 pt** at 25 km over the reranker top-1 (user, 2026-10-07); dev3k (+-0.26 pts SE) resolves that.
+- dev3k is rebuilt from `artifacts/agent/dev3k_ids.json` (`agent_targets --make-dev dev3k`, then `place_labels pool-labels --tag dev3k`).
+- Retired: the `val` photo set (1,000 test photos, never use), the photo sets `dev` / `devall` and the old `artifacts/query_evidence/*`
+  sets (old one-step-reranker pools), dev10k, the knowledge-SFT bucket 0-98 exception.
+- Burned-in GPS photos are already filtered out of train and dev. No wikimedia (not on this machine).
 
 ## Rules
-- Final test set: **im2gps3k, yfcc4k and wikimedia** (`/data/pinpoint/wikimedia`; loaded by `data/benchmarks.py`, candidates from
-  `wikimedia_eval.py`). Wikimedia so far: baseline, oracle and the comparator (LEARNINGS 42); never train on it.
-- Benchmark evaluation runs **without** the same-photographer gallery filter, as prior work does (user's decision, 2026-10-07), for the
-  baseline and our methods alike. It only matters on yfcc4k (3,111 of 4,536 photos are by MP16 photographers; +18 pts at 1 km), so filtered
-  yfcc4k numbers may be shown as a secondary check. Training data still blocks benchmark photographers. Never train on the benchmarks.
-- Train only on Pinpoint's held-out MP16 bucket 99 (its retriever trained on the rest). Exception (user's decision, 2026-10-05): the
-  knowledge SFT (LEARNINGS 50) teaches place names from buckets 0-98; anything that learns to choose between candidates stays on bucket 99.
-- Other projects (InnerSight, gems) also use the GPU; never touch their processes.
-- Filter images with GPS coordinates burned into the frame.
-- The GPU (RTX 5090, 32 GB) is shared with InnerSight jobs: check `nvidia-smi` first and never kill other
-  processes. Stop our own processes by PID (`pkill -f` patterns have matched our own shell).
+- RAM is 30 GB with no swap: run long jobs in a memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=24G
+  -p MemorySwapMax=0`); an uncapped job crashed the machine once.
+- The GPU (L40S, 46 GB) is ours alone. Stop our own processes by PID (`pkill -f` patterns have matched our own shell).
 - Skip the Gemini contamination test.
-- Confirm plans with the user before long runs; report results concisely with numbers. Use the full eval halves
-  (`vlm_sampling --full-eval`) for decisions; the 300 subset is too noisy for gaps under ~4 pts.
+- Confirm plans with the user before long runs; report results concisely with numbers. Use the full eval halves for
+  decisions; small subsets are for plumbing.
 
 ## Environment
+- Everything lives under the repo: datasets and weights in `data/` (`src/geo_search_env/paths.py`), training envs in
+  `.venvs/`; both git-ignored. Code from the old machine still hard-codes `/data/...` and `~/.venvs`; port it to
+  `paths.py` before use.
 - Repo env: `.venv` (uv; extras `retrieval`, `feasibility`, `real`; no pyarrow). Run code as
   `.venv/bin/python -m geo_search_env.experiment.<module>`.
-- Training envs: `~/.venvs/sft` (torch 2.14, transformers 5.17, peft, trl 1.14, fla) for SFT; `~/.venvs/grpo` = copy
-  of the vLLM env + trl/peft/accelerate/datasets/fla (TRL colocated vLLM rollouts; put its `bin` on PATH).
-- Rollouts/eval: vLLM 0.30 at `/home/brian/.venvs/vllm` (put its `bin` on PATH for ninja). Weights:
-  `/data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Serve bf16,
-  `enable_thinking: False`, `n=8` per request, `max_pixels` 786432, **no MTP**. Scripts: `scripts/`
-  (`eval_run.sh`, `full_eval.sh`, `evidence_test.sh`).
-- Data:
-  - MP16 embeddings: `/data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`.
-  - MP16 metadata: `/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv`.
-  - MP16 images: tar shards read through `tar_index.pkl` (`sft_data.MP16Images`).
-  - OSV-5M train embeddings: `/data/pinpoint/osv5m-embed/`.
-  - Benchmarks: `/data/pinpoint/{im2gps3k,yfcc4k,wikimedia}`. GeoNames: `/data/pinpoint/geonames/allCountries.txt`.
-  - Overture: `/data/pinpoint/overture` (places, division polygons). Wikipedia: `/data/pinpoint/wikipedia`.
-  - `artifacts/` snapshot (2026-10-06): Hugging Face `kinghorton42/geo-benchmarks`, folder `artifacts/` (download command in `SETUP.md`).
+- Training envs: `.venvs/sft` (torch 2.14, transformers 5.17, peft, trl 1.14, fla); `.venvs/grpo`; package lists in `envs/`.
+- Serving: vLLM 0.30 at `.venvs/vllm` (put its `bin` on PATH for ninja). Weights:
+  `data/hf/hub/models--Qwen--Qwen3.5-4B/snapshots/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`. Serve bf16,
+  `enable_thinking: False`, `max_pixels` 786432, **no MTP**.
+- Data: MP16 embeddings `data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384`; MP16 metadata and tar shards
+  `data/hf/datasets/MP16-Pro` (`sft_data.MP16Images`); OSV-5M `data/pinpoint/osv5m-embed/`, `data/hf/datasets/osv5m`;
+  benchmarks `data/pinpoint/{im2gps3k,yfcc4k}`; GeoNames `data/pinpoint/geonames`; Pinpoint `data/pinpoint/pinpoint-submission`
+  (released index, version 6).
 - OpenRouter key: `OPENROUTER_API_KEY` in `.env` (credits ran out on 2026-09-29).
-- Pinpoint baseline code: `/home/brian/workspace/pinpoint-submission/submission`.
 
 ## Code map (`src/geo_search_env/`)
-- `data/benchmarks.py`: benchmark loader and metrics.
-- `experiment/strategy_search.py`: world loading, neighbour caches, region head, candidate pools, reranker features.
-- `experiment/verifiers.py`: reranker ranking, study subset.
-- `experiment/pivot_diagnostics.py`: `region_search`, `vlm_sampling` (prompts `default|sft|sft-evidence|sft-retrieval`,
-  `--full-eval`), `candidate_evidence`.
-- `experiment/sft_data.py`: MP16 query pool, candidates, leak check, overlay filter, SFT datasets (`--variant`).
-- `experiment/sft_train.py`: LoRA SFT, merge, MP16-val decode eval. `experiment/grpo_train.py`: TRL GRPO + merge.
-- `experiment/llm_advantage.py`: Gemini photo labels, per-slice model vs reranker, GeoNames coverage.
-- `experiment/embed_cache.py`: builds the SigLIP2 gallery and benchmark embedding caches (`--compare` checks one).
-- `experiment/query_headroom.py`: go/no-go for crop and text retrieval queries (SigLIP2 giant).
-- `experiment/evidence_test.py`: zero-shot test of per-candidate evidence (exemplar photos, GeoNames landmarks);
-  `landmarks` builds `/data/pinpoint/geonames/landmarks.npz` (~1 min).
-- `experiment/query_evidence.py`: fixed query → SigLIP2 evidence → revise loop on MP16 dev photos
-  (`scripts/query_evidence.sh`; outputs `artifacts/query_evidence/<tag>/`).
-- `experiment/wiki_backend.py`: offline geotagged-Wikipedia search (`/data/pinpoint/wikipedia/enwiki_geo.sqlite` BM25 +
-  `enwiki_geo_bge-base.f16.npy` dense; run with `~/.venvs/sft/bin/python`, `.venv` lacks pyarrow), `probe` go/no-go.
-- `experiment/stage1_eval.py`: stage-1 evaluation (oracle accuracy over the pool, matched whole-image control, evidence informativeness);
-  `evidence_ranker.py`: learned-reranker test with evidence features; `audit_sets.py`
-  (leakage / near-duplicate / placeholder audit of train, dev, val; flags in `artifacts/query_evidence/<tag>/`).
-- `experiment/exemplar_judge.py`: exemplar "same place?" judge: screens, top-8 scoring, combiner and full-eval-halves report;
-  `comparator_data.py`, `comparator_train.py` (pointwise / pairwise LoRA comparator; merge with `sft_train merge`);
-  `knowledge_scaling.py` (zero-shot choosers by model size, optional nearby Wikipedia text from `wiki_nearby.py`);
-  `multi_exemplar.py` (several exemplars per candidate).
-- `experiment/place_labels.py`: Overture division labels for all MP16 photos and candidate names (`~/.venvs/overture`, DuckDB);
-  `name_score.py` (log P(place name | photo) per candidate, combiner report); `knowledge_data.py` (knowledge SFT data:
-  `select` with `~/.venvs/sft` for pyarrow, `overlay`, `dataset`); pipeline `scripts/knowledge_run.sh`, scoring `scripts/name_scores.sh`.
-- `experiment/wikimedia_eval.py`: wikimedia candidates and baseline / oracle report.
-- `experiment/commons_bench.py`: the commons26 benchmark (LEARNINGS 53): Commons scan, selection, download, gallery near-duplicates, 27B tiers,
-  release (`/data/pinpoint/commons26/release/`, loader entry `commons26`) and `score` (continent-balanced headline over all photos; tiers as slices).
-- `models/pinpoint_reranker.py`: Pinpoint's attention reranker through the submission's own code, with an optional same-photographer
-  filter on its MP16 search; `experiment/pinpoint_reranker_eval.py` (`run` / `parity` / `report`; run with the submission's `.venv` python and
-  `PYTHONPATH=src:<submission>/src`; one photo per call, batching changes bf16 results) -> `artifacts/pinpoint_reranker/`.
-  Scripts: `comparator_eval.sh`, `comparator_full.sh`, `pairwise_eval.sh`, `knowledge_scaling.sh`, `stage1.sh`,
-  `evidence_ranker.sh`. Photo sets: tags `dev` (MP16 val), `val` (1,000 benchmark eval-half), `full`
-  (all 3,795 eval-half), `train` (MP16 train), `wikimedia` under `artifacts/query_evidence/`.
-- Caches: `artifacts/strategy_search/` (benchmarks), `artifacts/sft/` (MP16 pool), `artifacts/query_evidence/` (this line of
-  experiments); `artifacts/` is not tracked.
-- `archive/experiment/`, `archive/scripts/`: code of closed experiments that nothing live imports (attributes, text screen, Overture name
-  index, deep rerank, region prior / head, geo adapter, near-miss, map search, keypoint matching, model votes, free guess, threshold headroom,
-  choosing sheet). LEARNINGS cites them by file name; to rerun one, `git mv` it back into `src/geo_search_env/experiment/` (scripts into `scripts/`).
-- Full setup from scratch: `SETUP.md` (exact env package lists in `envs/`). Handoff state and next steps: `HANDOFF.md`.
+- `data/benchmarks.py`: benchmark loader and metrics (`commons26` entry). `paths.py`: storage roots.
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact; loads a
+  retrained checkpoint via `PINPOINT_RERANKER_CKPT`. `models/set_head.py`: the set head used in retraining.
+- `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
+- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`).
+- `experiment/agent_targets.py`: dev set, splits, fixable targets.
+- **The pipeline (lessons 68-71, 73-74, 76; `docs/pipeline_overview.png`, `scripts/pipeline_figure.py`).** In order:
+  - Clues: `observe.py` + `scripts/observe.sh` (VLM clues, crops); `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`,
+    README there; `scripts/yfcc_extract*.sh`; name -> place proposals); `text_search.py` (SQLite FTS5 over GeoNames, Overture places /
+    websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart);
+    `region_evidence.py`; `clue_judge.py` + `scripts/clue_judge.sh` (fine-tuned judge of read-text clues).
+  - Areas and hypotheses: `pinpoint_tool.py` (Pinpoint as agreement-weighted areas), `pool_agreement.py` (lesson 68), `hypotheses.py`
+    (areas, restricted search, clue hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features),
+    `hypothesis_learn.py` (set-level comparator, lesson 69; `scripts/full_pipeline.sh` runs this version end to end).
+  - Look-zoom-rerank (`PINPOINT_SET_PLAN.md`, lesson 70): `pinpoint_set.py` (set layer, wide extraction `extract --ckpt-tag`, zoom
+    pools, `eval-head`, `photo-set`), `area_model.py` (area-then-spot model over zoomed CLS states), `zoom_agent.py` (RL zoom policy).
+  - Merged pipeline (lessons 71, 73-74): `hypothesis_agent.py` (answer + action heads over area tokens, gated final pick) on the
+    retrained reranker (`scripts/retrained_pipeline.sh`). `read_agent.py`: clue reading as a costly action (lesson 76).
+  - Retrained reranker: `pinpoint_train/` (pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias
+    for training against the shipped index; run with `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and
+    `PYTHONPATH=pinpoint_train/src:src`; launcher `scripts/pinpoint_train.sh`, flags in lesson 70). Checkpoints:
+    `artifacts/pinpoint_train/{setft_a,ft_nohead}`.
+  - Locatability tiers (lesson 67): `scripts/locatability_score.py`, `fixtures/locatability_dev3k.json`.
+- Offline search tools for the agent (stand-ins for Google web / Maps): `osm_extract.py` (named objects and landmark features from the
+  OSM planet), `maps_search.py` (name search over OSM + GeoNames / Overture, `features_near`), `web_search.py` (multilingual Wikipedia +
+  Wikivoyage, FTS5).
+- `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers (uses `coarse_filter`,
+  `feasibility`, `candidate_locations`, `core/contracts`).
+- `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts and the
+  VLM harness (`vlm_sampling`). `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
+- `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
+- `experiment/commons_bench.py`: the commons26 benchmark (lesson 79): Commons scan, selection, download, gallery near-duplicates,
+  27B tiers, release (`data/pinpoint/commons26/release/`) and `score`; `commons26_score.py` is the standalone scorer.
+- Shared helpers from the knowledge SFT line: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool),
+  `knowledge_data.py`, `knowledge_check.py`, `name_score.py`.
+- Removed 2026-10-13 (lines that didn't pan out; code at git tag `pre-prune-2026-10-13`): the agent-tool, landmark and text-search checks
+  (`geo_tools`, `poi_query`, `poi_near`, `landmark_match`, `landmark_id`, `landmark_vote`, `agent_capacity`, `agent_vote`,
+  `pinpoint_constrained`, `clue_points`, `web_geocode`, `recall_verify`, `clue_survey`, `chain_footprint`, `vlm_country`, `plates`,
+  `area_rules`, `deep_votes`; lessons 55-68), the plausibility judge (`hypothesis_vlm`, lesson 69), the location distribution
+  (`location_density`, lesson 72), cross-fitting, reranker ablation and profiling scripts (lessons 74-75), `knowledge_oracle`,
+  `knowledge_coverage`, `wiki_backend`, the knowledge and VLM-chooser eval scripts. Plans and reports of those lines are in `archive/`.
+  Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment) are at tag `pre-cleanup-2026-10-07`;
+  the one-step reranker and the modules built on it at commit 57918cb.
+- Caches: `artifacts/` (not tracked). Photo sets and pools built before lesson 54 (`artifacts/query_evidence/*/dev.json`,
+  `artifacts/sft/candidates.npz`, `artifacts/place_labels/candidates_*.json`) hold the old reranker's pools; current code doesn't read them.
+  Setup from scratch: `SETUP.md`.

@@ -16,6 +16,7 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME
 from ..core.contracts import Coordinate
 from ..core.geography import distance_m
 from ..models.pinpoint import DEFAULT_PINPOINT_CHECKPOINT, PinpointRetrievalBaseline
@@ -225,7 +226,7 @@ def run(output: Path, *, reference_artifact: Path = REFERENCE_ARTIFACT) -> dict[
         for row in _read_jsonl(reference_artifact / "exclusions.jsonl")
     }
 
-    dataset = OSVTestReferenceDataset(Path("/data/hf/datasets/osv5m"))
+    dataset = OSVTestReferenceDataset(HF_HOME / "datasets/osv5m")
     id_to_index = {image_id: index for index, image_id in enumerate(dataset._ids)}
     query_indices = np.asarray([id_to_index[row["source_image_id"]] for row in labels], dtype=np.int64)
     raw_queries = np.array(dataset.embeddings_at(query_indices), dtype=np.float32, copy=True)

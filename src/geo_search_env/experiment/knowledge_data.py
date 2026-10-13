@@ -1,14 +1,16 @@
-# Knowledge SFT data: MP16 photos from Pinpoint's training buckets (0-98) -> "country > region > city > neighbourhood" (Overture labels, place_labels.py),
-# in the format sft_train.py reads ({image_id, split, prompt, target}). The prompt and answer format are those name_score.py scores.
-# Usage: PYTHONPATH=src ~/.venvs/sft/bin/python -m geo_search_env.experiment.knowledge_data select [--photos 200000]   (CPU, pyarrow; needs artifacts/place_labels/mp16.parquet)
+# Knowledge SFT data: MP16 photos from Pinpoint's training buckets (0-98) -> "country > region > city" (Overture labels, place_labels.py),
+# in the format sft_train.py reads ({image_id, split, prompt, target}). archive/KNOWLEDGE_PLAN.md step 1.
+# Usage: PYTHONPATH=src .venvs/sft/bin/python -m geo_search_env.experiment.knowledge_data select [--photos 200000]   (CPU, pyarrow; needs artifacts/place_labels/mp16.parquet)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_data overlay                       (base VLM served at :8765; ~30 min)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.knowledge_data dataset
 
 """select:  eligible photos: md5 bucket < 99; photographer not in dev, im2gps3k / yfcc4k (all splits) or wikimedia; not a near-duplicate (SigLIP2 cosine
          >= DUP_SIM among the cached top-1000 MP16 neighbours) of any cached query (benchmarks, the MP16 pool incl. dev, wikimedia); a country and region
-         label. At most PER_CITY photos per (country, region, city), then a random sample.
+         label. At most PER_CITY photos per (country, region, city), then a random sample. Needs the wikimedia benchmark, which this machine
+         lacks: the 250k selection in artifacts/knowledge/selected.json (old machine, seed 0) is reused as is.
 overlay: P(burned-in GPS) for the selected photos with the base VLM (sft_data's prompt and cut-off).
-dataset: drop overlay photos, write artifacts/knowledge/knowledge.jsonl (VAL_ROWS rows split 'val' for eval loss, the rest 'train')."""
+dataset: drop overlay photos (unless --no-overlay: they are rare at this scale, user 2026-10-06), cut targets to LEVELS levels, write artifacts/knowledge/knowledge.jsonl (VAL_ROWS rows split 'val' for eval loss,
+         the rest 'train')."""
 
 from __future__ import annotations
 
@@ -22,17 +24,18 @@ from typing import Sequence
 
 import numpy as np
 
-from .name_score import PROMPT, SEP, name_parts
+from .name_score import SEP, name_parts
 from .place_labels import CANONICAL
-from .query_evidence import ROOT
-from .strategy_search import MP16_EMBED
+from .photo_sets import load_photos
+from .strategy_search import MP16_CSV, MP16_EMBED
 
 OUT = Path("artifacts/knowledge")
-MP16_CSV = Path("/data/hf/datasets/MP16-Pro/metadata/MP16_Pro_filtered.csv")
 CACHES = (Path("artifacts/strategy_search/neighbors.npz"), Path("artifacts/sft/neighbors.npz"), Path("artifacts/wikimedia/neighbors.npz"))
 DUP_SIM = 0.95
 PER_CITY = 400
 VAL_ROWS = 2_000
+LEVELS = 3  # country > region > city; neighbourhood labels agree only 83% between near-duplicate photos (lesson 50)
+PROMPT = "Where was this photo taken? Answer as: country > region > city."
 
 
 def _bucket(image_id: str) -> int:
@@ -50,7 +53,7 @@ def select(photos: int, seed: int = 0) -> None:
         for r in csv.DictReader(f):
             author_of[r["IMG_ID"]] = r["AUTHOR"]
     authors = np.asarray([author_of.get(i, "") for i in ids])
-    blocked_authors = {authors[e["row"]] for e in json.loads((ROOT / "dev" / "dev.json").read_text(encoding="utf-8"))}
+    blocked_authors = {authors[e["row"]] for e in load_photos("dev")}
     for name in ("im2gps3k", "yfcc4k", "wikimedia"):
         blocked_authors |= {a for a in load_benchmark(name).authors if a}
     blocked_authors.discard("")
@@ -108,17 +111,21 @@ def overlay(server: str = "http://127.0.0.1:8765", workers: int = 64) -> None:
     print(f"overlay scores for {len(scores)} photos, {sum(s is None for s in scores)} failed")
 
 
-def dataset(seed: int = 0) -> None:
+def dataset(seed: int = 0, use_overlay: bool = True) -> None:
     from .sft_data import OVERLAY_THRESHOLD
 
     selected = json.loads((OUT / "selected.json").read_text(encoding="utf-8"))
-    scores = json.loads((OUT / "overlay_scores.json").read_text(encoding="utf-8"))
-    keep = [o for o in selected if scores.get(o["image_id"]) is not None and scores[o["image_id"]] < OVERLAY_THRESHOLD]
+    if use_overlay:
+        scores = json.loads((OUT / "overlay_scores.json").read_text(encoding="utf-8"))
+        keep = [o for o in selected if scores.get(o["image_id"]) is not None and scores[o["image_id"]] < OVERLAY_THRESHOLD]
+    else:
+        keep = selected
     order = np.random.default_rng(seed).permutation(len(keep))
     with (OUT / "knowledge.jsonl").open("w", encoding="utf-8") as f:
         for n, i in enumerate(order):
             o = keep[i]
-            f.write(json.dumps({"image_id": o["image_id"], "split": "val" if n < VAL_ROWS else "train", "prompt": PROMPT, "target": o["target"]}) + "\n")
+            target = SEP.join(o["target"].split(SEP)[:LEVELS])
+            f.write(json.dumps({"image_id": o["image_id"], "split": "val" if n < VAL_ROWS else "train", "prompt": PROMPT, "target": target}) + "\n")
     print(f"{len(keep)} rows ({len(selected) - len(keep)} dropped: overlay or unreadable) -> {OUT / 'knowledge.jsonl'}")
 
 
@@ -127,13 +134,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("node", choices=("select", "overlay", "dataset"))
     parser.add_argument("--photos", type=int, default=200_000)
     parser.add_argument("--server", default="http://127.0.0.1:8765")
+    parser.add_argument("--no-overlay", action="store_true", help="dataset: keep photos without burned-in-GPS scores")
     args = parser.parse_args(argv)
     if args.node == "select":
         select(args.photos)
     elif args.node == "overlay":
         overlay(args.server)
     else:
-        dataset()
+        dataset(use_overlay=not args.no_overlay)
     return 0
 
 

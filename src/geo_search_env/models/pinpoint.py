@@ -8,21 +8,25 @@ import hashlib
 import io
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any
 
+from ..paths import PINPOINT_ROOT
 from ..core.contracts import Coordinate, InitialCandidate
 
 
 # Checkout of the Pinpoint submission (contrastive checkpoint + retrieval index); override with PINPOINT_ROOT.
-DEFAULT_PINPOINT_ROOT = Path(os.environ.get("PINPOINT_ROOT", "/home/brian/workspace/pinpoint-submission/submission"))
+DEFAULT_PINPOINT_ROOT = PINPOINT_ROOT
 DEFAULT_PINPOINT_CHECKPOINT = (
     DEFAULT_PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/ckpt_best.pt"
 )
-DEFAULT_PINPOINT_INDEX_ROOT = (
-    DEFAULT_PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/retrieval_index"
+# Version 3: the submission's own index (one row per MP16 embedding-cache row). Version 6: the released model.zip,
+# whose rows are a filtered subset of the MP16 cache mapped back through `cache_indices`.
+DEFAULT_PINPOINT_INDEX_ROOTS = tuple(
+    DEFAULT_PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints" / name
+    for name in ("retrieval_index", "attention_retrieval_index")
 )
+SUPPORTED_INDEX_VERSIONS = (3, 6)
 DEFAULT_BACKBONE = "google/siglip2-giant-opt-patch16-384"
 
 
@@ -53,24 +57,38 @@ def _optional_retrieval_imports():
     return torch
 
 
-def _discover_index(index_root: Path, checkpoint_path: Path, source: str) -> Path:
+def index_matches_checkpoint(manifest: dict[str, Any], index_dir: Path, checkpoint_path: Path) -> bool:
+    """Whether an index manifest was built for `checkpoint_path`.
+
+    The manifest stores the checkpoint's absolute path at build time; an index shipped inside the checkpoint's own
+    directory (as in the released model.zip) also matches when the file name agrees, so the checkout can move.
+    """
+
+    recorded = manifest.get("checkpoint_path")
+    if not isinstance(recorded, str):
+        return False
+    if Path(recorded).resolve() == checkpoint_path:
+        return True
+    return Path(recorded).name == checkpoint_path.name and index_dir.resolve().is_relative_to(checkpoint_path.parent)
+
+
+def _discover_index(index_roots: tuple[Path, ...], checkpoint_path: Path, source: str) -> Path:
     candidates = []
-    for manifest_path in sorted(index_root.glob("*/manifest.json")):
+    for manifest_path in sorted(path for root in index_roots for path in root.glob("*/manifest.json")):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
-        manifest_checkpoint = manifest.get("checkpoint_path")
         if (
-            manifest.get("version") == 3
+            manifest.get("version") in SUPPORTED_INDEX_VERSIONS
             and manifest.get("retrieval_db_source") == source
-            and isinstance(manifest_checkpoint, str)
-            and Path(manifest_checkpoint).resolve() == checkpoint_path
+            and index_matches_checkpoint(manifest, manifest_path.parent, checkpoint_path)
         ):
             candidates.append(manifest_path.parent)
     if len(candidates) != 1:
         raise FileNotFoundError(
-            f"expected one version-3 {source} retrieval index under {index_root}, found {len(candidates)}"
+            f"expected one {source} retrieval index (version {SUPPORTED_INDEX_VERSIONS}) under "
+            f"{[str(root) for root in index_roots]}, found {len(candidates)}"
         )
     return candidates[0]
 
@@ -100,7 +118,7 @@ class PinpointRetrievalBaseline:
         resolved_index = (
             Path(index_dir).resolve()
             if index_dir is not None
-            else _discover_index(DEFAULT_PINPOINT_INDEX_ROOT, self.checkpoint_path, self.retrieval_source)
+            else _discover_index(DEFAULT_PINPOINT_INDEX_ROOTS, self.checkpoint_path, self.retrieval_source)
         )
         self.index_dir = resolved_index
         self._runtime = TorchRetrievalRuntime(
@@ -122,6 +140,12 @@ class PinpointRetrievalBaseline:
         self.version = "pinpoint-contrastive-retrieval-v1:" + hashlib.sha256(
             json.dumps(fingerprint, sort_keys=True).encode()
         ).hexdigest()[:16]
+
+    @property
+    def mp16_csv_rows(self):
+        """Version 6: index row → MP16_Pro_filtered.csv row. None for version 3, whose rows are MP16 cache rows."""
+
+        return self._runtime.mp16_csv_rows
 
     def predict_candidates(self, image_embedding: Any, top_k: int) -> tuple[RetrievalCandidate, ...]:
         rows = self._runtime.predict_candidates(image_embedding, top_k)

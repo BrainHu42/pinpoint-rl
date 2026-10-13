@@ -1,0 +1,797 @@
+{
+"note": "Blind pass (no truth or Pinpoint answer seen). tier: P = specific place identifiable (landmark, legible place text); C = city; R = region; N = country; K = continent / broad; X = nothing place-specific. guess: [lat, lon] or null.",
+"photos": [
+{
+"image_id": "7d_f7_9135687564.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "e5_dc_10576633694.jpg",
+"tier": "C",
+"guess": [
+41.14,
+-8.61
+]
+},
+{
+"image_id": "ed_fb_6494005127.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "f6_85_8753781293.jpg",
+"tier": "N",
+"guess": [
+41.9,
+12.49
+]
+},
+{
+"image_id": "89_e7_6574082787.jpg",
+"tier": "N",
+"guess": [
+-4.62,
+55.45
+]
+},
+{
+"image_id": "4e_9d_7410794306.jpg",
+"tier": "P",
+"guess": [
+43.66,
+-79.4
+]
+},
+{
+"image_id": "25_71_11958723756.jpg",
+"tier": "P",
+"guess": [
+37.8,
+-122.47
+]
+},
+{
+"image_id": "ca_f1_6822186747.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "c2_3a_435508999.jpg",
+"tier": "P",
+"guess": [
+51.23,
+2.92
+]
+},
+{
+"image_id": "2a_c6_8769197773.jpg",
+"tier": "N",
+"guess": [
+39.25,
+-114.89
+]
+},
+{
+"image_id": "22_a3_6190621739.jpg",
+"tier": "N",
+"guess": [
+41.88,
+-87.63
+]
+},
+{
+"image_id": "fa_b4_8321289133.jpg",
+"tier": "K",
+"guess": [
+41.39,
+2.17
+]
+},
+{
+"image_id": "0d_74_6651397207.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "d7_9f_10836764103.jpg",
+"tier": "N",
+"guess": [
+50.06,
+19.94
+]
+},
+{
+"image_id": "26_63_8206757054.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "82_70_3603075393.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "50_6f_3067342395.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "c7_21_8127845660.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "78_5c_8325766962.jpg",
+"tier": "K",
+"guess": [
+28.29,
+-16.63
+]
+},
+{
+"image_id": "6f_53_8019114977.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "ee_45_8623358075.jpg",
+"tier": "P",
+"guess": [
+52.372,
+4.902
+]
+},
+{
+"image_id": "88_b6_10148823325.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "da_a4_5193166355.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "aa_ca_7138218635.jpg",
+"tier": "N",
+"guess": [
+50.0,
+-120.0
+]
+},
+{
+"image_id": "1d_c0_4218765916.jpg",
+"tier": "K",
+"guess": [
+43.3,
+-8.9
+]
+},
+{
+"image_id": "fe_41_8025190499.jpg",
+"tier": "P",
+"guess": [
+40.79,
+-119.2
+]
+},
+{
+"image_id": "0e_23_6894692055.jpg",
+"tier": "K",
+"guess": [
+55.75,
+37.62
+]
+},
+{
+"image_id": "df_8c_8574706752.jpg",
+"tier": "K",
+"guess": [
+21.03,
+105.85
+]
+},
+{
+"image_id": "f7_61_4487393976.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "04_c0_134584602.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "d3_56_6760855463.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "2b_27_13392783824.jpg",
+"tier": "N",
+"guess": [
+10.0,
+-84.0
+]
+},
+{
+"image_id": "63_6d_7576342140.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "45_b3_5022477060.jpg",
+"tier": "K",
+"guess": [
+40.42,
+-3.7
+]
+},
+{
+"image_id": "de_8f_4880052386.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "e4_10_3848383801.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "ad_9b_8175944534.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "ff_b4_4579578022.jpg",
+"tier": "P",
+"guess": [
+47.32,
+12.8
+]
+},
+{
+"image_id": "5b_14_4224341676.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "5f_8b_683268622.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "b7_04_6768527729.jpg",
+"tier": "P",
+"guess": [
+21.36,
+-157.95
+]
+},
+{
+"image_id": "5e_88_8079315351.jpg",
+"tier": "N",
+"guess": [
+43.77,
+11.25
+]
+},
+{
+"image_id": "f1_e5_3407624367.jpg",
+"tier": "N",
+"guess": [
+-3.37,
+36.68
+]
+},
+{
+"image_id": "dd_78_2127600271.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "9c_d7_6291538010.jpg",
+"tier": "R",
+"guess": [
+9.5,
+76.34
+]
+},
+{
+"image_id": "2c_11_3465074816.jpg",
+"tier": "R",
+"guess": [
+33.45,
+-112.07
+]
+},
+{
+"image_id": "b0_bd_7526962498.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "e4_6f_327608257.jpg",
+"tier": "P",
+"guess": [
+50.32,
+-122.8
+]
+},
+{
+"image_id": "59_8a_8569755112.jpg",
+"tier": "C",
+"guess": [
+41.38,
+2.175
+]
+},
+{
+"image_id": "1d_a6_489773564.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "d6_4f_8418769627.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "b9_e5_5096694740.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "90_aa_2416590867.jpg",
+"tier": "N",
+"guess": [
+25.04,
+121.56
+]
+},
+{
+"image_id": "4d_92_12228618285.jpg",
+"tier": "C",
+"guess": [
+1.315,
+103.816
+]
+},
+{
+"image_id": "53_38_278476818.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "07_4b_8698844244.jpg",
+"tier": "N",
+"guess": [
+69.65,
+18.96
+]
+},
+{
+"image_id": "40_b6_3851591770.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "a6_fe_8271386958.jpg",
+"tier": "K",
+"guess": [
+43.06,
+141.35
+]
+},
+{
+"image_id": "e2_e9_5418947194.jpg",
+"tier": "K",
+"guess": [
+29.0,
+-13.6
+]
+},
+{
+"image_id": "3f_6e_4743528444.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "7c_e1_8420816722.jpg",
+"tier": "R",
+"guess": [
+19.89,
+101.13
+]
+},
+{
+"image_id": "39_8b_416962997.jpg",
+"tier": "P",
+"guess": [
+45.42,
+-75.7
+]
+},
+{
+"image_id": "98_29_135173925.jpg",
+"tier": "K",
+"guess": [
+20.8,
+-156.3
+]
+},
+{
+"image_id": "69_52_7322520886.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "66_b3_5099144996.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "f1_80_6164337428.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "94_f8_2224068570.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "2d_5f_4568127048.jpg",
+"tier": "P",
+"guess": [
+39.95,
+-75.19
+]
+},
+{
+"image_id": "7b_82_5085584469.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "db_e9_4536359503.jpg",
+"tier": "N",
+"guess": [
+41.01,
+28.98
+]
+},
+{
+"image_id": "d2_2a_4840059295.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "b2_5c_8485898666.jpg",
+"tier": "C",
+"guess": [
+38.89,
+-77.03
+]
+},
+{
+"image_id": "72_33_4039306031.jpg",
+"tier": "K",
+"guess": [
+37.85,
+14.0
+]
+},
+{
+"image_id": "04_2a_9431655079.jpg",
+"tier": "K",
+"guess": [
+50.0,
+-122.0
+]
+},
+{
+"image_id": "ca_97_5030255892.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "24_60_1140441553.jpg",
+"tier": "N",
+"guess": [
+41.9,
+12.49
+]
+},
+{
+"image_id": "8a_e0_3868039446.jpg",
+"tier": "P",
+"guess": [
+51.49,
+-3.17
+]
+},
+{
+"image_id": "42_56_16744399.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "ad_74_9627902672.jpg",
+"tier": "N",
+"guess": [
+28.61,
+77.21
+]
+},
+{
+"image_id": "e9_ee_4550363907.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "f7_69_3162453925.jpg",
+"tier": "P",
+"guess": [
+31.72,
+35.2
+]
+},
+{
+"image_id": "15_6f_5253507910.jpg",
+"tier": "R",
+"guess": [
+-32.89,
+-68.84
+]
+},
+{
+"image_id": "a3_b7_9697570224.jpg",
+"tier": "R",
+"guess": [
+-33.05,
+-71.62
+]
+},
+{
+"image_id": "bc_77_1852986688.jpg",
+"tier": "P",
+"guess": [
+38.64,
+-90.29
+]
+},
+{
+"image_id": "e4_96_3480463416.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "e7_7a_4668586824.jpg",
+"tier": "R",
+"guess": [
+46.43,
+6.91
+]
+},
+{
+"image_id": "a3_86_6839744789.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "78_32_5375919670.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "3b_9e_10570645534.jpg",
+"tier": "P",
+"guess": [
+43.318,
+11.332
+]
+},
+{
+"image_id": "aa_fa_2416538422.jpg",
+"tier": "C",
+"guess": [
+49.29,
+-123.12
+]
+},
+{
+"image_id": "9b_6e_1706881788.jpg",
+"tier": "C",
+"guess": [
+29.2,
+25.52
+]
+},
+{
+"image_id": "71_ee_382066519.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "47_b5_6048478582.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "c2_e6_124152795.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "8c_ee_11186303016.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "a4_32_4913531452.jpg",
+"tier": "C",
+"guess": [
+50.115,
+-122.95
+]
+},
+{
+"image_id": "54_8a_4130582564.jpg",
+"tier": "P",
+"guess": [
+0.3,
+-78.36
+]
+},
+{
+"image_id": "fb_f7_3568578086.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "22_e6_2799828672.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "cf_44_9229789279.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "37_ee_9765429893.jpg",
+"tier": "K",
+"guess": [
+47.0,
+4.8
+]
+},
+{
+"image_id": "07_ba_7125902971.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "d4_96_1434372587.jpg",
+"tier": "K",
+"guess": [
+53.5,
+-9.8
+]
+},
+{
+"image_id": "68_71_5479695024.jpg",
+"tier": "N",
+"guess": [
+-33.87,
+151.21
+]
+},
+{
+"image_id": "3f_83_8969971661.jpg",
+"tier": "P",
+"guess": [
+13.08,
+-59.53
+]
+},
+{
+"image_id": "e1_d9_9429851141.jpg",
+"tier": "C",
+"guess": [
+-23.55,
+-46.63
+]
+},
+{
+"image_id": "d7_a8_3204004147.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "60_09_3061117085.jpg",
+"tier": "P",
+"guess": [
+53.56,
+-9.89
+]
+},
+{
+"image_id": "22_79_6248363601.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "4a_a8_3337654590.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "b3_7c_334399396.jpg",
+"tier": "N",
+"guess": [
+35.01,
+135.77
+]
+},
+{
+"image_id": "25_b6_65536526.jpg",
+"tier": "K",
+"guess": [
+24.1,
+121.2
+]
+},
+{
+"image_id": "87_08_2254780934.jpg",
+"tier": "R",
+"guess": [
+46.14,
+12.22
+]
+},
+{
+"image_id": "aa_5f_2106158264.jpg",
+"tier": "C",
+"guess": [
+48.86,
+2.35
+]
+},
+{
+"image_id": "95_e8_8653245473.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "ff_4a_310234077.jpg",
+"tier": "K",
+"guess": [
+35.24,
+24.8
+]
+},
+{
+"image_id": "48_68_4396160748.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "06_43_11563377244.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "fc_cc_6551619795.jpg",
+"tier": "X",
+"guess": null
+},
+{
+"image_id": "4a_29_8649732354.jpg",
+"tier": "X",
+"guess": null
+}
+]
+}

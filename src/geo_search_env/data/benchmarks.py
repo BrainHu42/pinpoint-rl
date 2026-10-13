@@ -9,8 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
+from ..paths import DATA_ROOT
 
-DATA_ROOT = Path("/data/pinpoint")
+
 EMBEDDING_KEY = "google_siglip2-giant-opt-patch16-384"
 DISTANCE_THRESHOLDS_KM = (1, 25, 200, 750, 2500)
 GEOGUESSR_DECAY_KM = 1492.7

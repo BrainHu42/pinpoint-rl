@@ -46,8 +46,10 @@ from pathlib import Path
 from collections import Counter
 from typing import Any, Iterable, Sequence
 
-OUT = Path("/data/pinpoint/commons26")
-GEONAMES = Path("/data/pinpoint/geonames/allCountries.txt")
+from ..paths import DATA_ROOT
+
+OUT = DATA_ROOT / "commons26"
+GEONAMES = DATA_ROOT / "geonames/allCountries.txt"
 TAKEN_AFTER = datetime(2026, 1, 1, tzinfo=timezone.utc)  # the release: capture dates on or after this
 API = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "commons-recent-gps-photos/0.6 (research script; contact: kinghorton42@gmail.com)"

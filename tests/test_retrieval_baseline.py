@@ -2,7 +2,8 @@ import unittest
 
 import numpy as np
 
-from geo_search_env import Coordinate, PinpointRetrievalBaseline, RetrievalCandidate
+from geo_search_env.core.contracts import Coordinate
+from geo_search_env.models.pinpoint import PinpointRetrievalBaseline, RetrievalCandidate
 
 
 class RetrievalBaselineContractTests(unittest.TestCase):
@@ -37,6 +38,18 @@ class RetrievalBaselineContractTests(unittest.TestCase):
         self.assertEqual(model._runtime.call[1], "osv5m")
         np.testing.assert_array_equal(model._runtime.call[0], value)
         np.testing.assert_array_equal(projected, [[0.0, 1.0]])
+
+
+class PinpointMp16OrderTests(unittest.TestCase):
+    def test_cache_order_interleaves_four_workers_in_batches_of_32_minus_the_failed_row(self):
+        from geo_search_env.models._pinpoint_torch import pinpoint_mp16_csv_rows
+
+        rows = pinpoint_mp16_csv_rows(4_122_118)
+        self.assertEqual(len(rows), 4_122_118)
+        self.assertEqual(len(np.unique(rows)), len(rows))
+        self.assertNotIn(45_573, rows)
+        np.testing.assert_array_equal(rows[:32], np.arange(0, 128, 4))
+        np.testing.assert_array_equal(rows[32:64], np.arange(1, 128, 4))
 
 
 if __name__ == "__main__":

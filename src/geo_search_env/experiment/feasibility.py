@@ -1,5 +1,5 @@
 # Run the gated OSV-5M feasibility pilot and write auditable public/private artifacts.
-# Usage: PYTHONPATH=src /home/brian/workspace/pinpoint-submission/submission/.venv/bin/python -m geo_search_env.experiment.feasibility --output artifacts/feasibility/v1
+# Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.feasibility --output artifacts/feasibility/v1
 
 """Executable OSV-5M feasibility pilot for the Mapillary-first experiment."""
 
@@ -21,6 +21,7 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
+from ..paths import DATA_ROOT, HF_HOME
 from ..core.contracts import Coordinate
 from ..core.geography import distance_m
 from ..data.osv5m import OSV5MDataset
@@ -77,9 +78,7 @@ class OSVTestReferenceDataset:
 
     def __init__(self, raw_root: Path) -> None:
         self.raw_root = raw_root
-        self.embedding_root = Path(
-            "/data/pinpoint/osv5m-test/image_embeddings/google_siglip2-giant-opt-patch16-384"
-        )
+        self.embedding_root = DATA_ROOT / "osv5m-test/image_embeddings/google_siglip2-giant-opt-patch16-384"
         self.manifest_path = self.embedding_root / "manifest.json"
         manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
         self.num_samples = int(manifest["num_embeddings"])
@@ -444,7 +443,7 @@ def run(output: Path, *, reference_source: str = "train") -> dict[str, Any]:
         raise FileExistsError(f"refusing to overwrite feasibility output: {output}")
     output.mkdir(parents=True)
     started = time.time()
-    raw_root = Path("/data/hf/datasets/osv5m")
+    raw_root = HF_HOME / "datasets/osv5m"
     if reference_source == "train":
         dataset: Any = OSV5MDataset()
         reference_csv = raw_root / "train.csv"

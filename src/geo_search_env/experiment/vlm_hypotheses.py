@@ -1,8 +1,15 @@
-# Collect weighted location hypotheses from a local OpenAI-compatible VLM server for coarse-filter queries.
-# Usage: PYTHONPATH=src python -m geo_search_env.experiment.vlm_hypotheses --queries artifacts/coarse_filter/v1/rows.jsonl --output artifacts/vlm_guesses/gemma4_26b_a4b.jsonl
-#    or: ... --benchmark-queries artifacts/strategy_search/queries.json --per-benchmark 500 --output artifacts/strategy_search/vlm_gemma4.jsonl
+# Does the VLM add hypotheses Pinpoint doesn't have? (HYPOTHESIS_PLAN.md, the check before training the agent, E5.) The base 4B proposes up to 3
+# places for each photo from what it sees and knows; each is geocoded with the text-search databases and, if it lies more than BOX_KM from every
+# existing hypothesis (Pinpoint areas, clue places), searched with Pinpoint restricted to a box around it. Measured: how much the hypothesis
+# oracle rises (it bounds what an agent that proposes hypotheses could add). dev sets only.
+# Usage: RUN="vlm_hypotheses propose" NAME=4b TAG=dev3k bash scripts/clue_judge.sh      (serves the 4B; proposals)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.vlm_hypotheses search --tag dev3k   (geocode + restricted search, GPU)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.vlm_hypotheses oracle --tag dev3k
 
-"""Zero-shot VLM coarse hypotheses (lat/lon + probability) for the coarse-filter study."""
+"""propose: per photo, up to 3 places (most specific first) -> artifacts/agent/vlm_places_{tag}_{name}.json.
+search:  geocoding: the first comma-separated part of each place searched by name (text_search.matches), keeping matches in the stated
+         country when one is given; the heaviest 25 km cluster is the place. New ones -> hypotheses_{tag}_vlmhyps.npz (source 2).
+oracle:  hypothesis oracle (restricted top-1 / any restricted candidate < 25 km) with Pinpoint areas, + clue places, + VLM places."""
 
 from __future__ import annotations
 
@@ -12,132 +19,150 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import re
-import urllib.error
-import urllib.request
-from typing import Any, Sequence
+from typing import Sequence
 
 import numpy as np
 
-from .feasibility import OSVTestReferenceDataset
+OUT = Path("artifacts/agent")
+PHOTO_SETS = Path("artifacts/photo_sets")
+SFT_ROOT = Path("artifacts/sft")
+NVME_INDEX = Path("/opt/dlami/nvme/pinpoint/attention_retrieval_index")
+BOX_KM = 25.0
+PROMPT = """You are an expert geolocator. Where was this photo most likely taken? Use everything you can see (text, landmarks, architecture,
+vegetation, vehicles, people) and what you know. Give up to 3 different candidate places, most likely first, each as specific as you can
+justify: "City, Country", or "Region, Country" if you can't name a city. Answer with JSON only: {"places": ["...", "..."]}."""
 
 
-OSV_ROOT = Path("/data/hf/datasets/osv5m")
-PROMPT = """You are an expert GeoGuessr player. Geolocate this {kind}.
-First, briefly transcribe any readable text and list the geographic clues (language/script, driving side, road markings, poles, bollards, vegetation, terrain, architecture).
-Then give 5 distinct hypotheses for where it was taken, each with a probability; probabilities must sum to 1. Spread probability across countries when uncertain.
-Finish with exactly one JSON block:
-```json
-{"text": "...", "gps_overlay": false, "hypotheses": [{"country": "...", "region": "...", "lat": 0.0, "lon": 0.0, "p": 0.0}]}
-```
-Set "gps_overlay" to true only if the image itself shows printed GPS coordinates."""
+def propose(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 32) -> None:
+    from .name_score import _post, _read
+    from .sft_data import MP16Images
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    images = MP16Images()
+
+    def ask(e: dict) -> list[str]:
+        image = base64.b64encode(_read(e, images)).decode()  # benchmark photos by path
+        body = {"model": "vlm", "temperature": 0.0, "max_tokens": 120, "chat_template_kwargs": {"enable_thinking": False},
+                "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image}},
+                                                          {"type": "text", "text": PROMPT}]}]}
+        try:
+            raw = _post(server, "/v1/chat/completions", body)["choices"][0]["message"]["content"]
+            m = re.search(r"\{.*\}", raw, re.S)
+            return [str(x) for x in (json.loads(m.group(0)).get("places") or [])][:3] if m else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    with ThreadPoolExecutor(workers) as pool:
+        answers = list(pool.map(ask, photos))
+    path = OUT / f"vlm_places_{tag}_{name}.json"
+    path.write_text(json.dumps({e["image_id"]: a for e, a in zip(photos, answers)}, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"{tag} / {name}: places for {sum(bool(a) for a in answers)} of {len(photos)} photos -> {path}")
 
 
-def _ask(server: str, model: str, image_path: Path, prompt: str) -> dict[str, Any]:
-    image = base64.b64encode(image_path.read_bytes()).decode()
-    body = {
-        "model": model,
-        "temperature": 0.0,
-        "max_tokens": 1500,
-        "chat_template_kwargs": {"enable_thinking": False},
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    }
-    request = urllib.request.Request(
-        f"{server}/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=600) as response:
-            answer = json.loads(response.read())["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as error:
-        # llama.cpp rejects generations containing invalid UTF-8 but echoes the full text in the error body.
-        message = json.loads(error.read())["error"]["message"]
-        if "<channel|>" not in message:
-            raise
-        answer = message.split("<channel|>", 1)[1]
-    return {**parse_answer(answer), "raw": answer}
+def _geocode(tool, place: str, name_to_cc: dict[str, str]) -> tuple[float, float] | None:
+    from .text_search import haversine_km
+
+    parts = [p.strip() for p in place.split(",") if p.strip()]
+    if not parts:
+        return None
+    cc = name_to_cc.get(parts[-1].casefold()) if len(parts) > 1 else None
+    _, places, _, _, _, _ = tool.matches(parts[0])
+    pts = [(p[1], p[2]) for p in places if cc is None or p[3] == cc]
+    if not pts and len(parts) > 1:  # e.g. "Region, Country": try the region part with the country, then the country itself
+        _, places, _, _, _, _ = tool.matches(parts[-1])
+        pts = [(p[1], p[2]) for p in places if cc is None or p[3] == cc]
+    if not pts:
+        return None
+    a = np.asarray(pts, np.float64)
+    support = [(haversine_km(la, lo, a[:, 0], a[:, 1]) < BOX_KM).sum() for la, lo in a]
+    return tuple(a[int(np.argmax(support))])
 
 
-def parse_answer(answer: str) -> dict[str, Any]:
-    """Parse the trailing JSON block, tolerating the malformed keys small VLMs emit (e.g. `"lat: 6.5`)."""
+def search(tag: str, name: str = "4b") -> None:
+    from ..models.pinpoint_reranker import PinpointReranker
+    from .strategy_search import _haversine_km, load_world
+    from .text_search import TextSearch, _countries
 
-    block = answer[answer.rfind("hypotheses"):] if "hypotheses" in answer else ""
-    hypotheses = []
-    for item in re.findall(r"\{[^{}]*\}", block):
-        lat = re.search(r"lat\W*?(-?\d+(?:\.\d+)?)", item)
-        lon = re.search(r"lon\W*?(-?\d+(?:\.\d+)?)", item)
-        prob = re.search(r"\"p\"?\s*:\s*\"?(\d*\.?\d+)", item)
-        if lat and lon and abs(float(lat.group(1))) <= 90 and abs(float(lon.group(1))) <= 180:
-            hypotheses.append((float(lat.group(1)), float(lon.group(1)), float(prob.group(1)) if prob else 0.0))
-    total = sum(p for _, _, p in hypotheses)
-    hypotheses = [(lat, lon, p / total if total > 0 else 1 / len(hypotheses)) for lat, lon, p in hypotheses]
-    text = re.search(r"\"text\"\s*:\s*\"([^\"]*)\"", answer)
-    return {
-        "guesses": [[lat, lon] for lat, lon, _ in hypotheses],
-        "probabilities": [p for _, _, p in hypotheses],
-        "overlay": bool(re.search(r"gps_overlay\W*true", answer)),
-        "text": text.group(1) if text else "",
-    }
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    proposals = json.loads((OUT / f"vlm_places_{tag}_{name}.json").read_text(encoding="utf-8"))
+    existing: dict[int, list] = {}
+    for f in (OUT / f"hypotheses_{tag}.npz", OUT / f"hypotheses_{tag}_clues.npz", OUT / f"hypotheses_{tag}_cluehyps.npz"):
+        if f.exists():
+            z = np.load(f)
+            for ph, c in zip(z["photo"], z["center"]):
+                existing.setdefault(int(ph), []).append(c)
+    _, _, iso_names = _countries()
+    name_to_cc = {v.casefold(): k for k, v in iso_names.items()} | {"usa": "US", "united states of america": "US", "uk": "GB", "england": "GB",
+                                                                  "scotland": "GB", "wales": "GB", "russia": "RU", "south korea": "KR",
+                                                                  "czech republic": "CZ", "vietnam": "VN", "taiwan": "TW"}
+    tool = TextSearch(yfcc=False)
+    hyps, n_geo = [], 0
+    for p, e in enumerate(photos):
+        kept: list = []
+        for rank, place in enumerate(proposals.get(e["image_id"], [])):
+            ll = _geocode(tool, place, name_to_cc)
+            if ll is None:
+                continue
+            n_geo += 1
+            here = np.asarray(existing.get(p, []) + kept, np.float64).reshape(-1, 2)
+            if len(here) and (_haversine_km(ll[0], ll[1], here) < BOX_KM).any():
+                continue
+            kept.append(list(ll))
+            hyps.append({"photo": p, "source": 2, "rank": rank, "support": 1.0 / (1 + rank), "center": list(ll)})
+    print(f"{tag}: {n_geo} proposals geocoded, {len(hyps)} new hypotheses on {len({h['photo'] for h in hyps})} photos", flush=True)
+    from .hypotheses import photo_world
+
+    world, qrows = photo_world(photos)
+    reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    pidx = np.asarray([h["photo"] for h in hyps])
+    centre = np.asarray([h["center"] for h in hyps], np.float64)
+    dlat = BOX_KM / 111.0
+    dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
+    box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
+    found = reranker.rank(world.query_embeddings[qrows[pidx]], query_author=world.query_author[qrows[pidx]],
+                          index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
+    np.savez(OUT / f"hypotheses_{tag}_vlmhyps.npz", photo=pidx, source=np.full(len(hyps), 2), rank=np.asarray([h["rank"] for h in hyps]),
+             support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
+             rows=found.rows)
+    print(f"-> {OUT / f'hypotheses_{tag}_vlmhyps.npz'}")
+    oracle(tag)
+
+
+def oracle(tag: str) -> None:
+    from .strategy_search import _haversine_km
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    truth = np.asarray([e["truth"] for e in photos])
+    base = np.asarray([_haversine_km(*e["truth"], np.asarray([e["pool"][0]]))[0] < 25 for e in photos])
+    parts = []
+    areas = OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"
+    z = dict(np.load(areas))
+    keep = z["source"] == 0
+    parts.append(("Pinpoint areas (K = 5)", {k: v[keep] for k, v in z.items()}))
+    for label, f in (("+ clue places", OUT / f"hypotheses_{tag}_cluehyps.npz"), ("+ VLM places", OUT / f"hypotheses_{tag}_vlmhyps.npz")):
+        if f.exists():
+            parts.append((label, dict(np.load(f))))
+    top = np.zeros(len(photos), bool)
+    anyc = np.zeros(len(photos), bool)
+    print(f"{tag}: Pinpoint < 25 km {base.mean():.1%}")
+    for label, h in parts:
+        for i, ph in enumerate(h["photo"]):
+            ll = h["latlon"][i]
+            ok = np.isfinite(ll[:, 0])
+            if ok.any():
+                d = _haversine_km(*truth[ph], ll[ok])
+                top[ph] |= d[0] < 25
+                anyc[ph] |= (d < 25).any()
+        print(f"  {label:24s} hypothesis oracle: restricted top-1 {top.mean():.1%}, any restricted candidate {anyc.mean():.1%} ({len(h['photo'])} hypotheses)")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--queries", type=Path, help="OSV coarse-filter rows (query_id, index)")
-    parser.add_argument("--benchmark-queries", type=Path, help="strategy_search queries.json (benchmark, image_id, path)")
-    parser.add_argument("--per-benchmark", type=int, default=500)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--server", default="http://127.0.0.1:8765")
-    parser.add_argument("--model", default="gemma-4-26b-a4b")
-    parser.add_argument("--workers", type=int, default=4)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("cmd", choices=("propose", "search", "oracle"))
+    parser.add_argument("--tag", default="dev3k")
+    parser.add_argument("--name", default="4b")
     args = parser.parse_args(argv)
-
-    if args.benchmark_queries is not None:
-        # Flickr benchmark photos: a fixed random sample per benchmark, addressed by path.
-        dataset, kind = None, "photo"
-        rows = json.loads(args.benchmark_queries.read_text(encoding="utf-8"))
-        rng = np.random.default_rng(args.seed)
-        queries = []
-        for benchmark in sorted({row["benchmark"] for row in rows}):
-            members = [row for row in rows if row["benchmark"] == benchmark]
-            for i in sorted(rng.choice(len(members), size=min(args.per_benchmark, len(members)), replace=False)):
-                queries.append({"query_id": f"{benchmark}:{members[i]['image_id']}", "path": members[i]["path"]})
-    else:
-        dataset, kind = OSVTestReferenceDataset(OSV_ROOT), "street-level photo"
-        queries = [json.loads(line) for line in args.queries.read_text(encoding="utf-8").splitlines() if line.strip()]
-    prompt = PROMPT.replace("{kind}", kind)
-    done = set()
-    if args.output.exists():
-        # Re-parse earlier answers with the current parser and drop transport errors so they are retried.
-        kept = []
-        for row in map(json.loads, args.output.read_text(encoding="utf-8").splitlines()):
-            if row["raw"].startswith("error:"):
-                continue
-            kept.append({**row, **parse_answer(row["raw"])})
-            done.add(row["episode_id"])
-        args.output.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in kept), encoding="utf-8")
-    pending = [q for q in queries if q["query_id"] not in done]
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-
-    def work(query: dict[str, Any]) -> dict[str, Any]:
-        path = Path(query["path"]) if "path" in query else dataset.image_path_for_id(dataset.image_id_at(query["index"]))
-        try:
-            result = _ask(args.server, args.model, path, prompt)
-        except Exception as error:  # keep the sweep going; failures are recorded as empty hypotheses
-            result = {"guesses": [], "probabilities": [], "overlay": False, "text": "", "raw": f"error: {error}"}
-        return {"episode_id": query["query_id"], "model": args.model, **result}
-
-    with args.output.open("a", encoding="utf-8") as stream, ThreadPoolExecutor(args.workers) as pool:
-        for number, row in enumerate(pool.map(work, pending), start=1):
-            stream.write(json.dumps(row, ensure_ascii=False) + "\n")
-            stream.flush()
-            print(f"{number}/{len(pending)} {row['episode_id']} hypotheses={len(row['guesses'])}", flush=True)
+    {"propose": lambda: propose(args.tag, args.name), "search": lambda: search(args.tag, args.name), "oracle": lambda: oracle(args.tag)}[args.cmd]()
     return 0
 
 

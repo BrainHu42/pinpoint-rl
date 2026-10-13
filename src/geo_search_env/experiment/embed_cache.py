@@ -28,15 +28,29 @@ from typing import Iterator, Sequence
 
 import numpy as np
 
+from ..paths import HF_HOME, MP16_ROOT
 from ..data.benchmarks import BENCHMARKS, DATA_ROOT, EMBEDDING_KEY
 from .strategy_search import MP16_CSV, MP16_EMBED, OSV_EMBED
-from .verifiers import MP16_ROOT, _read_mp16_image
-
 
 MODEL = "google/siglip2-giant-opt-patch16-384"
-OSV_ROOT = Path("/data/hf/datasets/osv5m")
+OSV_ROOT = HF_HOME / "datasets/osv5m"
 GALLERY_LAYOUT = {"mp16": (4, 32), "osv5m": (4, 64)}  # (workers, batch size) that produced our caches
 GALLERY_OUT = {"mp16": MP16_EMBED, "osv5m": OSV_EMBED}
+
+
+def _read_mp16_image(image_id: str, tar_index, handles, chunk_size: int) -> bytes | None:
+    info = tar_index.get(image_id)
+    if info is None:
+        return None
+    part, local = divmod(info.offset_data, chunk_size)
+    if part >= len(handles):
+        return None
+    handles[part].seek(local)
+    if local + info.size <= chunk_size:
+        return handles[part].read(info.size)
+    first = handles[part].read(chunk_size - local)
+    handles[part + 1].seek(0)
+    return first + handles[part + 1].read(info.size - len(first))
 
 
 def _valid_latlon(row: dict[str, str], lat_key: str, lon_key: str) -> tuple[float, float] | None:

@@ -1,0 +1,552 @@
+# Plan: a text-search tool and an agent trained to use it (draft for review, 2026-10-08)
+
+> **Status (2026-10-09): agent training (steps 2-5) is on hold; a direction decision is pending.**
+> - **The design holds:** Pinpoint restricted to the true region reaches +27.9 pts on dev3k (lesson 64).
+> - **No evidence source supplies the right region where Pinpoint's is wrong:**
+>   - text search with a VLM judge: +0.3 (lesson 65);
+>   - the VLM's own country guess: worse than Pinpoint's;
+>   - domains / phone numbers: 21 photos;
+>   - read-text language: barely predictive;
+>   - number plates: 1.5% of photos, no better than Pinpoint;
+>   - choosing among the pool's regions by restricted reranker score: -0.1.
+> - **Explicit clues are rare on these personal-Flickr photos.** See "Options" and the checks at the end.
+
+## Goal
+Fix Pinpoint's mistakes on photos with searchable text or a nameable place (domains, business and gallery signs, event banners,
+landmarks). By eye these are about 5-7.5% of its mistakes (your test-set estimate; lesson 62 on dev3k). The agent reads the photo,
+writes search queries, reads the results and decides whether to keep Pinpoint's answer or switch. Bar: **>= 1 pt within 25 km over
+Pinpoint's top-1 on dev3k** (33.4%, so >= 34.4%), with fixes clearly outnumbering breaks. The test set stays untouched unless you ask.
+
+## Where we are
+**The tool exists:** `text_search.py` (branch `worktree-text-search`). `text_search(query)` sorts the query into one of three kinds:
+- **Websites:** matched against Overture business websites; a country-code ending also gives a country hint.
+- **Phone numbers:** matched against Overture business phones; an international prefix gives a country hint.
+- **Names:** looked up as a phrase in GeoNames (24.7M names) and Overture (81.5M places).
+
+Hits are grouped into 25 km clusters and returned as short text. The photo's own Flickr entry and its photographer are always
+excluded. Searches take about 21 ms on average and 170 ms at worst, reading SQLite FTS5 from the NVMe drive.
+
+**First dev3k measurement** (9B/27B phrases already produced; GeoNames + Overture; no YFCC; the tool picks without the truth):
+
+| | Real phrases | Shuffled (chance) |
+|---|---|---|
+| Pick right < 25 km | 364 of 1,155 picks | 4 |
+| Search-fixable (Pinpoint wrong, pick right) | **60 (2.0 pts)** | 2 |
+| Traps (Pinpoint right, pick wrong) | 328 | 364 |
+| Right place anywhere in the results, on Pinpoint's mistakes | **172 (5.7 pts)** | |
+
+What it shows:
+- The signal is real.
+- Always switching would lose.
+- The decision (when to trust a search) and choosing among results are where the gain is.
+- The ceiling is above the 1-pt bar.
+
+## Target design: Pinpoint as a tool (agreed 2026-10-08)
+- **Pinpoint runs once:** its pool (<= 12 candidates) and scores go into the prompt.
+- **The agent decides:** Qwen3.5-4B with LoRA sees the photo, the pool and Pinpoint's confidence. Its default answer is
+  Pinpoint's top-1, so on photos without a clue the system is Pinpoint.
+- **Tools:**
+  - `pinpoint_search(country / region / box)`: Pinpoint's retrieval and reranker restricted to an area. This is the key one:
+    a clue only has to give the region, and visual retrieval finds the place inside it, beyond the original pool. 62% of
+    Pinpoint's far misses are the right country but the wrong region (lessons 52-54, measured with the old reranker).
+    Restricting retrieval to the true region raised it from 38.4 to 64.4% < 25 km on im2gps3k (lesson 5, old retrieval).
+  - `text_search(query, near=)`: built.
+  - `zoom(crop)`.
+  - Later: landmark tools, map features, rule tables, live web search when deployed.
+- **The answer must come from a tool result** (a candidate or a text-search place). Free guesses are almost always wrong
+  (lesson 4: 11 of 270).
+- **Not a replacement for the reranker:** every LLM chooser so far landed near parity.
+
+**Check before building the agent (step 0):** rerun Pinpoint on dev3k restricted to the true country / region (the ceiling) and
+to the country / region of the text tool's blind pick (realistic); count fixes and breaks (`pinpoint_constrained.py`). If the
+pick's region fixes clearly more than the pick's own coordinate (60), this design is the one.
+
+**Step 0 results (2026-10-08, dev3k; Pinpoint 33.4% < 25 km):**
+
+| Pinpoint restricted to | Photos | < 25 km | Change | Fixes / breaks |
+|---|---|---|---|---|
+| true country | 2,914 | 41.2% | **+7.8** [+6.7, +8.9] | 255 / 21 |
+| true region | 2,901 | **61.3%** | **+27.9** [+26.2, +29.5] | 859 / 23 |
+| text pick's country | 1,126 | 27.7% | -5.8 | 14 / 187 |
+| text pick's region | 1,122 | 25.7% | -7.7 | 38 / 270 |
+| (text pick's own coordinate) | 1,155 | 24.5% | -8.9 | 60 / 328 |
+
+- **The ceiling is large:** knowing the region and letting Pinpoint search inside it reaches 61.3%, above the oracle over
+  Pinpoint's own pool (50.3%), with almost no breaks. So the design is right.
+- **The text picks don't supply right regions yet:** gating them on Pinpoint's confidence never turns positive (best -0.1).
+- **So the bottleneck is reliable region evidence.** Next, find the subset of clues whose region is right more often than
+  Pinpoint's (by clue type, specificity, agreement), and let the agent learn when to trust them.
+
+**Region-evidence breakdown (`region_evidence.py`, dev3k).**
+- **Setup:** 13,510 searches of the 9B / 27B phrases (GeoNames + Overture, no YFCC). Pinpoint's top-1 region is right on
+  42.8% of photos.
+- **No group of clues beats Pinpoint where they disagree.** Counted on (photo, region) pairs that differ from Pinpoint's region:
+
+| Clue group | Query right | Pinpoint right |
+|---|---|---|
+| all | 119 | 2,724 |
+| landmark names (27B) | 20 | 153 |
+| text read (9B) | 83 | 1,971 (region right on only 8% of searches) |
+| exact name, <= 5 matches, share >= 0.9 | 28 | 124 |
+| 2+ queries agree, share >= 0.9 (best) | 33 | 106 |
+| domain or phone | 4 | 36 |
+
+- **Clues are right mostly where Pinpoint is already right:** with 3+ agreeing queries the region is right 56% of the time,
+  but on disagreements Pinpoint still wins 124 to 23. This is the same pattern as lessons 17-19.
+- **Upper bound with a perfect selector:** a query names the true region while Pinpoint's region is wrong on 119 photos;
+  restricting Pinpoint there fixes 68 (+2.3 pts). That's the most these clues can give, and no simple rule gets near it.
+
+**Eye check of those 119 photos (2026-10-08).**
+- **Method:** sorted by each photo's best query, compared with the 811 trap photos (a query's region differs from Pinpoint's,
+  Pinpoint right, query wrong), and looked at 5 contact sheets (45 photos).
+- **Wins:** 38 are luck: a generic word ("CHIPS", "PAPER", "©2009") whose top cluster happened to fall in the right region.
+  29 are names read in the photo: a shop shutter "Dr Sanchis Bergon", "R-KIOSKI", the Antietam plaque, "International
+  Stadium Yokohama", "Porto de Manaus", "City Island". 52 are names the model recalled: Glastonbury, VDNKh, the Catacombs of
+  Domitilla, Huangshan, Mount Rundle.
+- **Traps outnumber wins in both real-clue groups,** counting specific results (cluster share >= 0.3):
+  - **Text read in the photo:** 369 wrong vs 72 right. Text often names somewhere else: brands (KIRKLAND, KONA), shirts
+    ("MICHIGAN"), posters for other cities ("Cartagena de Indias" in Bogotá, "Hochschule Wismar" in Groningen).
+  - **Names the model recalled:** 691 wrong vs 72 right. These are look-alike guesses: Atlanta airport for San Jose's,
+    Lake Champlain for Lake Starnberg, Cape Spear for Prince Edward Island, the Twelve Apostles in Egypt.
+- **What separates them is visible, not countable:** whether the text belongs to the place (a shop sign, a street or station
+  sign, a plaque) or travels (a brand, clothing, a poster), and whether a landmark is recognised from its own visible
+  name or only from appearance. An agent that sees the photo could judge this. Counts and match statistics can't.
+
+**With YFCC100M titles + tags added (48.5M geotagged photos, `yfcc.db`; same dev3k phrases):**
+
+| | GeoNames + Overture | + YFCC |
+|---|---|---|
+| Blind pick: search-fixable / traps | 60 / 328 | 65 / 337 |
+| Right place anywhere in the results, on Pinpoint's mistakes | 172 (5.7 pts) | **231 (7.7 pts)** |
+| Region differs from Pinpoint's: query right / Pinpoint right | 119 / 2,724 | 148 / 2,721 |
+| Best rule (2+ queries agree, share >= 0.9) | 33 / 106 | 47 / 195 |
+| Perfect region selector + restricted Pinpoint | 68 fixes (+2.3) | **82 fixes (+2.7)** |
+
+- **YFCC adds coverage:** events and informal names. "San Silvestre Toledana", absent before, now points to Toledo.
+- **It doesn't add precision:** no rule beats Pinpoint where they disagree; the best is about 1 to 3.
+- **The 147 wins:** 53 luck, 39 read in the photo, 55 recalled by the model.
+
+**VLM clue judge (`clue_judge.py`, dev3k).**
+- **Setup:** for each of the 4,591 specific clues (cluster share >= 0.3), the VLM sees the photo, the clue and where the search
+  points, and is asked: is the name on a sign / building / plaque, or a landmark it recognises (Yes), or could it refer to
+  somewhere else, such as a brand, clothing, a poster or a look-alike (No)?
+- **Precision flips at high confidence:** counted on (photo, region) pairs that differ from Pinpoint's region:
+
+| P(Yes) >= | 4B: clue right / Pinpoint right | 9B: clue right / Pinpoint right |
+|---|---|---|
+| 0 (all) | 95 / 896 | 95 / 896 |
+| 0.5 | 26 / 36 | 27 / 49 |
+| 0.7 | 17 / 14 | 13 / 15 |
+| 0.8 | 14 / 6 | 11 / 9 |
+| 0.9 | 8 / 1 | 8 / 1 |
+
+  With the threshold chosen on one half and counted on the other: 4B 14 / 6, 9B 9 / 7. The 9B is no better than the 4B.
+- **End to end (4B, P(Yes) >= 0.8, 25 photos switched):**
+  - answering with the clue's own coordinate: **+0.3 pts** [+0.0, +0.5], 12 fixes / 4 breaks;
+  - restricting Pinpoint to the clue's region: +0.1 (7 / 4).
+- **At P(Yes) >= 0.5 (74 photos):** -0.1 to -0.3.
+- **Conclusion:** the judge works: on accepted clues it turns about 1 right to 9 wrong into about 3 to 1. But few right clues
+  exist. Specific named places are better answered by their own coordinate than by a region restriction. Text search with
+  these readers adds about +0.3 pts on dev3k, far below the 1-pt bar.
+
+## Plan
+
+### Step 1. Finish the tool (about half a day, CPU)
+- **YFCC100M titles and tags:** `build-yfcc` once the other session's extraction finishes. It covers events and informal landmark
+  names that GeoNames and Overture miss (e.g. "San Silvestre Toledana").
+- **Postcodes:** GeoNames postal-code file (small download).
+- **Rebuild:** for the corrected chain flag, so chains can be marked or down-weighted.
+- **Optional, only if step 2 shows misreadings matter:** fuzzy matching (re-score near-matches).
+- **Measure each source:** re-run `report` with each source switched on or off, to see what each adds.
+
+### Step 2. Labels on train and dev (about a day; GPU for reading, CPU for searching)
+1. The 4B reads every train photo (35,359) and dev photo and writes up to 5 queries: visible text, names, domains, phones.
+   The 4B, not the 9B, because it is the model we will train.
+2. Search every query and label each photo:
+   - **search-fixable:** Pinpoint >= 25 km off, the tool's blind pick < 25 km;
+   - **trap:** Pinpoint right, the pick far away;
+   - **neither.**
+3. Checks before trusting the labels:
+   - shuffled-phrase control (done once; repeat with the 4B);
+   - a by-eye audit of about 50 fixable labels: is the text visible, and is the match the place it names?
+   - the YFCC title of each MP16 photo (joined on the Flickr id), to tell reading failures from lookup failures.
+4. Output: the training mix, plus the dev3k ceiling with the 4B's own queries.
+
+**Go/no-go:** the 4B's own queries must keep a ceiling well above 1 pt on dev3k (today 2.0 pts blind, 5.7 pts anywhere in the
+results, with the 9B / 27B's phrases).
+
+### Step 3. Headroom check (about half a day, GPU)
+- **Setup:** the base 4B in the multi-turn loop (photo + Pinpoint's pool with its scores; tools `text_search` and `answer`;
+  up to 3 searches), 8-32 samples per dev3k photo.
+- **Measure:** best of N vs Pinpoint (fixes and breaks), and how often the model searches and how often it switches.
+
+**Go/no-go:** best of 8 clearly above Pinpoint (target >= 3 pts within 25 km). GRPO sharpens what the model can already
+sometimes do; it doesn't create it (`LEARNINGS.md` lesson 3). If the headroom is low, fix the prompt and result format first, or
+seed with step 4.
+
+### Step 4. Warm start: rejection-sampling SFT (about half a day, GPU)
+- **What it learns from:** the 4B's own rollouts on train photos, keeping those judged good by ground truth only (no Gemini):
+  - rollouts that beat Pinpoint on search-fixable photos;
+  - rollouts that keep Pinpoint's answer on traps and on photos with nothing searchable.
+- **Training:** LoRA SFT (`sft_train.py`).
+- **Measure on dev3k:** fixes and breaks. This is also the fallback result if RL doesn't help.
+
+### Step 5. GRPO (1-2 days, GPU; confirm with you before the run)
+- **Trainer:** TRL 1.14 `GRPOTrainer` with `environment_factory`, which supports multi-turn tool calls (experimental in this
+  version). Tool outputs are excluded from the loss.
+- **Reward:** the existing `geo_reward` on the final answer, a small cost per search, and Pinpoint's top-1 plus a penalty for a
+  malformed answer.
+- **Prompt mix:** about one third search-fixable, one third traps or Pinpoint-right photos with text, one third random.
+  Groups where all samples get the same reward are dropped.
+- **Settings:** the safe ones from lesson 3 (lr 5e-6, KL 0.04, T = 1.0), with entropy watched (the earlier run collapsed at lr 2e-5).
+- **Keep RL only if** it beats step 4 on dev3k.
+
+### Step 6. Decision
+- Report fixes, breaks and the change within 1 / 25 km vs Pinpoint on dev3k, with bootstrap intervals.
+- Write a lesson.
+- Run the frozen method once on the test set **only if you ask**.
+
+## Decisions for you
+1. **More training photos.** Train has about 1-2k search-fixable photos (estimate). Options:
+   - pull extra geotagged YFCC100M photos outside MP16, picked by tags such as sign / shop / banner / station (Pinpoint never
+     trained on them; benchmark photos and their photographers excluded; image download not yet checked);
+   - or stay on bucket 99 only.
+2. **Live web search.** Offline only for training (free, reproducible, no risk of finding the photo's own page), with web search
+   added later for the deployed agent? Or bring it in now (needs a search API key and leak guards)?
+3. **Scope.** Text and named places only (this plan), or let the same environment also take the landmark tools from lessons
+   58-61 now?
+
+## Risks
+- **Most photos have no clue:** lesson 57 found 58% of fixable photos had nothing place-specific, so the ceiling is a few points at best.
+- **Breaks:** confident wrong searches (328 traps today). If RL doesn't learn the decision, the gain disappears.
+- **The 4B reads less than the 9B / 27B** (lesson 56: 13.9 vs 16.8% right region): its queries may lower the ceiling (step 2 measures this).
+- **Coverage:** small businesses and events missing from the offline sources (YFCC and, later, web search address this).
+- **Infrastructure:** multi-turn GRPO with images is new here: `environment_factory` is experimental, and prompts grow with each tool turn.
+
+## Options: where right-region evidence could come from (draft for discussion, 2026-10-08)
+Knowing the region is worth +27.9 pts and the country +7.8 (lesson 64). Text supplies the right region on only ~150 dev3k photos, which is
+about +0.3 pts in practice (lesson 65). Each option below has a cheap first check on dev3k.
+
+| # | Option | Ceiling / why | First check (dev3k) | Risk |
+|---|---|---|---|---|
+| 1 | **Country first.** Restrict Pinpoint to the country the photo's clues imply: the VLM's country guess, script / language, driving side, plates, domain and phone prefixes | True country +7.8 with only 21 breaks; country cues are far commoner and easier than region cues | Pinpoint restricted to the 9B's country guess (already in `observe_dev3k_9b*.json`), gated by the judge's confidence; one GPU pass, ~15 min | Lesson 55 found country rules ~0 *as candidate scores*; restriction is a different use but the VLM's country may be wrong exactly where Pinpoint's is |
+| 2 | **Choose among the pool's regions with restricted search.** For each region in Pinpoint's pool, restricted Pinpoint gives that region's best candidate; the agent compares them | Restricted search per pool region raises the oracle beyond the pool's 50.3% | Oracle over pool regions with per-region restricted top-1; whether any signal (reranker score, the VLM, a comparator) picks better than Pinpoint | Choosing between look-alike regions is the visual-similarity problem lessons 22-29 hit (comparator +0.9) |
+| 3 | **Region-level rule clues:** regional plate codes, area codes, route shields, regional chains (`GEOLOCATION_CLUES.md` sections 1, 5, 8) | Constraints that don't depend on appearance | VLM reads plates / route numbers / area codes on Pinpoint's dev3k mistakes; count how often present and right | Lesson 57: most hard photos show nothing place-specific; regional codes rarer still |
+| 4 | **Build the agent now** with Pinpoint-as-tool + text search + the judge, and let RL combine them | Tools are complementary; the judge shows the visual decision is learnable | Base-4B headroom (best of 8 vs Pinpoint) in the multi-turn loop | No tool clears the bar alone, and GRPO sharpens rather than discovers (lesson 3) |
+| 5 | **Live web search** for the deployed agent | Coverage of right clues is the limit lesson 65 found | Needs a search API key; on Flickr-based dev the photo's own page can leak | Can't be measured cleanly offline |
+
+**Option 1, first checks (`vlm_country.py`, dev3k; truth / Pinpoint countries from the Overture labels):**
+- **The VLM's holistic country guess is worse than Pinpoint's:**
+  - 9B greedy: right on 62.4% of the photos it answers, where Pinpoint is right on 77.1% of the same photos. Where they
+    disagree: VLM right 145, Pinpoint right 461. Even in Pinpoint's least confident fifth: 40 vs 63.
+  - 8 samples per photo, the modal answer: 4B right 46.9% and 9B 54.6%, against Pinpoint 68.4%.
+  - Where all 8 samples agree and differ from Pinpoint: 4B 10 vs 19, 9B 47 vs 47.
+  - A guess from appearance carries the same information as retrieval, only less of it.
+- **Explicit clues are rare or noisy on these photos (personal Flickr):**
+
+| Explicit clue (as a constraint) | Photos | Truth allowed | Pinpoint not allowed | Of those, Pinpoint wrong |
+|---|---|---|---|---|
+| Country-code domain | 20 | 75% | 6 | 4 |
+| Phone prefix | 1 | | 0 | |
+| Language of text the 9B read | 999 | 80% | 191 | 133 (70%, vs 67% baseline) |
+| Same, excluding English | 342 | 80% | 77 | 53 |
+
+  Domains and phone numbers almost never appear. Read-text language is often wrong (20% of the time the true country isn't
+  allowed: brands, foreign text), so a violation barely signals a Pinpoint mistake. Number plates are not measured yet.
+
+**Recommendation:** 1 first. It's the cheapest, uses data already on disk, and has the largest clean ceiling with few breaks. If
+it shows signal, 2 extends it to regions; 4 follows once some tool clears +1 pt on dev3k by itself.
+
+**Options 2 and 3, first checks (2026-10-09, dev3k):**
+- **Option 2, choosing among the pool's regions (`pinpoint_constrained regions`):**
+  - **Setup:** Pinpoint restricted to each (country, region) in the photo's own pool; 5.6 regions per photo, 16,870 searches.
+  - **Oracle:** over Pinpoint + the per-region top-1s it is 44.9%, below the pool's own oracle (50.3%). The true region often isn't
+    in the pool, and keeping only one candidate per region drops good ones.
+  - **Selection:** switching to the highest restricted reranker score when it beats Pinpoint's top-1: -0.1 [-0.9, +0.7]
+    (1,865 switched, 66 fixes / 70 breaks). Reranker scores across regions carry nothing new.
+- **Option 3, number plates (`plates.py`, 9B):**
+  - **Presence:** a plate is reported on 44 of 3,000 photos (1.5%), 27 of Pinpoint's 1,997 mistakes.
+  - **Country:** right 34 vs Pinpoint 36; where they differ, plate right 4 vs Pinpoint right 6.
+  - **Region:** given on 5 photos.
+- **Conclusion:** with options 1-3 checked, every explicit clue we can extract (text, domains, phones, language, plates) and
+  every holistic one (the VLM's country, reranker scores) gives the right region less often than Pinpoint does where they
+  disagree, or is too rare to matter. On dev3k (and so likely on im2gps3k / yfcc4k) a clue-based agent has about +0.3-0.5 pts
+  to work with.
+
+**Direction choices (for discussion):**
+1. **Build the agent anyway, as the platform for tool use and live APIs.** Pinpoint as a tool, text search, the clue judge,
+   landmarks. Accept that the tools sum to about +0.5 pts on these benchmarks; the value is the deployed system, not the
+   benchmark number.
+2. **Retarget the evaluation to photos where explicit clues are common** (street-level: OSV-5M's test split, Mapillary-style
+   imagery, or the deployed use case). The professional-geolocator approach has something to work with there. Pinpoint's
+   retriever was trained on OSV-5M, so a held-out street-level set would be needed.
+3. **Look for region evidence that isn't explicit and isn't appearance:** the open research question (e.g. co-occurring map
+   features near each candidate). Earlier tries (lessons 51, 55) added about 0, because they re-encoded retrieval.
+
+**Fine-tuned clue judge (2026-10-09, `clue_judge sft-data` + `sft_train`, run `clue-judge-4b`; dev3k, 4B clues):**
+- **Setup:**
+  - Train clues: the base 4B read text / place names and wrote search queries for the 35,359 train photos (169,734 clues).
+  - Searched (`region_evidence --clues 4b`), keeping the 60,617 specific clues; 17,036 point within 25 km of the truth.
+  - LoRA SFT of the 4B on 30,000 of them (natural 28% Yes; target Yes = the clue's top place < 25 km from the photo's GPS),
+    1 epoch, eval loss 0.18 -> 0.12.
+- **Ceilings with a perfect judge (clue's own coordinate):** all clues 87 fixes (+2.9 pts), read text + place names 52 (+1.7),
+  text 43 (+1.4), recalled queries 59 (+2.0).
+- **Region pairs that differ from Pinpoint's, threshold chosen on one half and counted on the other (clue right / Pinpoint right):**
+
+| Clues | Zero-shot 4B | Fine-tuned 4B |
+|---|---|---|
+| all | 14 / 7 | 15 / 19 |
+| read (text + place name) | 15 / 15 | 20 / 11 |
+| text only | 11 / 2 | **19 / 8** (at P(Yes) >= 0.8: 15 / 1, zero-shot 5 / 1) |
+| queries only | 8 / 4 | 10 / 9 |
+
+- **End to end** (Pinpoint 33.4%; source and threshold chosen on dev3k, so optimistic):
+
+| Rule | Switched | Change < 25 km | Fixes / breaks |
+|---|---|---|---|
+| text, P(Yes) >= 0.5, clue's coordinate | 40 | **+0.5** [+0.2, +0.9] | 21 / 5 |
+| text, P(Yes) >= 0.8, clue's coordinate | 18 | +0.4 [+0.2, +0.7] | 14 / 1 |
+| text + place names, >= 0.8, clue's coordinate | 31 | +0.5 [+0.2, +0.8] | 18 / 3 |
+| text, >= 0.5, Pinpoint restricted to the clue's region | 37 | +0.4 | 16 / 4 |
+
+- **Reading:**
+  - Fine-tuning helps on read text: about half the text ceiling (21 of 43) with few breaks, against about a third zero-shot.
+  - It doesn't help on recalled names. The target ("is the clue's place right?") isn't conditioned on disagreeing with Pinpoint,
+    so the judge learns "recognisable place", which is right mostly where Pinpoint is right.
+  - The best rule is +0.5 pts, still below the 1-pt bar. The read-clue ceiling itself is only +1.7.
+
+**Judge trained on the decision itself (`clue_judge --vs`, run `clue-judge-vs-4b`, 2026-10-09):**
+- **Setup:** only clues whose region differs from Pinpoint's top-1 region (39,855 train clues, 2,259 = 5.7% right), with
+  Pinpoint's region in the prompt ("…instead places it in X. Is the name better evidence…?"); Yes rows repeated 3x; 1 epoch,
+  eval loss 0.070 -> 0.057 (train loss 0.02-0.05).
+- **Held-out precision** (clue right / Pinpoint right):
+  - read clues 26 / 11 (first fine-tune 20 / 11, zero-shot 15 / 15);
+  - text only 21 / 4 (19 / 8; 11 / 2);
+  - recalled names still lose, 10 / 23.
+- **End to end, read clues (text + place names) at P(Yes) >= 0.3, the clue's own coordinate:** **+0.6 pts** [+0.3, +1.0]
+  (49 switched, 23 fixes / 4 breaks). Text only: +0.5 (18 / 2). Pinpoint restricted to the clue's region: +0.4.
+- **Decision (made overnight per the agreed rule, with the user's instruction to use the other MP16 buckets for more data):**
+  - +0.6 is below the 1-pt bar and only slightly above the first fine-tune.
+  - Training loss is far below held-out loss, with only ~2.3k distinct positives: the judge is data-limited, not capacity-limited.
+  - The zero-shot 9B judged no better than the 4B (lesson 65).
+  - So: **more data**, not the 9B. 35k extra photos from MP16 buckets 0-98 (`pinpoint_reference extra`; no benchmark or dev
+    photographers, no near-duplicates of benchmark photos), 4B clues, searched, `--vs` rows, then retrain the 4B on both sets.
+  - Caveat: Pinpoint trained on buckets 0-98, so its answers there are better (the judge sees Pinpoint right more often).
+
+**More data (35k extra photos from MP16 buckets 0-98; run `clue-judge-vs-all-4b`, 2026-10-09):**
+- **Data:** the extra photos gave 39,390 disagreeing specific clues (1,857 right, 4.7%; Pinpoint is right more often on its own
+  training buckets). Combined with bucket 99: 64,000 rows, every Yes kept (about 4,100 distinct right clues, 2x before),
+  60,109 training rows, 1 epoch.
+- **Held-out precision** (clue right / Pinpoint right): read clues 27 / 12 (before 26 / 11); text only 23 / 6 (21 / 4);
+  recalled names 8 / 18.
+- **End to end, read clues at P(Yes) >= 0.5, the clue's own coordinate:** **+0.7 pts** [+0.4, +1.1] (45 switched, 25 fixes /
+  4 breaks); at >= 0.7: +0.6 (21 / 3). Pinpoint restricted to the clue's region: +0.4.
+- **Stopping here:**
+  - Doubling the positive examples moved the result by about +0.1 (25 vs 23 fixes), within noise.
+  - Recalled names stay unsolved with every judge.
+  - The read-clue ceiling is +1.7, and the judges recover about half of it.
+  - A 9B is unlikely to change this: zero-shot it was no better, and more data barely helped, which points at the clues rather
+    than the judge.
+- **Text-search line, final:** about +0.6 to +0.7 pts on dev3k (read clues, the clue's coordinate, few breaks), below the
+  1-pt bar.
+
+**Beyond the top result (`clue_points.py`, 2026-10-09; dev3k, 4B clues; raw matches of 14,295 clues).** Both use a shuffled-clue
+control (each photo gets another photo's clues).
+- **1. Clues confirming one of Pinpoint's other candidates** (a clue match within R km of the candidate):
+
+| | Real clues | Shuffled (luck) |
+|---|---|---|
+| Ceiling, R = 1 km (Pinpoint wrong, a supported non-top candidate < 25 km) | 79 | 20 |
+| Ceiling, R = 5 km | 122 | 40 |
+| Best rule (switch to the best-supported candidate when the top-1 has none; clues with <= 10 matches, R = 1 km) | +0.2 [-0.1, +0.5] (13 fixes / 7 breaks) | +0.0 |
+| Any clue, R = 1 km | -0.8 (38 / 61) | -0.4 |
+
+- **2. Two clues of the same photo matching within 1 km of each other** (sharing no word):
+  - Real clues give a joint spot on 1,016 photos, right on 267, 36 of them Pinpoint's mistakes. The shuffled control gives a
+    spot on 887 photos: common names co-occur in every big city.
+  - Every switch rule loses (best -1.0: 16 fixes / 47 breaks; control -1.3).
+- **Reading:**
+  - Net of luck, candidate confirmation is worth about 60-80 fixable photos, the same size as the top-result ceiling (87),
+    and simple rules get +0.2.
+  - Co-occurrence of these clues is mostly coincidence.
+  - The "right place anywhere in the results" figure (231) was largely luck: common words hit everywhere.
+  - Neither idea raises the ceiling. The offline clues themselves are the limit: too few right ones (coverage and reading).
+
+**Keyless online geocoders (`web_geocode.py`, 2026-10-09; the 7,953 unique 4B clues of Pinpoint's 1,468 dev3k mistakes with clues):**
+
+| Source | First result < 25 km | Any of 5 | Shuffled luck (first) | First result right and not reached offline |
+|---|---|---|---|---|
+| OpenStreetMap Nominatim | 88 (+2.9 pts) | 113 | 2 | 20 |
+| English Wikipedia search | 91 (+3.0 pts) | 123 | 6 | 25 |
+| Offline text search (top result, any clue) | 113 (+3.8 pts) | | | |
+
+- **Overlap:** Nominatim and Wikipedia share 64 photos. Together they reach 38 mistakes offline doesn't.
+- **Ceiling (all three, first results):** 151 mistakes (+5.0 pts), up from +3.8.
+- **Reading:**
+  - Hits are real (luck is 2-6 photos: a geocoder returns one specific place per query).
+  - The coverage gain is modest.
+  - At the judges' ~50% recovery, these sources might add about +0.4-0.6 pts to the +0.7.
+
+**Verifying recalled names (`recall_verify.py`, 2026-10-09; dev3k, the 2,657 recalled-name clues of the 4B that disagree with Pinpoint's
+region; 123 right):**
+- **Checks:**
+  - **Restricted retrieval:** Pinpoint restricted to a ~55 km box around the named place (new `query_box` in the port); its best
+    reranker score minus Pinpoint's own top-1 score.
+  - **Exemplars:** SigLIP2 similarity to gallery photos within 1 km of the named place, minus similarity to Pinpoint's top-1
+    photo.
+- **Separation of right vs wrong clues (AUC):** restricted margin 0.876, exemplar margin 0.675, the fine-tuned judge 0.937.
+  The AUCs mostly reflect easy wrong clues.
+- **Where it matters (clue right while Pinpoint is wrong, 77 clues):** only 16% have a restricted match scoring above
+  Pinpoint's top-1 (39% within 0.1). The gallery near the right place rarely offers a stronger match than Pinpoint's
+  look-alike, so retrieval can't confirm a right recognition it didn't make itself.
+- **Clue level:** the margin prunes some breaks (judge >= 0.8: 18 right / 7 wrong -> 17 / 4 with margin > -0.3).
+- **Per photo, end to end** (the clue's own coordinate):
+
+| Rule | Switched | Change < 25 km | Fixes / breaks |
+|---|---|---|---|
+| read clues, P(Yes) >= 0.5 (the previous best) | 45 | +0.7 [+0.4, +1.1] | 25 / 4 |
+| recalled only, P(Yes) >= 0.8 | 43 | +0.1 | 8 / 4 |
+| recalled only, + margin > -0.3 | 39 | +0.1 | 7 / 3 |
+| read + verified recalled | 71 | +0.6 | 26 / 7 |
+| thresholds chosen on the other half | 70 | +0.5 [+0.2, +0.9] | 25 / 9 |
+
+- **Reading:**
+  - Neither check unlocks recalled names. Most right recalled names sit on photos the read clues already fix, and the rest
+    aren't confirmed by retrieval or exemplars.
+  - The exemplar check is weak: similarity is what retrieval already uses.
+  - Text search stays at about +0.7 pts.
+
+**Missing clue types (2026-10-09; dev3k, Pinpoint's 1,997 mistakes):**
+- **Typed survey (`clue_survey.py`, base 4B):** for each clue type, the photos where it's reported; the country it implies,
+  right vs Pinpoint's country right; and the region it implies that is right where Pinpoint's region is wrong:
+
+| Clue type | Reported | Country right / Pinpoint's right | Region right & Pinpoint wrong |
+|---|---|---|---|
+| flag | 74 | 32 / 53 | 1 |
+| regional / bilingual language | 49 | 24 / 31 | 5 |
+| local-authority name | 44 | 29 / 31 | 9 |
+| road number / km marker | 5 | 2 / 5 | 0 |
+| distance sign | 2 | 1 / 2 | 0 |
+| postcode | 4 | 2 / 3 | 1 |
+| phone area code | 6 | 3 / 6 | 2 |
+| currency / units | 18 | 8 / 11 | 1 |
+| regional chain | 27 | 13 / 16 | 2 |
+
+- **Chain footprints (`chain_footprint.py`):**
+  - Clue n-grams matched 444 Overture brands (>= 20 stores), almost all generic words that happen to be brand names
+    ("arena", "national", "garage").
+  - Possible fixes (footprint keeps the true region and excludes Pinpoint's): 22, against 23 with shuffled clues.
+  - Exact brand clues with concentrated footprints: 1-2 fixes against 9-19 breaks. Overture's brand coverage is also uneven:
+    global brands like IKEA show narrow footprints.
+  - No regional chains (Wawa, Mercadona…) show up in these photos.
+- **Reading:**
+  - Every missing clue type is rare in Pinpoint's mistakes; flags are the most common, at 3.7%.
+  - Where present, the implied place is right less often than Pinpoint.
+  - In total about 20 region fixes at best (+0.7 pts ceiling, before any selection).
+  - The clue inventory isn't the gap: personal Flickr photos simply carry few explicit clues.
+
+## Locatability ceiling (2026-10-09; `scripts/locatability_score.py`, labels in `artifacts/agent/locatability_dev3k.json`)
+- **Setup:** a blind by-eye pass over 120 random dev3k photos (seed 42), made without seeing the truth or Pinpoint's answer.
+  Each photo gets the finest level its content supports and a guess:
+  - P: a specific place (landmark, legible place text);
+  - C: city; R: region; N: country; K: continent / broad;
+  - X: nothing place-specific.
+- **Results** (counts within 25 km):
+
+| Tier | Photos | Blind guess | Pinpoint | Oracle over Pinpoint's pool | Pinpoint restricted to the true region |
+|---|---|---|---|---|---|
+| P (specific place) | 17 (14%) | 15 | 13 | 13 | 15 |
+| C (city) | 9 (8%) | 9 | 8 | 8 | 8 |
+| R (region) | 7 (6%) | 2 | 2 | 3 | 2 |
+| N (country) | 16 (13%) | 4 | 8 | 12 | 9 |
+| K (continent) | 15 (12%) | 3 | 5 | 10 | 10 |
+| X (nothing place-specific) | 56 (47%) | 0 | 8 | 16 | 30 |
+| **all** | 120 | **33 (28%)** | **44 (37%)** | 62 (52%) | 74 (62%) |
+
+- **Combined:** blind or Pinpoint right on 50 (42%). Blind right where Pinpoint is wrong: 6 (5%); the reverse: 17.
+- **Reading:**
+  - **Nearly half the photos (47%) carry nothing place-specific:** food, pets, flowers, interiors, concerts, close-ups. No clue
+    reader can locate them. Retrieval still gets 8 of 56 (the same scene photographed by others), and 30 if the true region
+    were known. That region knowledge isn't in the image, so it's out of reach without outside context.
+  - **Content-locatable photos (P + C, 22%) are already mostly solved:** Pinpoint 21 of 26, the blind reader 24 of 26.
+  - **The middle tiers (R / N / K, 32%) are where an expert knows the country or region but not the spot.** There, retrieval
+    inside the right area is the lever, and Pinpoint's pool oracle shows the candidates often exist.
+  - **Estimated ceiling from image content plus today's retrieval: about 42-48% within 25 km** (Pinpoint 37% on this sample,
+    33.4% on all of dev3k). That's roughly +5-10 pts of headroom, most of it from reading region-level evidence well. The
+    remaining ~50% would need information the photo doesn't contain.
+- **Caveats:**
+  - One reader (the assistant), who guessed coarse coordinates (country-level guesses rarely land within 25 km).
+  - 120 photos, so about ±4 pts.
+  - A practised GeoGuessr player might do better on the N / K tiers.
+
+## Before building on the ceiling (2026-10-09)
+
+**1. Agreement among Pinpoint's candidates (`pool_agreement.py`).**
+- **Idea:** Pinpoint's reranker scores each candidate on its own. Re-score each candidate by the softmax score mass (T = 0.2)
+  of all candidates within 25 km of it. The setting was chosen on train and is the same as the best held-out setting on dev3k.
+
+| Set | Pinpoint < 25 km | Pick the most supported candidate | Pick the best-scored candidate of the most supported area |
+|---|---|---|---|
+| train (35,359 photos, not used for dev choices) | 32.4% | **+1.0** [+0.7, +1.2] (1,019 fixes / 682 breaks); < 1 km about -0.6 | +0.7 [+0.5, +0.9]; < 1 km -0.1 |
+| dev3k (3,000) | 33.4% | **+2.0** [+1.2, +2.8] (106 / 46); < 1 km -0.7 [-1.3, -0.2] | +1.7 [+1.0, +2.5]; < 1 km +0.2 |
+
+- **The first method in this project to clear the 1-pt bar on independent data (train).** Free: it uses only Pinpoint's own
+  output. The dev3k figure is higher than train's, probably partly by chance. The second pick keeps 1 km accuracy.
+
+**2. Eye check: why Pinpoint misses a right candidate in its pool.**
+- **Sample:** 48 random dev3k photos where the top-1 is >= 25 km off but a pool candidate is < 25 km (507 such photos in dev3k).
+- **Near-misses, 19 (40%):** the top-1 is 25-100 km away, usually the same region and the same kind of place (Pongau vs Kaprun,
+  Encinitas vs Del Mar, Rogaland vs Rogaland). Only fine local discrimination would help; region-level constraints wouldn't.
+- **Generic photos far off, 20 (42%):** flowers, interiors, people, sea, food. The right candidate is in the pool largely by
+  chance; 5 of them are the right country but the wrong region with nothing to tell them apart.
+- **Explicit clues, 8 (17%):** text ("Zagrebački plesni centar", "Durham Elementary School", the Antietam plaque, Vietnamese
+  billboards, Chinese signs), recognisable places (Dam Square, a skyline, the Shanghai Expo's Manneken Pis) and look-alike ruins.
+- **Physical differences** (coast vs inland, alpine vs flat) between the top-1 and the right candidate: essentially none.
+  Retrieval already returns physically similar candidates. **Physical-constraint elimination is unlikely to help; dropped.**
+- **Reading:** most recoverable cases are near-misses and generic photos where several candidates cluster. That's what the
+  agreement re-scoring exploits, which fits its +1-2 pts.
+
+## Agreement + text clues, and the Pinpoint tool as areas (2026-10-09)
+- **Pinpoint tool (`pinpoint_tool.py`):** returns **areas**, not single candidates. Each area is grouped around its
+  best-supported candidate (25 km, softmax T = 0.2) with its share of retrieval confidence and member count. Area 1's pick is
+  lesson 68's agreement pick. Example the agent reads:
+  `pinpoint(): 11 visually similar geotagged photos, grouped into 1 areas: 1. Schwangau, Bavaria, Germany (47.555, 10.749): 100%, 11 of 11 candidates`.
+  This replaces "Pinpoint runs once and its pool goes into the prompt" in the target design: the agent sees where the visual
+  evidence concentrates, as an expert would weigh it.
+- **Combination on dev3k:** agreement pick, overridden by an accepted read-text clue (fine-tuned judge `ftvsall4b`, the clue's
+  own coordinate); judge threshold chosen on one half and counted on the other.
+
+| Rule | Change < 25 km | Fixes / breaks |
+|---|---|---|
+| agreement (support) | +2.0 [+1.3, +2.8] | 106 / 46 |
+| agreement (best in area) | +1.7 [+1.0, +2.5] | 96 / 45 |
+| Pinpoint + clue judge | +0.6 [+0.2, +1.0] | 25 / 7 |
+| **agreement (support) + clue judge** | **+2.6** [+1.8, +3.5] | 129 / 51 |
+| agreement (best in area) + clue judge | +2.3 [+1.5, +3.2] | 120 / 50 |
+
+- **Reading:**
+  - The two add up almost fully: they fix different photos (clusters vs explicit text).
+  - Calibration: agreement measured +1.0 on train against +2.0 on dev3k. The judge can't be checked on train (it was trained
+    there). A realistic combined gain is about +1.5 pts.
+  - Confirming it would take a held-out MP16 set for the judge, or a one-time test-set run if you ask.
+
+## Extending agreement (2026-10-09): gating, coarse-to-fine, deeper votes (`area_rules.py`, `deep_votes.py`)
+
+| Variant | train (35,359) < 25 km | dev3k < 25 km | Note |
+|---|---|---|---|
+| **pool agreement at 25 km (lesson 68)** | **+1.0** [+0.7, +1.2] | **+2.0** [+1.2, +2.8] | < 1 km -0.8 / -0.7 |
+| best-in-area variant | +0.7 | +1.7 | keeps 1 km |
+| top country by mass, then agreement inside | +0.7 | +1.4 | |
+| top region by mass, then agreement inside | +0.7 | +1.1 | |
+| country -> region -> agreement | +0.5 | +0.8 | |
+| + top-100 neighbour votes (beta 1, tau 0.1, chosen on train) | +1.2 [+1.0, +1.5] | +1.3 [+0.4, +2.2] | < 1 km -2.3 / -2.8 |
+| + neighbour votes, best-in-area | +0.8 | +0.9 | |
+| agreement + clue judge, gated by area support (dev3k only) | | +2.5 [+1.7, +3.4] | ungated +2.6 |
+
+- **Reading:**
+  - Plain pool agreement at 25 km stays the best rule.
+  - Coarse-to-fine aggregation loses: grouping by region or country lets a large but wrong region win.
+  - Deeper retrieval votes add about +0.2 on train, lose on dev3k and cost 1 km accuracy. The 12 reranked candidates already
+    carry the useful agreement.
+  - Gating the clue judge by agreement confidence changes nothing.
+- **Kept:** pool agreement (support pick, or best-in-area when 1 km matters) + the read-text clue judge.

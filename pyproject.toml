@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "geo-search-env"
 version = "0.1.0"
-description = "An OSV-5M-to-Mapillary search-policy transfer environment"
+description = "Image geolocation research: retrieval baseline, candidate pools, VLM training and evaluation"
 requires-python = ">=3.11"
 dependencies = ["mapbox-vector-tile>=2,<3", "numpy>=1.26,<3"]
 
