@@ -121,6 +121,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   train / evaluation asymmetry (3.4-3.7% everywhere), not run.
 - **76: reading clues as a costly action** (`read_agent.py`): a policy on a free glance (SigLIP2 embedding) + Pinpoint features reads 20% of
   photos and keeps +0.51 / +0.80 of always reading's +0.5 / +1.0 (5% reads: +0.39 / +0.57); "read when Pinpoint is unsure" = random.
+- 77-79 (other machine, merged 2026-10-13): Pinpoint's attention reranker without the photographer filter (29.5 / 47.4 / 61.9);
+  by-eye diagnosis of 140 of its misses; **commons26**, a new benchmark of 2026 Commons photos (reranker test 4.6 / 16.8 / 33.7 at 1 / 25 /
+  200 km, oracle over its 12 33.5 at 25 km), built by `commons_bench.py`, scored by `commons26_score.py`.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

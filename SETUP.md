@@ -33,6 +33,7 @@ All project datasets, caches, checkpoints, and training environments live inside
 | `data/pinpoint/sft` | SFT/GRPO checkpoints | `sft_train.RUNS` |
 | `$PINPOINT_ROOT` | Pinpoint checkpoints (contrastive retriever, attention reranker) + attention retrieval index | `models/pinpoint.py`, `models/pinpoint_reranker.py` |
 | `data/pinpoint/overture` | Overture division polygons (knowledge SFT place labels) | `place_labels.py` |
+| `data/pinpoint/commons26` | commons26 benchmark (built by `commons_bench.py`; not on this machine yet) | `data/benchmarks.py`, `commons_bench.py` |
 | `.venvs/{vllm,sft,grpo,overture}` | serving, training, and the DuckDB env for place labels (`envs/*.txt`) | `scripts/*.sh`, module usage lines |
 
 Copy `.env.example` to `.env`, fill it in, and load it with `set -a; . ./.env; set +a`.
