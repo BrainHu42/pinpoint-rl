@@ -652,8 +652,23 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     features, and identical bf16 scores given the same features. Tie order matters: many index scores tie exactly (photos at one coordinate
     share a GPS embedding), the reranker reads each hit's rank, and a naive top-k changed the top-1 on 5 of 64 photos; the port follows the
     original's chunked top-k sequence. Index photos by the query's photographer are excluded (the original doesn't).
-    - Eval halves (n = 3,795), % within 1 / 25 / 200 / 750 / 2500 km: top-1 17.5 / 37.2 / 53.9 / 71.4 / 84.5 (im2gps3k 21.8 / 48.9, yfcc4k
-      14.8 / 29.8); oracle over its pool (11.6 candidates) 30.1 / 54.7 / 74.4 / 89.6 / 96.8. One-step reranker: 16.7 / 38.2, oracle over
+    - Eval halves (n = 3,795), % within 1 / 25 / 200 / 750 / 2500 km, both protocols (`pinpoint_reference bench` / `bench-own`, the user asked
+      for both, 2026-10-13):
+
+      | Index | Set | Top-1 | Oracle over its pool |
+      |---|---|---|---|
+      | query photographer's photos excluded (our rule; all our results) | im2gps3k | 21.8 / 48.9 / 64.6 / 79.6 / 89.7 | 36.1 / 64.6 / 80.9 / 91.9 / 97.2 |
+      | | yfcc4k | 14.8 / 29.8 / 47.0 / 66.1 / 81.2 | 26.3 / 48.4 / 70.2 / 88.2 / 96.5 |
+      | | both | 17.5 / 37.2 / 53.9 / 71.4 / 84.5 | 30.1 / 54.7 / 74.4 / 89.6 / 96.8 |
+      | kept (the original Pinpoint's protocol) | im2gps3k | 21.8 / 48.9 / 64.6 / 79.6 / 89.7 | 36.1 / 64.6 / 80.9 / 91.9 / 97.2 |
+      | | yfcc4k | 33.5 / 44.8 / 58.2 / 73.0 / 84.8 | 47.3 / 61.9 / 77.8 / 90.7 / 97.1 |
+      | | both | 28.9 / 46.4 / 60.7 / 75.5 / 86.7 | 43.0 / 62.9 / 79.0 / 91.1 / 97.1 |
+
+      im2gps3k is unaffected: none of its photographers appear in MP16 (0% matched; MP-16 is said to exclude im2gps photographers). yfcc4k
+      and MP16 both come from YFCC100M: 68.9% of yfcc4k eval photos have a photographer with photos in the index (median 162 each), and
+      keeping them more than doubles 1 km (14.8 -> 33.5%) and adds 15 pts at 25 km. That gain is retrieval of the photographer's own
+      photos of the same trip, not geolocation, which is why our rule excludes them; compare published numbers only under the same protocol.
+      Pool size 11.6 (excluded) / 11.4 (kept). One-step reranker: 16.7 / 38.2, oracle over
       its ~17-candidate pool 33.4 / 59.0; the union of both pools (28.7) would reach 37.4 / 63.1. Pinpoint's pool alone was chosen (user).
     - MP16: dev (3,836) 16.0 / 33.9, oracle 27.0 / 49.5; held-out rest (34,531) 15.4 / 32.3; trained-on photos 19.0 / 38.9, oracle 32.4 /
       57.7: its index still favours photos its retriever trained on, so training stays on bucket 99.

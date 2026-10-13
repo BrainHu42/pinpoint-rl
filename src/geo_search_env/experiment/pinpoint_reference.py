@@ -7,6 +7,8 @@ The reranker (`models.pinpoint_reranker`) retrieves <= 12 candidate photos from 
 and predicts the top-scoring one. Index photos by the query's photographer are excluded (benchmark rule).
 
 bench: both halves of im2gps3k and yfcc4k (query order of `strategy_search.load_world`).
+bench-own: the same without the exclusion (the original Pinpoint's protocol: the query photographer's own photos stay in the index)
+       -> bench_own.npz; reported next to bench (lesson 54).
 mp16:  every query of `sft_data pool` (artifacts/sft/queries.json, same order): the Pinpoint-held-out bucket-99 photos and the
        sample of photos its retriever trained on. Reported: MP16 dev (held-out validation photographers, no burned-in GPS),
        MP16 train (held-out, the rest) and, as a leak check, trained-on photos (a big gap to held-out would mean the index
@@ -70,12 +72,15 @@ def mp16_dev_mask(queries: Sequence[dict[str, Any]]) -> np.ndarray:
     ])
 
 
-def _rank(world, root: Path, name: str) -> None:
+def _rank(world, root: Path, name: str, exclude_own: bool = True) -> None:
     from ..models.pinpoint_reranker import PinpointReranker
 
     reranker = PinpointReranker(device="cuda")
-    index_author = world.mp16["author"][reranker.cache_indices]
-    found = reranker.rank(world.query_embeddings, query_author=world.query_author, index_author=index_author)
+    if exclude_own:
+        index_author = world.mp16["author"][reranker.cache_indices]
+        found = reranker.rank(world.query_embeddings, query_author=world.query_author, index_author=index_author)
+    else:
+        found = reranker.rank(world.query_embeddings)
     root.mkdir(parents=True, exist_ok=True)
     np.savez(
         root / f"{name}.npz", rows=found.rows, cache_rows=found.cache_rows, latlon=found.latlon, scores=found.scores,
@@ -87,6 +92,10 @@ def _rank(world, root: Path, name: str) -> None:
 
 def bench(root: Path) -> None:
     _rank(load_world(), root, "bench")
+
+
+def bench_own(root: Path) -> None:
+    _rank(load_world(), root, "bench_own", exclude_own=False)
 
 
 def mp16(root: Path) -> None:
@@ -142,7 +151,7 @@ def _line(label: str, predictions: np.ndarray, truth: np.ndarray) -> str:
 
 
 def report(root: Path) -> None:
-    for name in ("bench", "mp16"):
+    for name in ("bench", "bench_own", "mp16"):
         if not (root / f"{name}.npz").exists():
             continue
         pools = load_pools(name, root)
@@ -161,7 +170,8 @@ def report(root: Path) -> None:
             groups = {f"{b} eval": np.flatnonzero([q["benchmark"] == b and q["split"] == "eval" for q in queries]) for b in BENCHMARK_NAMES}
             groups |= {"both eval halves": np.flatnonzero([q["split"] == "eval" for q in queries]),
                        "both tune halves": np.flatnonzero([q["split"] == "tune" for q in queries])}
-        print(f"{name}: % within " + " / ".join(f"{t} km" for t in THRESHOLDS) + f"; mean pool {valid.sum(1).mean():.1f} candidates")
+        rule = {"bench": " (query photographer's photos excluded)", "bench_own": " (query photographer's photos kept)"}.get(name, "")
+        print(f"{name}{rule}: % within " + " / ".join(f"{t} km" for t in THRESHOLDS) + f"; mean pool {valid.sum(1).mean():.1f} candidates")
         for label, members in groups.items():
             print(f" {label} ({len(members)} photos)")
             print(_line("Pinpoint reranker top-1", latlon[members, 0], truth[members]))
@@ -170,10 +180,10 @@ def report(root: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("bench", "mp16", "extra", "report"))
+    parser.add_argument("command", choices=("bench", "bench-own", "mp16", "extra", "report"))
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
-    {"bench": bench, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
+    {"bench": bench, "bench-own": bench_own, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
     return 0
 
 
