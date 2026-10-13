@@ -899,6 +899,9 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Paired vs the previous pipeline (41.8): +0.2 [-0.5, +1.0]. The +0.8 dev3k edge did not transfer, so the merged pipeline is a
       simplification (one network, 2 zooms, no offline set layer), not an accuracy gain.
     - Lesson: gains below ~1 pt between pipelines on dev3k are within its noise for decisions; the next gain has to come from new evidence.
+    - Rerun with the gated final pick (lesson 74's default, chosen on train / dev3k; the user asked, 2026-10-13): 2 zooms 42.0% < 25 km,
+      +4.8 [+3.9, +5.8] (im2gps3k +4.2, yfcc4k +5.2), 1 km 18.3% (+0.8, was -0.7 with the agreement pick); set pick +4.1 / +1.6.
+      The gated rule's dev3k behaviour transferred: same 25 km, the 1 km loss gone.
 
 74. **Final pick, longer lists, reranker training (2026-10-13; `PINPOINT_SET_PLAN.md`).** Train CV / dev3k, % within 25 km vs Pinpoint:
     - Final pick inside a zoomed area: the box founder (a central point) is better at 25 km, a kernel peak (a sharp point) at 1 km. Gating the

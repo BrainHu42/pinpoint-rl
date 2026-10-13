@@ -28,7 +28,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   - Next: run the area pipeline on the retrained reranker.
 
   Benchmark result (eval halves, lesson 73): merged pipeline (retrained reranker, 2 agent zooms, answer head) 42.1% < 25 km,
-  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, `HYPOTHESIS_PLAN.md`).
+  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, `HYPOTHESIS_PLAN.md`). With the gated pick (lesson 74 default): +4.8 at 25 km, +0.8 at 1 km.
   Lesson 74: gated final pick (default), longer lists and more reranker training don't help (fine-tune saturates at ~+3; photographer
   exclusion is its key ingredient). Training throughput notes in lesson 74.
   Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
