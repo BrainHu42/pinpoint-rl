@@ -204,7 +204,9 @@ def build(lang: str) -> None:
 
     pages, passages, fts = [], [], []
     files = sorted((WIKI / "hf" / f"20231101.{lang}").glob("*.parquet"))
-    cursor = duckdb.connect().execute(f"SELECT id, url, title, text FROM read_parquet({[str(f) for f in files]})")
+    duck = duckdb.connect()
+    duck.execute("SET memory_limit = '1GB'; SET threads = 2")  # DuckDB sizes itself to the machine, not the job's cgroup (OOM-killed at 4G)
+    cursor = duck.execute(f"SELECT id, url, title, text FROM read_parquet({[str(f) for f in files]})")
     count = 0
     while batch := cursor.fetchmany(20_000):
         for page_id, url, title, text in batch:
@@ -213,6 +215,7 @@ def build(lang: str) -> None:
         flush()
         if count % 500_000 < 20_000:
             print(f"  {lang}: {count:,} articles", flush=True)
+    duck.close()
     voyage = 0
     for page_id, title, text in _voyage_pages(lang):
         add("wikivoyage", page_id, title, f"https://{lang}.wikivoyage.org/wiki/{quote(title.replace(' ', '_'))}", text, None)
