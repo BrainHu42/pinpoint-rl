@@ -123,6 +123,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   photos and keeps +0.51 / +0.80 of always reading's +0.5 / +1.0 (5% reads: +0.39 / +0.57); "read when Pinpoint is unsure" = random.
 - **77 (negative): map checks of visible features** (`map_checks.py`, OSM `features_near`): the features the 4B sees are near the truth far more
   often than chance, but Pinpoint's wrong areas have them too; as answer-head evidence they add nothing (-0.05 to -0.9). Next: names inside areas.
+- **78 (negative): OSM names inside areas** (`name_checks.py`, `maps_search`): names near right areas 30% vs wrong 11%, but as evidence +0.04 /
+  +0.33 at best; they only partly replace the existing text-search clue features (-0.45 / -0.77 when masked, +0.07 / +0.25 back). Redundant.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

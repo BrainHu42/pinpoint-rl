@@ -1,12 +1,14 @@
-"""Map checks as area evidence (map_checks.features): the merged pipeline's answer head trained with and without the map-check column groups
-(density: OSM objects near each area's restricted top-1; summary: share of the features the 4B saw that are there, and how many it saw;
-checks: per feature word, there or not). Same held-out 10k train photos and dev3k as scripts/answer_xfit.py; clues read; gated zoom rule;
-all areas zoomed and no zoom. All variants x seeds train at once as one batched model (hypothesis_agent.fit_answers; one data load).
+"""Map / name checks as area evidence: the merged pipeline's answer head trained with and without extra column groups (map_checks:
+density = OSM objects near each area's restricted top-1, summary = share of the features the 4B saw that are there, checks = per feature
+word; name_checks: names = the photo's read / recalled names found near the area). Same held-out 10k train photos and dev3k as
+scripts/answer_xfit.py; clues read; gated zoom rule; all areas zoomed and no zoom. All variants x seeds train at once as one batched model
+(hypothesis_agent.fit_answers; one data load).
 
-  PYTHONPATH=src .venv/bin/python scripts/answer_mapchecks.py [--seeds 3] [--epochs 25]
+  PYTHONPATH=src .venv/bin/python scripts/answer_mapchecks.py [--variants "" density summary ...] [--seeds 3] [--epochs 25]
 """
 
 import argparse
+from pathlib import Path
 import time
 
 import numpy as np
@@ -14,22 +16,35 @@ import numpy as np
 from geo_search_env.experiment.hypothesis_agent import evaluate, fit_answers, load
 
 VARIANTS = ("", "density", "summary", "density,summary", "checks", "density,summary,checks")
-GROUPS = ("density", "summary", "checks")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seeds", type=int, default=3)
 parser.add_argument("--epochs", type=int, default=25)
+parser.add_argument("--variants", nargs="+", default=list(VARIANTS), help='comma-joined groups per variant; "" = none (the reference)')
 args = parser.parse_args()
+VARIANTS = tuple(args.variants)
+GROUPS = tuple(sorted({g for v in VARIANTS for g in v.split(",") if g and g != "noclue"}))
 
 n_base = load("dev3k", "setft_a")["pre"].shape[-1]
 tr = load("train", "setft_a", extra=GROUPS)
 dv = load("dev3k", "setft_a", stats=tr["stats"], extra=GROUPS)
-groups = np.load("artifacts/agent/mapcheck_train_setft_a.npz")["groups"]
+groups = np.concatenate([g[np.isin(g, GROUPS)] for kind in ("mapcheck", "namecheck")  # load's column order
+                         if (path := Path(f"artifacts/agent/{kind}_train_setft_a.npz")).exists() for g in [np.load(path)["groups"]]])
 assert n_base + len(groups) == tr["pre"].shape[-1]
 order = np.random.default_rng(0).permutation(tr["n"])
 held, pool = order[:10_000], order[10_000:]
 jobs = [(v, s) for v in VARIANTS for s in range(args.seeds)]
-masks = [np.concatenate([np.ones(n_base), np.isin(groups, [g for g in v.split(",") if g]).astype(float)]) for v, _ in jobs]
+CLUE_COLS = slice(12, 20)  # hypothesis_agent.CLUE_COLS: the text-search clue evidence on each area; variant group 'noclue' masks it
+
+
+def base_mask(v):
+    m = np.ones(n_base)
+    if "noclue" in v.split(","):
+        m[CLUE_COLS] = 0
+    return m
+
+
+masks = [np.concatenate([base_mask(v), np.isin(groups, [g for g in v.split(",") if g]).astype(float)]) for v, _ in jobs]
 t = time.time()
 nets = fit_answers(tr, pool, [s for _, s in jobs], masks, epochs=args.epochs)
 print(f"{len(nets)} answer heads trained together in {time.time() - t:.0f} s", flush=True)

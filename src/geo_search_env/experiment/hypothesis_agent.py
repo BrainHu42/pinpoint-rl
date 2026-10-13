@@ -126,8 +126,11 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
-    if extra:  # map checks (map_checks.features): column groups appended to the pre-zoom part; checks need the clue reader, density doesn't
-        mc = np.load(Path("artifacts/agent") / f"mapcheck_{tag}_{ckpt_tag}.npz")
+    for kind in ("mapcheck", "namecheck") if extra else ():  # map / name checks (map_checks, name_checks): column groups appended to the
+        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}.npz"  # pre-zoom part; all but density need the clue reader
+        if not path.exists():
+            continue
+        mc = np.load(path)
         assert np.array_equal(mc["photo"], f["photo"]) and np.array_equal(mc["source"], f["source"])
         cols = np.isin(mc["groups"], extra)
         x = mc["x"][rows][:, cols]

@@ -969,3 +969,18 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       names read in the photo searched inside each candidate area (maps_search near=), next.
     - Engineering: `hypothesis_agent.fit_answers` trains many answer heads as one vmapped model (18 heads in 121 s, GPU 60-66% vs ~19% for one;
       reproduces fit_answer's 37.0 / 38.8-39.0). Don't run parallel training processes next to the osm.db build: a global OOM killed it once.
+
+78. **OSM name search inside areas is redundant with the text-search clue evidence (2026-10-13; `name_checks.py`, `scripts/answer_mapchecks.py`).**
+    `maps_search` (osm.db: 128M OSM objects, FTS5 over all name variants; staged on the NVMe drive) asked whether the names a photo shows (4B
+    read text + place names, 40% of photos) or evokes (4B recalled landmark queries, 78%) exist near each area's restricted top-1. 137k
+    distinct names, one phrase lookup each (~90 ms; the full maps_search query takes 0.5-2 s, 14-18 s for common names with near=), 25%
+    found in OSM.
+    - Names separate areas far better than visible features (lesson 77): a name within 5 km of 30% of right areas vs 11% of wrong ones
+      (train; read 22 / 8%, recall 19 / 4%). But on the targets (top area wrong, a right one exists, 15.6% of photos) a name favours a right
+      area for 1.0% of photos and the wrong top area for 0.8%.
+    - Answer head, paired at 25 km (held-out 10k train / dev3k, 3 seeds): read names +0.04 / +0.33, recalled -0.07 / +0.09, both -0.09 / -0.02.
+    - Redundancy check: masking the existing clue features (text search over GeoNames / Overture / YFCC titles, judged by the 4B) costs
+      -0.45 / -0.77; OSM names put back only +0.07 / +0.25 of it. The name evidence is already in the pipeline, in a stronger form.
+    - Lesson: names and visible features from the photo, checked against maps, add nothing beyond what retrieval + text search already use;
+      the clue reader's information caps these tools at ~1 pt. A new tool has to bring information the photo's text and look don't.
+    - Engineering: `answer_mapchecks.py --variants` takes column groups from map_checks / name_checks and 'noclue' (masks the clue columns).
