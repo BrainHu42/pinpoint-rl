@@ -14,7 +14,7 @@
        article's first MAX_CHARS characters cut at paragraph ends into ~PASSAGE_CHARS pieces); fts: FTS5 over (title, body) without stored
        content (unicode61 without diacritics; CJK text is indexed by the trigram-free unicode61 tokenizer, so Chinese / Japanese match
        whole runs of characters, which is coarse).
-query: the phrase in every language's index (all words in any order if no phrase matches), bm25 with the title weighted 5x, best
+query: the phrase in every language's index (all words in any order if no phrase matches; any of 3+ words if still nothing), bm25 with the title weighted 5x, best
        passage per page; pages ranked across languages by bm25. Snippet: ~SNIPPET chars around the first matched word."""
 
 from __future__ import annotations
@@ -420,7 +420,10 @@ class WebSearch:
         words = norm(query).split()
         if not words:
             return [], False
-        for match, loose in (('"' + " ".join(words) + '"', False), (" AND ".join(f'"{w}"' for w in words), True)):
+        tries = [('"' + " ".join(words) + '"', False), (" AND ".join(f'"{w}"' for w in words), True)]
+        if len(words) > 2:  # like Google, don't insist on every word of a long query
+            tries.append((" OR ".join(f'"{w}"' for w in words), True))
+        for match, loose in tries:
             hits = [h for part in self.pool.map(lambda d: self._one(d[0], d[1], match, words, query), self.dbs) for h in part]
             if hits:
                 for h in hits:
