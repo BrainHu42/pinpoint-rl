@@ -1,8 +1,10 @@
 # OpenStreetMap extract for the offline maps tools (maps_search, features_near; the offline stand-in for Google Maps, see the web-search
 # replication plan): every named object plus unnamed landmark features, with a centre, a bounding box and its tags, from the planet file.
-# Storage: Parquet parts under data/osm/extract/ (zstd); the node-location cache (~115 GB, dense) goes to the NVMe drive.
+# Storage: Parquet parts under data/osm/extract/ (zstd); the node-location cache (~115 GB, dense) and the pair files go next to --cache.
+# Keep --cache on the EBS volume (data/osm/): the machine stops daily at 02:00 UTC and a restart wipes the NVMe drive. All reads of the
+# cache are sequential, so EBS is fast enough.
 # Usage: .venvs/osm/bin/python src/geo_search_env/experiment/osm_extract.py data/downloads/osm/planet-latest.osm.pbf data/osm/extract \
-#            --cache /opt/dlami/nvme/osm/nodes.cache [--skip-nodes]   (memory-capped; --skip-nodes reuses the node rows and a complete cache)
+#            --cache data/osm/nodes.cache [--skip-nodes]   (memory-capped; --skip-nodes reuses the node rows and a complete cache)
 #        .venvs/osm/bin/python src/geo_search_env/experiment/osm_extract.py --summary data/osm/extract
 
 """Kept: nodes, ways and multipolygon / boundary relations that carry a name-like tag (name, name:*, alt_name, brand, ...) or one of the
@@ -247,6 +249,12 @@ def extract(pbf: Path, out: Path, cache_file: Path, skip_nodes: bool) -> None:
                 last = int(f.stem.split("-")[1])
         parts = _Parts(out, first=last + 1)
         print(f"kept node rows in parts 0-{last}", flush=True)
+        if not cache_file.exists():  # e.g. the NVMe drive was wiped by a restart: rebuild the locations only (no node reaches Python)
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            for _ in osmium.FileProcessor(str(pbf), osmium.osm.NODE).with_locations(f"dense_file_array,{cache_file}").with_filter(
+                    osmium.filter.IdFilter([])):
+                pass
+            print(f"rebuilt the node-location cache, {(time.time() - start) / 60:.0f} min", flush=True)
     else:
         if any(out.glob("part-*.parquet")):
             raise SystemExit(f"{out} already holds parts; remove them first or pass --skip-nodes")
