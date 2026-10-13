@@ -925,3 +925,12 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       are bucket 99 (train + dev3k) unless the encoder is retrained or new geotagged photos are added. More labels is closed as a lever;
       new evidence is next.
 
+76. **A learned read policy gets most of the clue value for a fifth of the reads (2026-10-13; `read_agent.py`, `PINPOINT_SET_PLAN.md`).**
+    The 4B clue reader as a costly action in the merged pipeline (before reading: Pinpoint's areas + the photo's SigLIP2 embedding as a free
+    glance; reading reveals clue places and clue evidence; 2 zooms; gated pick). Train CV / dev3k, % within 25 km:
+    - Never read 36.5 / 37.5%, always read +0.5 / +1.0. Reading helps 0.9 / 1.1% of photos and hurts 0.4 / 0.2%.
+    - Learned policy (gain classifier, out of fold; reads when E[gain] > cost): +0.39 / +0.57 at 5% reads, +0.51 / +0.80 at 20%.
+    - "Read when Pinpoint is unsure" is no better than random (+0.12 / +0.13 at 20%). Glance only +0.45 / +0.63, Pinpoint features only
+      +0.32 / +0.60 at 20%: what is in the photo decides whether reading pays, not retrieval confidence.
+    - First accuracy-vs-cost result for the tool-using agent; the same recipe extends to costlier tools (geocoders, maps) as more actions.
+

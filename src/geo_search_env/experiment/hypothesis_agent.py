@@ -34,6 +34,7 @@ from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
 BOX_KM = 25.0
+CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
 
 
@@ -123,6 +124,8 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
         slot[j] = seen[p]
         seen[p] += 1
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
+    pre_noclue = pre.copy()
+    pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
     valid = zm["rows"][rows] >= 0
     s = np.where(valid, zm["scores"][rows], -np.inf)
     best = np.where(np.isfinite(s.max(1, keepdims=True)), s.max(1, keepdims=True), 0.0)
@@ -147,7 +150,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
         return out
 
     d = {
-        "pre": pad(norm(pre, "pre")), "post": pad(norm(post, "post")), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
+        "pre": pad(norm(pre, "pre")), "pre_noclue": pad(norm(pre_noclue, "pre")), "post": pad(norm(post, "post")), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
         "km_zoom": pad(zoom_km, np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
         "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
@@ -226,7 +229,20 @@ def _random_zoom(b, gen):
     return z & b["mask"]
 
 
-def fit_answer(d, photos, seed, epochs=25):
+def _view(b, read):
+    """The batch as seen before / after reading clues (read_agent, lesson 76): unread photos see no clue-place tokens and zeroed clue features."""
+
+    import torch
+
+    if "pre_noclue" not in b:
+        return b
+    v = dict(b)
+    v["pre"] = torch.where(read[:, None, None], b["pre"], b["pre_noclue"])
+    v["mask"] = b["mask"] & (b["is_area"] | read[:, None])
+    return v
+
+
+def fit_answer(d, photos, seed, epochs=25, read_mode: str | None = None):
     import torch
 
     torch.manual_seed(seed)
@@ -241,6 +257,8 @@ def fit_answer(d, photos, seed, epochs=25):
     for _ in range(epochs):
         for bi in np.array_split(rng.permutation(photos), batches):
             b = _sub(d, torch.as_tensor(bi, device="cuda"))
+            if read_mode == "random":  # answer from either state: clues read for half the photos
+                b = _view(b, torch.rand(len(bi), device="cuda", generator=gen) < 0.5)
             z = _random_zoom(b, gen)
             ok = _right(b, z) & b["mask"]
             use = ok.any(1) & ~(ok == b["mask"]).all(1)

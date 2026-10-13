@@ -119,6 +119,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - **75 (negative): cross-fitted labels**: 135k photos scored by photographer-half rerankers add nothing to the answer head (36.8 / 38.7% vs
   37.0 / 38.8%): Pinpoint's encoder trained on them, so their lists are easier (ceiling 69% vs 62-63%). Near-duplicate exclusion: no
   train / evaluation asymmetry (3.4-3.7% everywhere), not run.
+- **76: reading clues as a costly action** (`read_agent.py`): a policy on a free glance (SigLIP2 embedding) + Pinpoint features reads 20% of
+  photos and keeps +0.51 / +0.80 of always reading's +0.5 / +1.0 (5% reads: +0.39 / +0.57); "read when Pinpoint is unsure" = random.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

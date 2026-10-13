@@ -286,3 +286,26 @@ inputs built for them with the same reranker (areas, restricted searches, zoom s
   setft_a's 35.5 / 36.8%. Cross-fitting only the reranker cannot produce labels from the evaluation distribution; that needs the encoder,
   index and reranker retrained per half (Pinpoint's full training), or geotagged photos outside MP16.
 
+## Merged pipeline step 3: reading clues as a costly action (2026-10-13; lesson 76)
+
+`read_agent.py`. Before reading, the agent sees Pinpoint's areas only (clue features zeroed, no clue-place tokens) and a free glance: the
+photo's SigLIP2 embedding. Reading (cached 4B clue reader + text search + clue judge) reveals clue places and clue evidence. Then 2 zooms of
+Pinpoint's top areas and the answer head (trained on random read / no-read states; gated pick). Read policy: both outcomes are known for every
+training photo (out of fold), so the gain from reading (-1 / 0 / +1) is learned by a classifier and the policy reads when E[gain] exceeds the
+cost per read: the optimum of accuracy - cost x reads, one model for the whole curve.
+
+% within 25 km, change vs never reading (train CV / dev3k):
+
+| Reads | Learned (glance + Pinpoint) | Glance only | Pinpoint features only | Read when Pinpoint is unsure | Random |
+|---|---|---|---|---|---|
+| 0% (never): 36.5 / 37.5% | | | | | |
+| 5% | +0.39 / +0.57 | | | +0.03 / +0.03 | +0.03 / +0.05 |
+| 10% | +0.44 / +0.63 | +0.40 / +0.57 | +0.27 / +0.47 | +0.03 / +0.03 | +0.05 / +0.10 |
+| 20% | +0.51 / +0.80 | +0.45 / +0.63 | +0.32 / +0.60 | +0.12 / +0.13 | +0.10 / +0.20 |
+| 100% (always) | +0.5 / +1.0 | | | | |
+
+- Reading changes the answer for few photos: it helps 0.9 / 1.1%, hurts 0.4 / 0.2%; the oracle reads only those.
+- At 20% of the reads the policy recovers ~95% / 80% of the always-read gain; at 5%, 75% / 57%.
+- Retrieval confidence doesn't tell when to read (the heuristic is no better than random); the photo itself does (the glance carries most
+  of the signal).
+
