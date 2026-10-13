@@ -1009,3 +1009,9 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       specificity (match count) 0.54, read vs recalled 0.49. At a 1:10 base rate, AUC 0.88 doesn't reach the >50% precision a switch needs.
     - Lesson: the generator finds new right places, but the only verifier we have is Pinpoint's look, and the photos that need new candidates
       are exactly the ones whose look is ambiguous. Neither name specificity nor the judge says which name candidates are right.
+    - Hard constraints at two scales (the user's design, measured on cached data, train / dev3k): (1) country / region codes in the 4B's read
+      text: country-code domain 0.7 / 0.6%, phone number 0.5 / 0.5%, postcode-like 0.6 / 0.6%, any 1.6 / 1.6% of photos (TEXT_SEARCH_PLAN
+      option 1: truth allowed by the domain 75%, plates 1.5% and no better than Pinpoint). (2) Co-located name pairs (two of the photo's names
+      matching within 0.3 km of each other, a verifier independent of the look): 14.2 / 13.7% of photos, median 2 spots, a spot < 25 km of the
+      truth 5.0 / 4.8% of all photos; but on photos with no right pipeline area only 0.3 / 0.2%. The constraints are right where retrieval is
+      already right (lessons 17-19, 65, 67): on these Flickr benchmarks the photos retrieval fails carry no text to constrain them.
