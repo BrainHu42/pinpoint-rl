@@ -931,6 +931,23 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Never read 36.5 / 37.5%, always read +0.5 / +1.0. Reading helps 0.9 / 1.1% of photos and hurts 0.4 / 0.2%.
     - Learned policy (gain classifier, out of fold; reads when E[gain] > cost): +0.39 / +0.57 at 5% reads, +0.51 / +0.80 at 20%.
     - "Read when Pinpoint is unsure" is no better than random (+0.12 / +0.13 at 20%). Glance only +0.45 / +0.63, Pinpoint features only
-      +0.32 / +0.60 at 20%: what is in the photo decides whether reading pays, not retrieval confidence.
+      +0.32 / +0.60 at 20%: what is in the photo decides whether reading pays, not retrieval confidence. (Caveat: "unsure" was one feature,
+      the normalised support of Pinpoint's best area; a better confidence score such as the reranker's softmax margin is untested.)
+    - The gain is small in absolute terms (reading's ceiling is ~1 pt); the policy is a classifier on both known outcomes (a one-step
+      bandit), not RL over a sequence.
     - First accuracy-vs-cost result for the tool-using agent; the same recipe extends to costlier tools (geocoders, maps) as more actions.
 
+77. **Map checks of what the 4B sees add nothing beyond retrieval (2026-10-13; `map_checks.py`, `maps_search.py`, `scripts/answer_mapchecks.py`).**
+    `features_near` (osm-search's OSM extract, 128M objects as boxes; batch version `maps_search.FeatureIndex` over `features.npz`, 40M
+    feature rows, KD-trees by box size, exact against brute force) asked for each feature the 4B reported (observe.py, 67% of photos have one
+    the tool knows) near the truth, the right area's restricted top-1 and each wrong area's.
+    - The observation is real: within 1 km of the truth, beach 86% when observed vs 16% when not; cliff 56 / 16, harbour 57 / 15.
+    - But Pinpoint's wrong areas mostly have it too (they look like the photo): beach 92% at the right area vs 78% at wrong ones; the largest
+      gaps are stadium 86 / 59, ruins 65 / 40, castle 63 / 46. Hard elimination (drop areas missing an observed feature) fails the true spot for
+      48% (1 km) / 31% (3 km) of photos and nets zero on the targets (top area wrong, a right one exists: helps 1.4%, hurts 1.3%).
+    - As soft evidence in the answer head (held-out 10k train / dev3k, 3 seeds, paired): density -0.05 / -0.08, share of observed features
+      present -0.04 / -0.19, per-word present / absent columns -0.64 / -0.46 (overfit), all -0.88 / -0.84.
+    - Lesson: generic visual features are what retrieval already matches on; a map tool only helps with evidence retrieval can't see, e.g.
+      names read in the photo searched inside each candidate area (maps_search near=), next.
+    - Engineering: `hypothesis_agent.fit_answers` trains many answer heads as one vmapped model (18 heads in 121 s, GPU 60-66% vs ~19% for one;
+      reproduces fit_answer's 37.0 / 38.8-39.0). Don't run parallel training processes next to the osm.db build: a global OOM killed it once.

@@ -121,6 +121,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   train / evaluation asymmetry (3.4-3.7% everywhere), not run.
 - **76: reading clues as a costly action** (`read_agent.py`): a policy on a free glance (SigLIP2 embedding) + Pinpoint features reads 20% of
   photos and keeps +0.51 / +0.80 of always reading's +0.5 / +1.0 (5% reads: +0.39 / +0.57); "read when Pinpoint is unsure" = random.
+- **77 (negative): map checks of visible features** (`map_checks.py`, OSM `features_near`): the features the 4B sees are near the truth far more
+  often than chance, but Pinpoint's wrong areas have them too; as answer-head evidence they add nothing (-0.05 to -0.9). Next: names inside areas.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

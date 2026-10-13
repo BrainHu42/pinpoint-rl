@@ -34,6 +34,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
   in-distribution. Next: new evidence (clues, tools) with RL deciding when to use it.
   Lesson 76 (`read_agent.py`): clue reading as a costly action; a learned read policy keeps +0.5 / +0.8 of the clue gain with 20% of the reads.
+  Lesson 77 (`map_checks.py`): OSM checks of the features the 4B sees add nothing (retrieval's wrong areas look alike); names inside areas next.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
@@ -107,6 +108,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   - `area_model.py`: area-then-spot model over zoomed CLS states.
   - `hypothesis_agent.py`: merged pipeline (answer + action heads over area tokens; lesson 71). Retrained-reranker photo sets: `pinpoint_set photo-set`, `scripts/retrained_pipeline.sh`.
   - `zoom_agent.py`: RL zoom policy. `read_agent.py`: clue reading as a costly action with a learned read policy (lesson 76).
+  - Offline Google stand-ins (merged from branch osm-search): `osm_extract.py` (OSM planet -> `data/osm/extract`), `maps_search.py` (name search
+    with `near=`, `features_near`; `data/maps_search/osm.db`, `stage` to the NVMe drive; batch `FeatureIndex` over `features.npz`), `web_search.py`.
+    `map_checks.py`: map checks on the pipeline's areas (lesson 77). `hypothesis_agent.fit_answers`: many answer heads at once (vmap).
   - `models/set_head.py`.
   - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
     `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.

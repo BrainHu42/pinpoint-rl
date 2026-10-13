@@ -97,7 +97,7 @@ def _unzoomed_km(f: dict, photos: list[dict]) -> np.ndarray:
     return out
 
 
-def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated") -> dict:
+def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated", extra: tuple[str, ...] = ()) -> dict:
     import torch
 
     feat_path, zoom_path = _paths(tag, ckpt_tag)
@@ -126,6 +126,13 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
+    if extra:  # map checks (map_checks.features): column groups appended to the pre-zoom part; checks need the clue reader, density doesn't
+        mc = np.load(Path("artifacts/agent") / f"mapcheck_{tag}_{ckpt_tag}.npz")
+        assert np.array_equal(mc["photo"], f["photo"]) and np.array_equal(mc["source"], f["source"])
+        cols = np.isin(mc["groups"], extra)
+        x = mc["x"][rows][:, cols]
+        pre = np.concatenate([pre, x], 1)
+        pre_noclue = np.concatenate([pre_noclue, np.where(mc["groups"][cols] != "density", 0.0, x)], 1)
     valid = zm["rows"][rows] >= 0
     s = np.where(valid, zm["scores"][rows], -np.inf)
     best = np.where(np.isfinite(s.max(1, keepdims=True)), s.max(1, keepdims=True), 0.0)
@@ -180,13 +187,17 @@ def _net(n_pre: int, n_post: int, n_c: int, dim: int = 64):
             self.layers = nn.ModuleList(nn.TransformerEncoderLayer(dim, 4, 4 * dim, 0.1, "gelu", batch_first=True, norm_first=True) for _ in range(2))
             self.answer = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 1))
             self.action = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, 1))
+            self.register_buffer("pre_mask", torch.ones(n_pre), persistent=False)  # pre-zoom columns this model sees (fit_answers variants)
+
+        def forward(self, b, zoomed):
+            return self.answer_logits(b, zoomed)
 
         def encode(self, b, zoomed):
             t = self.h(b["hidden"].float()) + self.c(b["cand"])
             att = (t @ self.query / t.shape[-1] ** 0.5).masked_fill(~b["cvalid"], -1e4)
             pooled = (torch.softmax(att, -1).unsqueeze(-1) * t).sum(-2)
             z = zoomed.float().unsqueeze(-1)
-            e = self.pre(b["pre"]) + self.post(torch.cat([b["post"] * z, pooled * z, z], -1))
+            e = self.pre(b["pre"] * self.pre_mask) + self.post(torch.cat([b["post"] * z, pooled * z, z], -1))
             for layer in self.layers:
                 e = layer(e, src_key_padding_mask=~b["mask"])
             return e
@@ -272,6 +283,63 @@ def fit_answer(d, photos, seed, epochs=25, read_mode: str | None = None):
             sched.step()
     net.eval()
     return net
+
+
+def fit_answers(d, photos, seeds, pre_masks, epochs=25):
+    """Several answer heads trained at once as one batched model (torch.func.vmap over stacked weights), so the GPU isn't idle on one small
+    head: model k starts from seed seeds[k] and sees the pre-zoom columns where pre_masks[k] is 1 (the others are zeroed, a constant input).
+    Same recipe as fit_answer; all models see the same batches and random zooms. Returns one ordinary net per model (pre_mask set)."""
+
+    import copy
+
+    import torch
+    from torch.func import functional_call, vmap
+
+    nets = []
+    for seed, m in zip(seeds, pre_masks):
+        torch.manual_seed(seed)
+        net = _net(d["pre"].shape[-1], d["post"].shape[-1], d["cand"].shape[-1]).cuda()
+        net.pre_mask.copy_(torch.as_tensor(np.asarray(m, np.float32)))
+        nets.append(net)
+    # stacked by hand: each _net call defines its own class, which stack_module_state rejects
+    params = {n: torch.stack([dict(m.named_parameters())[n].detach() for m in nets]).requires_grad_() for n, _ in nets[0].named_parameters()}
+    buffers = {n: torch.stack([dict(m.named_buffers())[n] for m in nets]) for n, _ in nets[0].named_buffers()}
+    base = copy.deepcopy(nets[0]).to("meta")
+    gen = torch.Generator(device="cuda").manual_seed(int(seeds[0]))
+    batches = max(1, len(photos) // 128)
+    train = [v for k, v in params.items() if not k.startswith("action.")]
+    opt = torch.optim.AdamW(train, lr=1e-3, weight_decay=1e-2)  # elementwise: the same as one optimiser per model
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=epochs * batches, pct_start=0.1)
+    rng = np.random.default_rng(int(seeds[0]))
+    base.train()
+
+    def one(p, buf, b, z):
+        return functional_call(base, (p, buf), (b, z))
+
+    batched = vmap(one, in_dims=(0, 0, None, None), randomness="different")
+    with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):  # fused kernels reject the vmapped mask strides
+        for _ in range(epochs):
+            for bi in np.array_split(rng.permutation(photos), batches):
+                b = _sub(d, torch.as_tensor(bi, device="cuda"))
+                z = _random_zoom(b, gen)
+                ok = _right(b, z) & b["mask"]
+                use = ok.any(1) & ~(ok == b["mask"]).all(1)
+                if not use.any():
+                    continue
+                logp = torch.log_softmax(batched(params, buffers, b, z), -1)  # [models, photos, areas]
+                loss = -torch.logsumexp(logp.masked_fill(~ok, float("-inf")), -1)[:, use].mean(1).sum()
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                sched.step()
+    out = []
+    for k, net in enumerate(nets):
+        with torch.no_grad():
+            for name, prm in net.named_parameters():
+                prm.copy_(params[name][k])
+        net.eval()
+        out.append(net)
+    return out
 
 
 def _rollout(net, b, budget, policy: str, gen=None):
