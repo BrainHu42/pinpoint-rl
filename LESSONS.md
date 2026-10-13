@@ -1031,3 +1031,8 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       town 271 km off).
     - So the clues the 4B misses are recognition and regional knowledge more than unread text. One reader (Claude), 40 photos (4 / 40 has a
       95% interval of about 3-24%); the knowledge is a frontier model's, so a 4B reaching it would need training (RL on ground truth), not prompting.
+    - Are those queries in the corpus? (`scripts/reader_test_search.py`; text_search with the photo and its photographer excluded, and OSM.)
+      Every place name I produced resolves: 'Wasserturm Schanzenpark' 0 km (share 1.00), 'Sternschanze' 0 km (0.90), 'La Seu de Manresa'
+      1 km (1.00; OSM 0 km), 'Thurzov dom' 0 km, 'Levoca' 0 km (0.98). The raw text strings mostly don't (book titles, slogans, 'Get Smart'
+      17,000 km, the Slovak word 'OBUV', the Latin inscription). The corpus is not the limit: the right name, which comes from recognition,
+      is; the 4B produced 'Hermannplatz Berlin', 'Girona cathedral' and 'PANDURIA' for the same photos.
