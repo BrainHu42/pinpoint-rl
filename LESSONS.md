@@ -983,4 +983,12 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       -0.45 / -0.77; OSM names put back only +0.07 / +0.25 of it. The name evidence is already in the pipeline, in a stronger form.
     - Lesson: names and visible features from the photo, checked against maps, add nothing beyond what retrieval + text search already use;
       the clue reader's information caps these tools at ~1 pt. A new tool has to bring information the photo's text and look don't.
+    - Why (`scripts/diagnose_names.py`, a funnel over the baseline answer head's own mistakes; held-out train / dev3k, % of photos): choice
+      errors (wrong, a right area exists) 14.0 / 13.9; with a name 12.2 / 12.2; a name found in OSM 7.9 / 7.9; a name within 5 km of a right
+      area 2.0 / 2.0; and not of the chosen area 0.7 / 1.0; of those without existing clue evidence 0.4 / 0.8 (the ceiling, matching the
+      +0.04 / +0.33). The reverse (baseline right, a name near a wrong area but not the chosen one) is 2.3 / 2.4%, 3x the fixable cases.
+      Found names are mostly not this place's: only 24 / 36 / 48% of photos with a found name have a match within 1 / 5 / 25 km of the truth
+      (generic words: 'archive', 'departures', 'in memory of'; brands: 'fiat', 'visa'; countries: 'japan', 'españa'; look-alike landmarks).
+      Names that do match the right area usually match the chosen one too (cities, chains, regions), and the specific ones were already found
+      by text search + the clue judge.
     - Engineering: `answer_mapchecks.py --variants` takes column groups from map_checks / name_checks and 'noclue' (masks the clue columns).
