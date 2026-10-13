@@ -1015,3 +1015,19 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       matching within 0.3 km of each other, a verifier independent of the look): 14.2 / 13.7% of photos, median 2 spots, a spot < 25 km of the
       truth 5.0 / 4.8% of all photos; but on photos with no right pipeline area only 0.3 / 0.2%. The constraints are right where retrieval is
       already right (lessons 17-19, 65, 67): on these Flickr benchmarks the photos retrieval fails carry no text to constrain them.
+
+80. **A stronger reader is the bottleneck, mostly through recognition, not text (2026-10-13; the user asked for a test with Claude as the reader;
+    `scripts/reader_test_export.py`, `scripts/reader_test_score.py`, readings `fixtures/reader_test_dev3k.json`).** 40 random dev3k photos
+    where none of the pipeline's areas is right (< 25 km), at the 4B's pixel budget; read blind (no truth, no 4B output, no Pinpoint) before
+    scoring; countries from the nearest GeoNames town (pop >= 5,000), place guesses geocoded automatically.
+    - Content: 22 of 40 carry nothing place-specific (X: flowers, pets, portraits, interiors), as lesson 67; explicit place-specific text on 3.
+    - Within 25 km: my guesses 4 of 40 (Hamburg's Schanzenpark water tower 0 km, Levoca's Thurzo House 0 km, Manresa's Seu 1 km, a Breton war
+      memorial 17 km); the pipeline is wrong on all 40 by construction, the 4B's names and queries reach none (Hermannplatz Berlin, Girona
+      cathedral, Vilnius for the Breton memorial).
+    - Country: me right on 20 of 24 answered (50% of all), the 4B 11 of 19 (28%), Pinpoint's top-1 19 of 40 (48%). Where Pinpoint's country is
+      wrong (21): me right 8, wrong 4, no answer 9; the 4B right 1. Lesson 64: Pinpoint restricted to the true country +7.8, region +27.9.
+    - Only 1 of the 4 hits is explicit text (the Latin THURZO inscription with Slovak shop signs; the 4B read it as Romanian). The rest is
+      knowledge: recognising a landmark or a regional costume, a Danish Army helicopter type, a Malaysian Sabah plate prefix (country right,
+      town 271 km off).
+    - So the clues the 4B misses are recognition and regional knowledge more than unread text. One reader (Claude), 40 photos (4 / 40 has a
+      95% interval of about 3-24%); the knowledge is a frontier model's, so a 4B reaching it would need training (RL on ground truth), not prompting.
