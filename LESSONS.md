@@ -996,3 +996,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       1.2 / 1.4% (~35 places); <= 1000 matches 2.8 / 3.2% (~310 places). Photos currently unreachable, more than the 0.4-0.8% of choice errors
       names could fix; using them needs a visual check among the matches (Pinpoint restricted to the union of a name's match locations).
     - Engineering: `answer_mapchecks.py --variants` takes column groups from map_checks / name_checks and 'noclue' (masks the clue columns).
+
+79. **Names as a candidate generator: a real +1.3 ceiling that can't be selected (2026-10-13; `name_search.py`, `scripts/name_switch.py`).**
+    Each photo name with 1-1000 OSM matches (lesson 78's lookups) restricts Pinpoint (retrained reranker setft_a, photographer excluded) to the
+    index photos within 2 km of any match (`PinpointReranker.rank_subset` over a GPU-resident index; vs the box search: same top-1 location
+    within 1 km on 98% of photos). 46.5k / 4.0k (photo, name) queries on 49% of train / dev3k photos, median ~3,000 allowed photos, ~15 min.
+    - Yield: on photos with no right pipeline area (49.5 / 48.1%), some name's top-1 lands < 25 km on 1.8 / 2.1% of them (~1% of all photos;
+      the name-match ceiling was 2.8 / 3.2%: Pinpoint's look picks the right match place about a third of the time).
+    - Switching the pipeline's answer to the best name candidate helps 1.2 / 1.4% of photos and hurts 12.2 / 12.6%. Oracle switch +1.25 /
+      +1.37 at 25 km; learned switch (gain classifier, out of fold; threshold from train CV) +0.03 / -0.03.
+    - Separation of helps from hurts (AUC): name-vs-chosen reranker score gap 0.88, learned value 0.88; clue judge P(Yes) 0.58; name
+      specificity (match count) 0.54, read vs recalled 0.49. At a 1:10 base rate, AUC 0.88 doesn't reach the >50% precision a switch needs.
+    - Lesson: the generator finds new right places, but the only verifier we have is Pinpoint's look, and the photos that need new candidates
+      are exactly the ones whose look is ambiguous. Neither name specificity nor the judge says which name candidates are right.

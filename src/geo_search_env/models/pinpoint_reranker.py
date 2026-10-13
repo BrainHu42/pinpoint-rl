@@ -258,6 +258,46 @@ class PinpointReranker:
             found[m] = (torch.gather(indices, 1, order).numpy().astype(np.int64), torch.gather(values, 1, order).numpy())
         return found
 
+    def load_resident(self) -> None:
+        """Copy the index embeddings to the GPU (~10.5 GB: image and GPS fp16, raw int8 + scales) for rank_subset."""
+
+        chunks = range(0, len(self.latlon), self.chunk)
+        cat = lambda arr, dtype: torch.cat([torch.as_tensor(np.asarray(arr[i: i + self.chunk]), device=self.device) for i in chunks]).to(dtype)
+        self._resident = {"image": cat(self.image, torch.float16), "gps": cat(self.gps, torch.float16),
+                          "raw": cat(self.raw, torch.int8), "scales": cat(self.raw_scales, torch.float32)}
+
+    @torch.inference_mode()
+    def rank_subset(self, embeddings: np.ndarray, allowed: list[np.ndarray]) -> RerankedCandidates:
+        """Rerank each query's pool searched only among its own `allowed` index rows (e.g. photos near the places a name matches;
+        name_search.py). The three searches score those rows exactly (fp16, as _search), then the usual union and scoring. Needs
+        load_resident()."""
+
+        raw, projected = self.encode_queries(embeddings)
+        res = self._resident
+        found = {m: (np.full((len(allowed), self.targets[m]), -1, np.int64), np.full((len(allowed), self.targets[m]), -np.inf, np.float32))
+                 for m in MODALITIES}
+        for q, rows in enumerate(allowed):
+            if not len(rows):
+                continue
+            idx = torch.as_tensor(rows, device=self.device)
+            r = res["raw"][idx].float() * res["scales"][idx, None]
+            torch.nan_to_num_(r, nan=0.0, posinf=0.0, neginf=0.0)
+            blocks = {"image": res["image"][idx], "gps": res["gps"][idx], "raw_image": r.div_(r.norm(dim=1, keepdim=True).clamp_(min=1e-8)).half()}
+            vectors = {"image": projected[q].half(), "raw_image": raw[q].half(), "gps": projected[q].half()}
+            for m in MODALITIES:
+                k = min(self.targets[m], len(rows))
+                values, top = torch.topk((blocks[m] @ vectors[m]).float(), k)
+                found[m][0][q, :k] = rows[top.cpu().numpy()]
+                found[m][1][q, :k] = values.cpu().numpy()
+        rows, ranks, flags = self._union(found)
+        scores, features = self._score(raw, projected, rows, ranks, flags)
+        order = np.argsort(-scores, axis=1, kind="stable")
+        rows, scores, features = np.take_along_axis(rows, order, 1), np.take_along_axis(scores, order, 1), np.take_along_axis(features, order[..., None], 1)
+        valid = rows >= 0
+        latlon = np.where(valid[..., None], np.asarray(self.latlon[np.where(valid, rows, 0)]), np.nan)
+        return RerankedCandidates(rows=rows, cache_rows=np.where(valid, self.cache_indices[np.where(valid, rows, 0)], -1), latlon=latlon,
+                                  scores=scores, features=features)
+
     def _union(self, found) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Deduplicated pool (rows [Q, C], per-modality rank [Q, C, 3], in-shortlist flag [Q, C, 3]), as the original."""
 

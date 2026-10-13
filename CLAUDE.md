@@ -38,6 +38,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 76 (`read_agent.py`): clue reading as a costly action; a learned read policy keeps +0.5 / +0.8 of the clue gain with 20% of the reads.
   Lesson 77 (`map_checks.py`): OSM checks of the features the 4B sees add nothing (retrieval's wrong areas look alike).
   Lesson 78 (`name_checks.py`): OSM name search inside areas is redundant with the text-search clue evidence.
+  Lesson 79 (`name_search.py`): names as a candidate generator (Pinpoint restricted to a name's matches): oracle +1.3, learned switch +0.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
@@ -115,6 +116,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
     with `near=`, `features_near`; `data/maps_search/osm.db`, `stage` to the NVMe drive; batch `FeatureIndex` over `features.npz`), `web_search.py`.
     `map_checks.py` / `name_checks.py`: map / name checks on the pipeline's areas (lessons 77-78). `hypothesis_agent.fit_answers`: many answer
     heads at once (vmap); `scripts/answer_mapchecks.py --variants` compares extra column groups with it.
+    `name_search.py`: Pinpoint restricted to the places a name matches (`PinpointReranker.rank_subset`, GPU-resident index); `scripts/name_switch.py`.
   - `models/set_head.py`.
   - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
     `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.

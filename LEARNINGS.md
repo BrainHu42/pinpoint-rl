@@ -125,6 +125,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   often than chance, but Pinpoint's wrong areas have them too; as answer-head evidence they add nothing (-0.05 to -0.9). Next: names inside areas.
 - **78 (negative): OSM names inside areas** (`name_checks.py`, `maps_search`): names near right areas 30% vs wrong 11%, but as evidence +0.04 /
   +0.33 at best; they only partly replace the existing text-search clue features (-0.45 / -0.77 when masked, +0.07 / +0.25 back). Redundant.
+- **79 (negative): names as a candidate generator** (`name_search.py`): Pinpoint restricted to a name's OSM matches finds new right places
+  (oracle switch +1.25 / +1.37) but a learned switch gets +0.03 / -0.03: helps vs hurts is 1:10 and the best signal (score gap) has AUC 0.88.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
