@@ -113,6 +113,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   - Top-5 coverage stays at ~51 / 53% vs a 62 / 63% candidate-list ceiling.
 - **73: merged pipeline on the test set** (user asked): 2 zooms, agreement pick **42.1 % < 25 km, +4.9** [+4.0, +5.9] over Pinpoint
   (set pick +4.1, +1.5 at 1 km). Ties the previous pipeline (41.8; paired +0.2): simpler, not more accurate.
+- **74: final pick, longer lists, reranker training**: gated kernel pick (peak within 5 km of the box founder) keeps 25 km and adds +1.2 / +1.5 at
+  1 km (default). 123-candidate lists: ceiling 63 -> 73% on dev3k, pick +0.1. Reranker ablations: continued training +1.5 / +2.0, + photographer
+  exclusion +2.4 / +2.2, + wide lists and set head +3.1 / +3.3; wide lists without exclusion +0.3 / +0.5; a full pass is no better than 6,000 steps.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

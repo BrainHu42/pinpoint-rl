@@ -900,3 +900,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       simplification (one network, 2 zooms, no offline set layer), not an accuracy gain.
     - Lesson: gains below ~1 pt between pipelines on dev3k are within its noise for decisions; the next gain has to come from new evidence.
 
+74. **Final pick, longer lists, reranker training (2026-10-13; `PINPOINT_SET_PLAN.md`).** Train CV / dev3k, % within 25 km vs Pinpoint:
+    - Final pick inside a zoomed area: the box founder (a central point) is better at 25 km, a kernel peak (a sharp point) at 1 km. Gating the
+      kernel peak to within 5 km of the founder keeps 25 km (+4.7 / +5.3, 2 agent zooms) and lifts 1 km from +0.1 / -1.0 to +1.3 / +0.5. Default.
+    - 123-candidate lists raise the in-list ceiling from 63.4% to 72.9% (dev3k) but the reranker's pick (+0.1) and the top-5 areas (+0.4) don't
+      find the extra right answers. The gap is ranking, not list length.
+    - Reranker ablations (6,000 steps): continued training alone +1.5 / +2.0; + same-photographer exclusion +2.4 / +2.2; wide lists without
+      exclusion +0.3 / +0.5 (more chances for the same-photographer shortcut); wide + exclusion + set head +3.1 / +3.3. A full pass
+      (16,000 steps) +2.8 / +3.1: validation loss is flat from ~4,500 steps.
+    - Training throughput (4 CPU cores): ~400 ms per step, GPU ~65-70% busy, the rest fixed CPU work in the main process. The NVMe index
+      gives -8%; chunk size, loader workers and batch size don't fix it without rewriting pinpoint-main's pool union.
+    - Lesson: the reranker fine-tune saturates at ~+3. More steps and more candidates don't move it; the next gain needs new training signal
+      (cross-fitted labels for the choosing models) or new evidence.
+

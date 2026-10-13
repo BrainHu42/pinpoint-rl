@@ -207,3 +207,55 @@ Pre-declared main config: 2 zooms by the agent, agreement pick. % within 1 / 25 
 - Matches train / dev3k in size (+4.7 / +5.5 there); yfcc4k gains more (+5.2) than im2gps3k (+4.3). Gains sit at 1-200 km; 750 / 2500 km don't move.
 - The agreement pick costs 1 km (-0.7); the set pick keeps it (+1.5) for 0.8 less at 25 km. A soft kernel (lesson 72) is the obvious fix.
 
+## Next steps 1-3: final pick, longer lists, reranker training (2026-10-13; lesson 74)
+
+% within 25 km vs the released Pinpoint, train CV / dev3k; 1 km in brackets.
+
+**Training throughput first** (`scripts/profile_pinpoint_train.py`, `scripts/profile_sweep.sh`): steady state ~400 ms per step at batch 256, GPU
+~65-70% busy. The data loader is not the bottleneck (5 ms). The idle time is ~110 ms of fixed CPU work per step in the main process (pool union,
+KD-tree lookups) on a 4-core machine. Larger retrieval chunks, fewer loader workers: no change. Index on the NVMe drive: 366 ms (-8%), now the
+launcher's default when staged. Larger batches: only 1.14 vs 1.56 ms per photo at 512, and a different recipe, so kept at 256.
+
+**1. Final pick inside a zoomed area** (`hypothesis_agent --zoom-rule`, 2 agent zooms):
+
+| Pick | 25 km | 1 km |
+|---|---|---|
+| Box agreement (founder of the best 25 km group) | +4.7 / +5.6 | +0.1 / -1.0 |
+| Set pick (global set top if inside) | +4.4 / +4.9 | +1.7 / +1.1 |
+| Soft kernel (Laplace 10 km, T 0.1) | +4.4 / +4.6 | +2.4 / +1.6 |
+| Kernel inside the box group | +4.4 / +4.6 | +2.3 / +1.6 |
+| **Gated: kernel peak if within 5 km of the founder, else the founder** (new default) | **+4.7 / +5.3** | **+1.3 / +0.5** |
+
+- Per top area on train, the founder (a central point) is right at 25 km for 0.3 pts more areas; the kernel peak (a sharp point) at 1 km for
+  2.1 pts more. The gate keeps the first and recovers 1.2 of the second (chosen on train).
+
+**2. Longer candidate lists** (retrained reranker setft_a, dev3k, `pinpoint_set extract --photo-set dev3k --targets 96 16 16 --no-hidden`):
+
+| List | Candidates | Right answer in the list | Reranker top-1 | Box top-5 areas cover |
+|---|---|---|---|---|
+| Released Pinpoint, own pool | 11.6 | 50.3% (27.3%) | 33.4% (16.9%) | 48.2% |
+| Retrained, 32 / 8 / 8 | 46.1 | 63.4% (36.1%) | 36.8% (17.9%) | 52.6% |
+| Retrained, 96 / 16 / 16 | 122.9 | **72.9%** (42.5%) | 36.9% (18.1%) | 53.0% |
+
+- The ceiling rises by 9.5 points, but neither the reranker (+0.1) nor the area proposals (+0.4) find the new right answers: the gap is ranking,
+  not list length. No train extraction.
+
+**3. Reranker training: full pass and ablations** (6,000 steps x 256 unless noted, lr 5e-5; pick over the wide pool, own 12-pool pick in brackets):
+
+| Run | Lists | Same-photographer exclusion | Set head | 25 km | 1 km |
+|---|---|---|---|---|---|
+| abl_plain | 8 / 2 / 2 from a 2x pool | | | +1.5 / +2.0 (+1.1 / +1.1) | +0.8 / +0.5 |
+| abl_wide | 32 / 8 / 8 | | | +0.3 / +0.5 (-0.2 / -0.5) | +0.0 / -0.2 |
+| abl_excl | 8 / 2 / 2 from a 2x pool | yes | | +2.4 / +2.2 (+2.1 / +2.2) | +1.2 / +0.7 |
+| ft_nohead (lesson 70) | 32 / 8 / 8 | yes | | +2.1 / +2.3 (+1.7 / +2.0) | +1.2 / +0.4 |
+| setft_a (lesson 70) | 32 / 8 / 8 | yes | yes | **+3.1 / +3.3** | +1.6 / +1.0 |
+| setft_full: 16,000 steps (~1 pass) | 32 / 8 / 8 | yes | yes | +2.8 / +3.1 (+2.3 / +2.3) | +1.6 / +0.9 |
+
+- Continued training alone: about +1 (the released reranker is not fully trained for this setting).
+- Same-photographer exclusion: another +1. Without it, the model leans on the photographer's other photos at the same spot, which evaluation
+  excludes. Wide lists without exclusion make this worse (+0.3 / +0.5, a shortcut with more opportunities).
+- Wide lists add nothing beyond exclusion without the set head; with the co-trained set head, +1 more.
+- Longer training doesn't help: validation loss is flat from ~4,500 steps, and 16,000 steps is not better than 6,000.
+- So "train it properly" is done at ~+3; the reranker's remaining gap (ceiling 63% vs pick 37%) needs different training signal or evidence,
+  not more steps.
+
