@@ -43,17 +43,19 @@ experiments); full numbered lessons in `LESSONS.md`.**
   in `TEXT_SEARCH_PLAN.md`.
 - Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
-  and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
+  and the pool oracle), not against current greedy. Develop on MP16 dev; final model choices on the full benchmarks (see Data).
 
 ## Data (simplified 2026-10-07, user)
 One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 | Split | What | Size |
 |---|---|---|
 | **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 35,359 |
-| **dev** | `dev3k` (photo set `artifacts/photo_sets/dev3k`, Pinpoint's pool): choose and tune everything here | 3,000 |
-| **test** | im2gps3k + yfcc4k eval halves (photo set `full`) | 3,795 |
-- **Leave the test set alone** (user, 2026-10-07): no training, tuning, model runs, feature extraction, diagnostics or measurements on
-  it unless the user asks. Everything is chosen and measured on dev.
+| **dev** | `dev3k` (photo set `artifacts/photo_sets/dev3k`, Pinpoint's pool): develop and iterate here | 3,000 |
+| **benchmarks** | full im2gps3k + yfcc4k (both halves, ~7.5k photos; eval halves = photo set `full`) | 7,533 |
+- **Model selection on the full benchmarks** (user, 2026-10-13; replaces "leave the test set alone" of 2026-10-07): choose between candidate
+  models / pipelines by their performance on the full im2gps3k and yfcc4k benchmarks with the query photographer's own photos kept in the
+  index (the original Pinpoint protocol); also report the excluded protocol (lesson 54). Iterate on train / dev3k; never train on benchmark
+  photos. Selection on the benchmarks leaves no untouched test number: say so when reporting.
 - No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
 - Target: improvements of **>= 1 pt** at 25 km over the reranker top-1 (user, 2026-10-07); dev3k (+-0.26 pts SE) resolves that.
 - dev3k is rebuilt from `artifacts/agent/dev3k_ids.json` (`agent_targets --make-dev dev3k`, then `place_labels pool-labels --tag dev3k`).
