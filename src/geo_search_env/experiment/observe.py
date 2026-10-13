@@ -222,7 +222,7 @@ OBJECT_PROMPT = ('Find the single most distinctive thing in this photo that coul
 
 def objects(tag: str, name: str, server: str = "http://127.0.0.1:8765", workers: int = 48) -> None:
     """Per photo: the most distinctive identifying object and its box (the VLM's grounding output, raw coordinates kept) ->
-    artifacts/agent/objects_{tag}_{name}.json, for landmark_id.py."""
+    artifacts/agent/objects_{tag}_{name}.json, for landmark_id.py (removed; tag pre-prune-2026-10-13)."""
 
     photos = load_photos(tag)
     images = MP16Images()

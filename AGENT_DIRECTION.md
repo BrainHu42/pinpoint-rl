@@ -62,7 +62,7 @@ that write like this"). A constraint can be decisive on a photo that looks gener
 - Reward: distance to the truth (as in `grpo_train.py`), ground truth only, no Gemini traces (CLAUDE.md).
 - Train on MP16 bucket 99 (34.5k), multi-turn tool calls, Qwen3.5-4B thinking off, LoRA.
 
-## Status (2026-10-07, lessons 55-57 on the old pool, `OVERNIGHT2_REPORT.md`)
+## Status (2026-10-07, lessons 55-57 on the old pool, `archive/OVERNIGHT2_REPORT.md`)
 - First tools built and measured. Text matched near a candidate is the best tool: +0.2 [+0.0, +0.3] at 25 km fitted on MP16 dev only (+0.1 on
   photos never used); an earlier +0.4 was fitted on 'val', which is benchmark photos.
   Features, rules and the country guess add nothing; POI names +0.2 on dev + val.

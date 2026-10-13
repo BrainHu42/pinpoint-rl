@@ -4,7 +4,7 @@
 # Ablations via env: POOL=narrow (the released 8 / 2 / 2 lists sampled from a 2x pool instead of wide 32 / 8 / 8 with original-list rank
 # features), EXCL=0 (no same-photographer exclusion), HEAD=0 (no co-trained set head; the control ft_nohead, +2.1 / +2.3).
 # Run inside a memory-capped scope (MemoryMax=13G); needs ~27 GB of GPU memory.
-cd /home/brianhu/pinpoint-rl/.claude/worktrees/geolocation-clues
+cd "$(dirname "$0")/.."  # repo root
 IDX=data/pinpoint/pinpoint-submission/exp/contrastive_retrieval/checkpoints/attention_retrieval_index/cabeb0568af3b2f1
 # the NVMe staged copy (pinpoint_set.NVME_INDEX; not persistent across restarts) when present: faster startup and OSV support reads
 NVME=/opt/dlami/nvme/pinpoint/attention_retrieval_index

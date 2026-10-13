@@ -37,7 +37,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
-  in `TEXT_SEARCH_PLAN.md`.
+  in `archive/TEXT_SEARCH_PLAN.md`.
 - Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
@@ -83,49 +83,49 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - OpenRouter key: `OPENROUTER_API_KEY` in `.env` (credits ran out on 2026-09-29).
 
 ## Code map (`src/geo_search_env/`)
-- `data/benchmarks.py`: benchmark loader and metrics. `paths.py`: storage roots.
-- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact.
+- `data/benchmarks.py`: benchmark loader and metrics (`commons26` entry). `paths.py`: storage roots.
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact; loads a
+  retrained checkpoint via `PINPOINT_RERANKER_CKPT`. `models/set_head.py`: the set head used in retraining.
 - `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
 - `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`).
-- Agent tools (lessons 55-57): `agent_targets.py` (dev set, splits, fixable targets), `observe.py` + `scripts/observe.sh` (VLM clues,
-  landmarks, crops), `geo_tools.py` (GeoNames / Overture tools, CV combiner), `poi_query.py` / `poi_near.py` (Overture places,
-  env `.venvs/overture`), `landmark_match.py` (keypoints, env `.venvs/sft`), `agent_capacity.py`, `agent_vote.py`.
-- Landmark / name lookups (lessons 58-63): `landmark_id.py` (VLM object box -> crop search -> keypoint / DINOv2 checks), `landmark_vote.py`,
-  `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`, README there; name -> place proposals). 
-- Text search and Pinpoint as a tool (lessons 64-65; plan and target design in `TEXT_SEARCH_PLAN.md`): `text_search.py` (SQLite FTS5 over
-  GeoNames, Overture places / websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a
-  restart), `pinpoint_constrained.py` (Pinpoint restricted to a country / region), `region_evidence.py`, `clue_judge.py` + `scripts/clue_judge.sh`.
-  Expert clue catalogue: `GEOLOCATION_CLUES.md`. Later checks: `clue_points.py`, `web_geocode.py`, `recall_verify.py`, `clue_survey.py`,
-  `chain_footprint.py`, `vlm_country.py`, `plates.py`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
-- **Agreement re-scoring of Pinpoint's pool (lesson 68, +1.0 pts on train): `pool_agreement.py`.**
-- **Hypothesis testing (lesson 69, +2.9 / +3.5 train, +3.8 / +4.6 dev3k):** `hypotheses.py` (Pinpoint areas, restricted search, clue
-  hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator; best:
-  `--e4 --variant vlmhyps --drop vlm --agree --ensemble 5`, saved `artifacts/agent/hyp_final_comparator.pt`), `hypothesis_vlm.py` +
-  `scripts/hypvlm_run.sh` (plausibility judge, zero-shot / fine-tuned; no gain).
-- **Look-zoom-rerank (lesson 70):**
-  - `pinpoint_set.py`: set layer, wide extraction (`extract --ckpt-tag`), zoom pools, `eval-head`.
-  - `area_model.py`: area-then-spot model over zoomed CLS states.
-  - `hypothesis_agent.py`: merged pipeline (answer + action heads over area tokens; lesson 71). Retrained-reranker photo sets: `pinpoint_set photo-set`, `scripts/retrained_pipeline.sh`.
-  - `zoom_agent.py`: RL zoom policy. `read_agent.py`: clue reading as a costly action with a learned read policy (lesson 76).
-  - `models/set_head.py`.
-  - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
-    `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
-  - Retrained checkpoints: `artifacts/pinpoint_train/{setft_a,ft_nohead}`. The port loads one via `PINPOINT_RERANKER_CKPT`.
-- `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
-- `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
-  and the benchmark harness for any VLM chooser (`vlm_sampling`).
-- `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
+- `experiment/agent_targets.py`: dev set, splits, fixable targets.
+- **The pipeline (lessons 68-71, 73-74, 76; `docs/pipeline_overview.png`, `scripts/pipeline_figure.py`).** In order:
+  - Clues: `observe.py` + `scripts/observe.sh` (VLM clues, crops); `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`,
+    README there; `scripts/yfcc_extract*.sh`; name -> place proposals); `text_search.py` (SQLite FTS5 over GeoNames, Overture places /
+    websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart);
+    `region_evidence.py`; `clue_judge.py` + `scripts/clue_judge.sh` (fine-tuned judge of read-text clues).
+  - Areas and hypotheses: `pinpoint_tool.py` (Pinpoint as agreement-weighted areas), `pool_agreement.py` (lesson 68), `hypotheses.py`
+    (areas, restricted search, clue hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features),
+    `hypothesis_learn.py` (set-level comparator, lesson 69; `scripts/full_pipeline.sh` runs this version end to end).
+  - Look-zoom-rerank (`PINPOINT_SET_PLAN.md`, lesson 70): `pinpoint_set.py` (set layer, wide extraction `extract --ckpt-tag`, zoom
+    pools, `eval-head`, `photo-set`), `area_model.py` (area-then-spot model over zoomed CLS states), `zoom_agent.py` (RL zoom policy).
+  - Merged pipeline (lessons 71, 73-74): `hypothesis_agent.py` (answer + action heads over area tokens, gated final pick) on the
+    retrained reranker (`scripts/retrained_pipeline.sh`). `read_agent.py`: clue reading as a costly action (lesson 76).
+  - Retrained reranker: `pinpoint_train/` (pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias
+    for training against the shipped index; run with `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and
+    `PYTHONPATH=pinpoint_train/src:src`; launcher `scripts/pinpoint_train.sh`, flags in lesson 70). Checkpoints:
+    `artifacts/pinpoint_train/{setft_a,ft_nohead}`.
+  - Locatability tiers (lesson 67): `scripts/locatability_score.py`, `fixtures/locatability_dev3k.json`.
+- Offline search tools for the agent (stand-ins for Google web / Maps): `osm_extract.py` (named objects and landmark features from the
+  OSM planet), `maps_search.py` (name search over OSM + GeoNames / Overture, `features_near`), `web_search.py` (multilingual Wikipedia +
+  Wikivoyage, FTS5).
+- `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers (uses `coarse_filter`,
+  `feasibility`, `candidate_locations`, `core/contracts`).
+- `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts and the
+  VLM harness (`vlm_sampling`). `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
 - `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
-- Knowledge SFT: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool), `knowledge_data.py`
-  (training photos), `name_score.py` (candidate name scoring + combiner).
-- Knowledge diagnostics (lessons 52-53): `knowledge_check.py` (answers, report, rule), `knowledge_oracle.py` (perfect-knowledge
-  ceiling per level, fixable photos), `knowledge_coverage.py` (accuracy by training coverage).
-- Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment): removed 2026-10-07; their
-  modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. The one-step reranker, our ~17-candidate
-  pool builder and the modules built on them (`verifiers`, `evidence_ranker`, `exemplar_judge`, `multi_exemplar`,
-  `category_evidence`, `stage1_eval`, `evidence_test`, `query_headroom`, `query_evidence`) were removed when Pinpoint's reranker
-  became the reference (lesson 54); they are at commit 57918cb. Kept: `wiki_backend` (offline Wikipedia search), `coarse_filter`,
-  `feasibility`.
+- `experiment/commons_bench.py`: the commons26 benchmark (lesson 79): Commons scan, selection, download, gallery near-duplicates,
+  27B tiers, release (`data/pinpoint/commons26/release/`) and `score`; `commons26_score.py` is the standalone scorer.
+- Shared helpers from the knowledge SFT line: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool),
+  `knowledge_data.py`, `knowledge_check.py`, `name_score.py`.
+- Removed 2026-10-13 (lines that didn't pan out; code at git tag `pre-prune-2026-10-13`): the agent-tool, landmark and text-search checks
+  (`geo_tools`, `poi_query`, `poi_near`, `landmark_match`, `landmark_id`, `landmark_vote`, `agent_capacity`, `agent_vote`,
+  `pinpoint_constrained`, `clue_points`, `web_geocode`, `recall_verify`, `clue_survey`, `chain_footprint`, `vlm_country`, `plates`,
+  `area_rules`, `deep_votes`; lessons 55-68), the plausibility judge (`hypothesis_vlm`, lesson 69), the location distribution
+  (`location_density`, lesson 72), cross-fitting, reranker ablation and profiling scripts (lessons 74-75), `knowledge_oracle`,
+  `knowledge_coverage`, `wiki_backend`, the knowledge and VLM-chooser eval scripts. Plans and reports of those lines are in `archive/`.
+  Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment) are at tag `pre-cleanup-2026-10-07`;
+  the one-step reranker and the modules built on it at commit 57918cb.
 - Caches: `artifacts/` (not tracked). Photo sets and pools built before lesson 54 (`artifacts/query_evidence/*/dev.json`,
   `artifacts/sft/candidates.npz`, `artifacts/place_labels/candidates_*.json`) hold the old reranker's pools; current code doesn't read them.
   Setup from scratch: `SETUP.md`.

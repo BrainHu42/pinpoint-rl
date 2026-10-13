@@ -1,4 +1,4 @@
-# Which text-search results give a reliable region? (TEXT_SEARCH_PLAN.md step 0 follow-up.) Restricting Pinpoint to the true region would take dev3k
+# Which text-search results give a reliable region? (archive/TEXT_SEARCH_PLAN.md step 0 follow-up.) Restricting Pinpoint to the true region would take dev3k
 # from 33.4 to 61.3% < 25 km, but the text tool's blind picks point to wrong regions too often (-7.7). This breaks every query's top result down by
 # clue type and specificity and asks, where its region differs from Pinpoint's top-1 region: how often is the query right (a possible fix) and how
 # often is Pinpoint right (a possible break)? dev sets only.

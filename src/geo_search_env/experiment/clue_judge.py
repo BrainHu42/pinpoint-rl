@@ -1,4 +1,4 @@
-# Can a VLM tell a clue that belongs to the photo's place from one that refers to somewhere else? (TEXT_SEARCH_PLAN.md, after the region-evidence
+# Can a VLM tell a clue that belongs to the photo's place from one that refers to somewhere else? (archive/TEXT_SEARCH_PLAN.md, after the region-evidence
 # eye check: text read in a photo often names elsewhere, a brand, a shirt, a poster, and recalled landmark names are often look-alikes.) For every
 # specific text-search result of a photo (region_evidence), the VLM sees the photo, the clue and where the search points, and answers Yes / No;
 # P(Yes) then filters the clues. dev sets only.

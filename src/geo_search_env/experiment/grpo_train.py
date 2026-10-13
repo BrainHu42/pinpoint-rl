@@ -6,7 +6,7 @@
 
 Rollouts use vLLM colocated in the trainer process (env `.venvs/grpo`: the vLLM 0.30 env plus trl/peft/fla), sleeping
 while the trainer steps. A fresh LoRA trains on the merged SFT weights and is merged into vLLM's copy after every step;
-`merge` folds it in on disk so `eval_run.sh` can serve the result.
+`merge` folds it in on disk so vLLM can serve the result.
 """
 
 from __future__ import annotations
