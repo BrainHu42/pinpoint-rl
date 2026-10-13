@@ -991,4 +991,8 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       (generic words: 'archive', 'departures', 'in memory of'; brands: 'fiat', 'visa'; countries: 'japan', 'españa'; look-alike landmarks).
       Names that do match the right area usually match the chosen one too (cities, chains, regions), and the specific ones were already found
       by text search + the clue judge.
+    - As a candidate generator instead (photos where no pipeline area is right: 49.5 / 48.1%, train / dev3k): a found name with <= 20 worldwide
+      matches lands within 25 km of the truth on 0.6 / 0.8% of all photos (~9 places proposed per photo with such names); <= 100 matches
+      1.2 / 1.4% (~35 places); <= 1000 matches 2.8 / 3.2% (~310 places). Photos currently unreachable, more than the 0.4-0.8% of choice errors
+      names could fix; using them needs a visual check among the matches (Pinpoint restricted to the union of a name's match locations).
     - Engineering: `answer_mapchecks.py --variants` takes column groups from map_checks / name_checks and 'noclue' (masks the clue columns).
