@@ -259,3 +259,30 @@ launcher's default when staged. Larger batches: only 1.14 vs 1.56 ms per photo a
 - So "train it properly" is done at ~+3; the reranker's remaining gap (ceiling 63% vs pick 37%) needs different training signal or evidence,
   not more steps.
 
+## Cross-fitting and stricter exclusion (2026-10-13; lesson 75)
+
+**Stricter (near-duplicate) exclusion for reranker training: not run, premise false.** With the query's photographer excluded, the closest
+gallery photo is a near-duplicate equally often for every kind of query (raw SigLIP2 similarity > 0.95: dev3k 3.4%, train 3.7%, Pinpoint-trained
+photos 3.7%; > 0.9: 27.0 / 27.3 / 27.6%). Photographer exclusion helped because it removed a train / evaluation asymmetry; other
+photographers' near-duplicates have none, so excluding them in training would add a mismatch.
+
+**Answer-head learning curve** (`scripts/answer_learning_curve.py`; gated rule, all areas zoomed, 3 seeds; held-out 10k train / dev3k):
+3.2k photos 33.7 / 35.2%, 6.3k 34.2 / 35.3%, 12.7k 36.1 / 38.2%, 25.4k 36.9 / 38.7% < 25 km. Still rising, ~+0.5-0.8 per doubling.
+
+**Cross-fitting** (`scripts/xfit_halves.py`, `xfit_queue.sh`, `xfit_pipeline.sh`, `answer_xfit.py`): MP16's training photos split by photographer
+(hashed author id); rerankers xfit_a / xfit_b fine-tuned on one half each (run A's recipe, 2.04M rows, 42 min each; training rows restricted
+with `PINPOINT_TRAIN_ROW_MASK`), each scoring the other half's 67k trained-on query photos (queries_more + queries_extra); the merged pipeline's
+inputs built for them with the same reranker (areas, restricted searches, zoom states; no clue places).
+
+| Answer head trained on | Held-out train | dev3k |
+|---|---|---|
+| train only (25k) | 37.0% | 38.8% |
+| train + cross-fitted (160k) | 36.8% | 38.7% |
+| cross-fitted only (135k) | 35.4% | 37.3% |
+
+- No gain: 135k cross-fitted photos are worth less than 25k in-distribution ones.
+- Why: they are easier than dev3k. Pinpoint's frozen retrieval encoder was trained on them, and both half-rerankers start from the released
+  checkpoint, which was too: right answer in the 46-candidate list 69.2% vs 61.6 / 63.4% (train / dev3k); half-reranker top-1 45.0% vs
+  setft_a's 35.5 / 36.8%. Cross-fitting only the reranker cannot produce labels from the evaluation distribution; that needs the encoder,
+  index and reranker retrained per half (Pinpoint's full training), or geotagged photos outside MP16.
+

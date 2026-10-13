@@ -913,3 +913,15 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Lesson: the reranker fine-tune saturates at ~+3. More steps and more candidates don't move it; the next gain needs new training signal
       (cross-fitted labels for the choosing models) or new evidence.
 
+75. **Cross-fitted labels don't help; near-duplicate exclusion has no asymmetry to fix (2026-10-13; `PINPOINT_SET_PLAN.md`).**
+    - Near-duplicates (raw SigLIP2 > 0.95 to the closest gallery photo, query photographer excluded) are equally common for dev3k, train and
+      Pinpoint-trained photos (3.4-3.7%). Photographer exclusion worked by removing a train / evaluation asymmetry; there is none left.
+    - Answer-head learning curve: 33.7 -> 36.9% (held-out train) from 3k to 25k photos, ~+0.5-0.8 per doubling.
+    - Cross-fitting by photographer halves (two fine-tuned rerankers, each scoring the other half's 67k trained-on photos): train + 135k
+      cross-fitted photos 36.8 / 38.7% vs train alone 37.0 / 38.8% (held-out train / dev3k). The photos are easier than the evaluation
+      distribution because Pinpoint's retrieval encoder and the released checkpoint were trained on them: in-list ceiling 69% vs 62-63%,
+      top-1 45% vs 36-37%.
+    - Lesson: any photo Pinpoint's encoder trained on is out of distribution for training models on top of it. The only in-distribution labels
+      are bucket 99 (train + dev3k) unless the encoder is retrained or new geotagged photos are added. More labels is closed as a lever;
+      new evidence is next.
+
