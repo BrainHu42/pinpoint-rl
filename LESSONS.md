@@ -1172,3 +1172,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       AUC right vs wrong areas 0.66 (crop margin) vs 0.68 (full view); a conditional logit over rank features is 36.9% with or without them.
     - Reading: a crop matched against whole index photos says what the full view already says (the area's photos look like the scene);
       detail the 384-px embedding loses doesn't come back by comparing crops with other photos' global embeddings.
+
+90. **Round-trip verification fails the gate: the reverse rank separates right from wrong areas no better than forward similarity (2026-10-14;
+    `round_trip.py`, dev3k).** For each of the 12 restricted-search photos r of each hypothesis: how many of the 4.08M index photos r is closer
+    to than to the query, in Pinpoint's contrastive retrieval space (query's photographer excluded; a variant also drops r's photographer).
+    152,606 pairs in ~3 min on the GPU; reverse rank median 772, < 10 on 5.9% of pairs.
+    - 1,416 dev3k photos with a right and a wrong hypothesis: AUC right vs wrong areas, reverse rank (min / median / # photos with the query in
+      their top 10 / 100) 0.647-0.665 vs forward similarity 0.655; argmax picks 51-59% vs 65.7% for the top area. Dropping r's photographer
+      changes nothing.
+    - Conditional logit over rank / source / support (2-fold x 3 seeds): 36.9%; + forward similarity 36.8; + reverse ranks 37.0. No answer-head
+      run or RL policy (go line was a clear AUC gain first).
+    - Reading: the true area's photos are mostly not same-spot matches either (only 5.9% of pairs have the query in their top 10); on these
+      Flickr photos the right area is "the same kind of scene nearby", as generic from its side as the look-alikes are. Neighbourhood
+      structure in the index carries the same information as similarity.
