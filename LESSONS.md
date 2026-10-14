@@ -1185,3 +1185,21 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Reading: the true area's photos are mostly not same-spot matches either (only 5.9% of pairs have the query in their top 10); on these
       Flickr photos the right area is "the same kind of scene nearby", as generic from its side as the look-alikes are. Neighbourhood
       structure in the index carries the same information as similarity.
+
+91. **Refining to the next bucket has large headroom but no usable signal: a local chooser nets +-0.1 (2026-10-14; `refine_headroom.py`,
+    `refine_gate.py`; dev3k; the user's idea: move answers from < 25 to < 1 km, < 200 to < 25 km).** Pinpoint (retrained reranker) restricted to
+    R km around its own top-1, photographer excluded.
+    - Headroom per current bucket (share of dev3k): 1-25 km (18.9%) has a candidate < 1 km in the R = 25 list 62.8% (oracle +11.9 pts at 1 km);
+      25-200 km (13.6%) one < 25 km in the R = 200 list 82.8% (+11.2 at 25 km); 200-750 km (18.7%) one < 200 km 93.1% (+17.4). The restricted
+      search's own top-1 is the old answer again (lands in the next bucket 3-4%).
+    - All photos: R = 25 list oracle at 1 km 29.9% vs 17.9% kept; R = 200 at 25 km 48.3% vs 36.8%.
+    - Chooser over the list (2-fold x 3 seeds, net change at 1 / 25 / 200 / 750 / 2500 km vs keeping the top-1): reranker score / rank /
+      retrieval features, + agreement kernels (0.5 / 1 / 5 km), + forward cosine and reverse rank (lesson 90), + best-crop cosine (lesson 89);
+      linear or MLP; target-bucket likelihood or expected thresholds met (exact policy gradient over the known outcomes). Best +0.1 at 1 km
+      (R = 25); R = 200 -0.2 to -0.6 at 25 km. Target-likelihood choosers move to other in-bucket candidates and lose the tighter bucket
+      (-1.6 to -5.5 at 1 km).
+    - Why: on the photos a move could fix (12% each), every feature separates right from wrong candidates in the list at chance (within-list
+      AUC 0.44-0.58; only "distance from the old answer" 0.64 at R = 200, true by construction once the answer is wrong). The right local
+      candidates are other scenes of the same area, not matches of this one.
+    - With lessons 85-90: once retrieval has proposed candidates, nothing we can compute from the embeddings (global, crops, neighbourhood
+      structure) or the 4B / tools separates the right ones, at any scale.

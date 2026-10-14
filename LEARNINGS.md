@@ -148,6 +148,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - **89: crop views of the photo vs each area's photos add +0.0 / +0.4** (train CV / dev3k) in the answer head; no RL look policy built.
 - **90: round-trip (reverse-rank) verification**: AUC 0.66 vs forward similarity 0.655; simple chooser +0.1. Right areas are generic
   from their side too.
+- **91: next-bucket refinement**: oracle +11-17 pts per step, but a local chooser nets +-0.1 (within-list AUC ~0.5 on the photos a move
+  could fix). The choice among retrieved candidates is at chance with every signal we have, at every scale.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
