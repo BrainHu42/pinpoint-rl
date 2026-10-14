@@ -1160,3 +1160,15 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       10.0% (96 / 637). The 27B guesses confidently on generic photos (Peru for Tanzania, Iceland for Sweden) and emits phrases on fewer photos.
     - With lessons 56 and 59 (9B, Qwen3.6-27B): open-model size doesn't buy the recognition Claude showed in lesson 80; a bigger reader is not
       the fix for the tools. Landmark prompt also run (landmark named on 423 photos) but not scored (the landmark line is closed).
+
+89. **Looking at parts of the photo adds nothing: crop views compared with each area's photos, +0.0 / +0.4 in the answer head (2026-10-14;
+    `crop_look.py`; the user's no-LLM RL line, step 1 = ceiling with all views and all areas).** 10 SigLIP2-giant views per photo (full image
+    + a 3 x 3 grid of half-size windows, stride a quarter; the full view matches the cached MP16 embedding, cosine median 0.9999), 389k photos
+    of views in ~1.5 h. Per hypothesis: each view's max / top-3 cosine to the area's 12 restricted-search photos (photographer excluded), the
+    margin over the photo's other areas, softmax share, argmax fraction; groups "global" (4 columns) and "crop" (9).
+    - Answer head (`hypothesis_agent --extra`), % < 25 km train CV / dev3k, all areas zoomed: baseline 37.3 / 38.7; + global 37.4 / 38.9;
+      + global + crop 37.3 / 39.1. Budget-2 agent 37.1 / 38.9 -> 37.2 / 39.1. Below the 1-pt go line; no RL look policy built.
+    - dev3k, 1,416 photos with a right and a wrong area: picking the area each column prefers is right 40-50% vs 65.7% for the top area;
+      AUC right vs wrong areas 0.66 (crop margin) vs 0.68 (full view); a conditional logit over rank features is 36.9% with or without them.
+    - Reading: a crop matched against whole index photos says what the full view already says (the area's photos look like the scene);
+      detail the 384-px embedding loses doesn't come back by comparing crops with other photos' global embeddings.
