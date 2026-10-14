@@ -1203,3 +1203,18 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       candidates are other scenes of the same area, not matches of this one.
     - With lessons 85-90: once retrieval has proposed candidates, nothing we can compute from the embeddings (global, crops, neighbourhood
       structure) or the 4B / tools separates the right ones, at any scale.
+
+92. **Word-location statistics from YFCC for all read text add +0.1 over the existing clue features (2026-10-14; `text_geo.py`, dev3k; the user
+    chose to build on the clue-reading success).** Every word the 4B reads (36% of dev3k photos, 4,120 distinct words) as soft evidence: from
+    the 48M YFCC titles + tags (yfcc.db FTS5), distinct (photographer, 0.25-degree cell) pairs per word (2.0M background pairs); per area a
+    naive-Bayes log ratio sum_w log P(w | area) / P(w) at 25 / 200 km, smoothed (alpha 20), clipped per word; the query's photographer removed
+    from every count. ~4 min per build.
+    - Per-area separation on photos with read words and a right + wrong area: margin of the 25 km log ratio over the photo's other areas AUC
+      0.678 (the existing read-clue columns 0.591).
+    - Conditional logit, % < 25 km (2-fold x 3 seeds): Pinpoint features 37.2; + existing clue features 37.7; + text statistics 37.4; + both
+      37.8. Same with the 9B + crops reader (49% of photos with text): 37.7 vs 37.7. Specific words only (<= 2,000 pairs, positive evidence):
+      37.8. Gate failed (go was a clear gain beyond the clue features); no answer-head run.
+    - Why: on photos where the top area is wrong and a right one exists (189), the right area has the higher text score in 43%; but where
+      the top area is right (379, twice as many), a wrong area outscores it in 42%. Most read words (watermarks, brands, "cinema", English
+      phrases) are spread over many areas; language narrows to a country Pinpoint mostly has right already. The names among them are what
+      the existing clue chain already uses.

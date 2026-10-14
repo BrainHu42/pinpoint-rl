@@ -150,6 +150,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   from their side too.
 - **91: next-bucket refinement**: oracle +11-17 pts per step, but a local chooser nets +-0.1 (within-list AUC ~0.5 on the photos a move
   could fix). The choice among retrieved candidates is at chance with every signal we have, at every scale.
+- **92: word-location statistics (YFCC titles / tags) for all read text**: +0.1 over the existing clue features; generic words are as
+  likely to favour a wrong area as the right one, and the names are already used.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

@@ -55,6 +55,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 89 (`crop_look.py`, no LLM): 10 crop views per photo compared with each area's restricted photos, in the answer head: +0.0 / +0.4.
   Lesson 90 (`round_trip.py`): reverse-rank (round-trip) verification of areas: AUC 0.66 vs 0.655 for forward similarity; gate failed.
   Lesson 91 (`refine_headroom.py`, `refine_gate.py`): refining to the next bucket: oracle +11-17 pts, local chooser +-0.1 (signal at chance).
+  Lesson 92 (`text_geo.py`): word-location statistics from YFCC for all read text: +0.1 over the existing clue features.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
