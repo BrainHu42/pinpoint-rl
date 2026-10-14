@@ -1146,3 +1146,17 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       empty photos; precision of real overrides did not move (23-24%, break-even ~50%).
     - Per the user, the full train set runs regardless (`clue-grpo-full`, from the pilot's adapter; ~36 h at this speed, resumed after
       the daily shutdown with --resume).
+
+88. **A stronger open reader (Qwen3.8-27B-FP8) produces fewer right place names and countries than the 4B (2026-10-14; `reader_compare.py`,
+    `scripts/reader_compare.sh`; dev3k, the user's 1-hour test).** observe.py's clue prompt (v2, country guess) and search-query prompt, same
+    786k-px images, thinking off; every phrase (read text, place names, queries) resolved with text_search (top cluster, photo and photographer
+    excluded; maps skipped for time). % of photos with some phrase within 25 km of the truth, 4B vs 27B:
+    | photos | n | 4B | Qwen3.8-27B |
+    |---|---|---|---|
+    | all | 3,000 | 17.4 (phrases on 81%) | 12.8 (49%) |
+    | retrained top-1 wrong | 1,897 | 5.1 | 3.6 |
+    | no Pinpoint area right | 1,454 | 3.2 | 2.1 |
+    - Country guess right 40.2 vs 34.0% (Pinpoint 69.2%); where it differs from Pinpoint's country, right 13.4% (91 fixes / 412 breaks) vs
+      10.0% (96 / 637). The 27B guesses confidently on generic photos (Peru for Tanzania, Iceland for Sweden) and emits phrases on fewer photos.
+    - With lessons 56 and 59 (9B, Qwen3.6-27B): open-model size doesn't buy the recognition Claude showed in lesson 80; a bigger reader is not
+      the fix for the tools. Landmark prompt also run (landmark named on 423 photos) but not scored (the landmark line is closed).

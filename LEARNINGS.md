@@ -142,7 +142,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - **86: the 4B reading neighbour titles / tags per area picks near chance** (21.7% vs area A 36.2%, random 17.5%; AUC 0.61); titles name the
   area, not the query's link to it. No tool output so far separates Pinpoint's look-alike areas.
 - **87: GRPO on the clue output (pilot, 2.3k photos)**: -1.13 -> -0.37 pts vs the retrained top-1; the 4B learns silence (none 28 -> 40%,
-  no overrides on empty photos) but not precision (23-24% of real overrides right). Full-train run in progress.
+  no overrides on empty photos) but not precision (23-24% of real overrides right). Full-train run stopped at step 950 (reward flat at ~-0.01).
+- **88: Qwen3.8-27B as the reader is worse than the 4B**: a phrase within 25 km on 3.6% vs 5.1% of top-1 mistakes, country right 34 vs
+  40%. Bigger open readers don't add recognition.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

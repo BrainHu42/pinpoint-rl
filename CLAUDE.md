@@ -50,7 +50,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   the head gets 38.7% where the best of its own areas is 51.7%.
   Lesson 86 (`tag_reader.py`): the 4B reading each area's neighbour YFCC titles / tags picks near chance (21.7% vs area A 36.2%).
   Lesson 87 (`clue_grpo.py`): GRPO on the 4B's clue / region output with a Pinpoint-relative label reward; pilot -0.37 (zero-shot -1.13): learns
-  silence, not precision. Full-train run `clue-grpo-full` (data/pinpoint/sft/), resume with `--resume` after a restart.
+  silence, not precision. Full-train run `clue-grpo-full` stopped at step 950 (reward flat; data/pinpoint/sft/).
+  Lesson 88 (`reader_compare.py`): Qwen3.8-27B-FP8 as the reader finds fewer right place names (3.6 vs 5.1% of top-1 mistakes) and countries than the 4B.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
