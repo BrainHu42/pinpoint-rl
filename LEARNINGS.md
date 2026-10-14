@@ -131,6 +131,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   where Pinpoint's is wrong 8 / 21 (4B 1); 22 / 40 have nothing place-specific; the gain is recognition and regional knowledge, not unread text.
 - **81: tools consolidated** into `tools/` (pinpoint with constraints, maps with phone / website lookup, web); older tool modules archived at
   tag `pre-tool-consolidation`.
+- **82: query-RL gate** (`query_passk.py`): the base 4B's place queries hit < 25 km outside Pinpoint's pool on 9.7% of fixable photos with a wrong
+  top-1 at pass@32 (2.0% pass@1); ~3 pts dev3k ceiling, ~0.4 at pass@1. Shown Pinpoint's areas it echoes them; blind it finds more new places.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

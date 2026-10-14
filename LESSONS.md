@@ -1050,3 +1050,21 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Archived at tag `pre-tool-consolidation`: landmark matching (lessons 58-63), the GeoNames / Overture POI tools and later clue checks
       (55-67), and the map / name checks and name switch (77-79). Kept: the read chain the pipeline's clue features come from (observe,
       text_search, region_evidence, clue_judge, yfcc_names, vlm_hypotheses, pinpoint_tool).
+
+82. **Gate for query RL: the base 4B sometimes names the right place, rarely beyond Pinpoint's pool, and rarely on the first try (2026-10-14;
+    `query_passk.py`, dev3k only).** The 4B (temperature 1, 16 samples) proposes up to 2 place queries or none; each goes through tools.maps
+    (top 3) and text_search (top cluster, photo and photographer excluded); a hit = a result < 25 km of the truth. 302 fixable dev3k photos +
+    300 random others (control); "novel" = a hit > 25 km from all 5 Pinpoint areas (setft_a pool) shown or not shown to the 4B.
+    | prompt | group (top-1 wrong) | queries per sample | pass@16 | novel pass@16 | novel pass@1 |
+    |---|---|---|---|---|---|
+    | with Pinpoint's top areas | fixable (226) | 62% | 19.5% | 4.4% | |
+    | blind (photo only) | fixable (226) | 43% | 12.8% | 8.8% | 2.0% |
+    | blind | control (196) | 45% | 3.6% | 2.6% | 0.6% |
+    - Shown Pinpoint's areas, the 4B mostly echoes them (Calistoga, Briancon from the prompt); its hits are then choices among the pool, which
+      the area model already makes. Blind, it proposes less but finds more places outside the pool. Either prompt: novel 9.7% of fixable /
+      4.1% of control photos with a wrong top-1.
+    - Hits are recognisable landmarks and districts (Albertina Vienna, Carnegie Mellon, Keukenhof, Lantau Peak, Bermondsey Town Hall) and the
+      odd read slogan (Que se lixe a Troika -> Lisbon).
+    - Scaled to dev3k: about 94 of 3,000 photos (~3 pts) have a novel hit somewhere in 32 samples where the top-1 is wrong; at pass@1 about
+      0.4 pts. So RL has signal above the 1-pt target only if it turns pass@16 into pass@1 and learns to abstain (wrong overrides are not
+      counted here). Next: the GRPO run with the Pinpoint-relative reward, blind-style proposals, areas only at the answer step.

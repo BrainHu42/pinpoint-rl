@@ -42,6 +42,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 80: a blind test with Claude as the reader beats the 4B on hard photos through recognition / regional knowledge (4 / 40 within 25 km vs 0).
   Lesson 81: the agent's tools consolidated into `tools/` (pinpoint, maps, web); the modules of lessons 55-63 and 77-79 archived at tag
   `pre-tool-consolidation`.
+  Lesson 82 (`query_passk.py`): gate for query RL: novel pass@16 9.7% / pass@1 2% on fixable photos (~3 pts ceiling, ~0.4 at pass@1).
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
