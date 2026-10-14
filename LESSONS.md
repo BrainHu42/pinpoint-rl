@@ -1130,3 +1130,19 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       what links the query photo to one area.
     - With lessons 77-79, 83-85: none of our tool outputs (map features, names in areas, region checks, neighbour titles) separates the look-
       alike areas Pinpoint confuses. The remaining gap (head 38.7% vs best area 51.5%) is visual near-misses and generic photos (lesson 67).
+
+87. **GRPO on the 4B's clue output, pilot: it learns silence and caution, not precision (2026-10-14; `clue_grpo.py`; the user's design:
+    say nothing on photos with nothing place-specific).** The 4B sees the photo and Pinpoint's top-1 region and answers {"evidence": "none"},
+    a kept region, or an overriding country / region; reward from labels only (right override where Pinpoint's region is wrong +1, wrong
+    override -1 where Pinpoint was right, -0.5 where both wrong, none / keep 0). LoRA r 32 on the base Qwen3.5-4B, TRL GRPO with colocated vLLM,
+    8 samples, lr 5e-6, beta 0.04; 287 steps in 2.5 h (~30 s per step, ~2,300 train photos). Dev3k, greedy, overrides -> Pinpoint restricted
+    to the region (tools.pinpoint):
+    | | none | keep | override (changes the region) | region right | % < 25 km vs retrained top-1 | silent on lesson-67 X photos |
+    |---|---|---|---|---|---|---|
+    | zero-shot | 27.8% | 54.4% | 15.6% (5.9%) | 23.2% | -1.13 (17 fixes / 51 breaks) | 45% (override 5%) |
+    | pilot | 39.9% | 43.5% | 16.4% (2.4%) | 23.6% | -0.37 (6 / 17) | 55% (override 0%) |
+    - Training reward -0.062 -> -0.033 (48-step means), overrides 21% -> 18%, entropy stable (0.96 -> 0.90).
+    - It learned to stay out: more "none", fewer region changes (many "overrides" name Pinpoint's own region, a safe 0), no overrides on
+      empty photos; precision of real overrides did not move (23-24%, break-even ~50%).
+    - Per the user, the full train set runs regardless (`clue-grpo-full`, from the pilot's adapter; ~36 h at this speed, resumed after
+      the daily shutdown with --resume).
