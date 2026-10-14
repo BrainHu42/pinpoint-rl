@@ -1,7 +1,7 @@
 # Pinpoint as the agent's retrieval tool (TEXT_SEARCH_PLAN.md target design + lesson 68): instead of a ranked list of single candidates, the
 # tool returns areas, each backed by the candidates within RADIUS_KM of its best-supported member and weighted by their reranker score mass
 # (softmax at TEMP). Area 1's pick is lesson 68's agreement pick (+1.0 pts on train over Pinpoint's top-1). `--restrict` style use (a country /
-# region / box) goes through pinpoint_constrained / models.pinpoint_reranker. dev sets only for evaluation.
+# region / box) goes through tools.pinpoint. dev sets only for evaluation.
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.pinpoint_tool show --tag dev3k --n 3     (what the agent would read)
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.pinpoint_tool combine --tag dev3k     (agreement + the clue judge)
 

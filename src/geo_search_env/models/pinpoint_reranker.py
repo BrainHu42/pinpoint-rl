@@ -124,6 +124,7 @@ class PinpointReranker:
             self.targets = dict(zip(MODALITIES, (int(t) for t in hp["original_targets"])))
         self.osv_k, self.osv_radius_km = int(hp["osv_support_neighbors_k"]), float(hp["osv_support_radius_km"])
         self.multiplier, self.chunk = int(hp["modality_pool_multiplier"]), int(hp["retrieval_chunk_size"])
+        self.original: dict[str, int] | None = None  # set by widen()
         if not (hp["use_raw_image_features"] and hp["use_retrieval_features"] and hp["use_osv_support_token"]):
             raise ValueError("this port supports the submission's configuration (raw image, retrieval features, OSV support)")
 
@@ -175,6 +176,14 @@ class PinpointReranker:
         self.osv_embeddings = np.memmap(osv_root / osv["files"]["embeddings"], dtype=np.float16, mode="r", shape=tuple(osv["shapes"]["embeddings"]))
         self.osv_latlon = np.memmap(osv_root / osv["files"]["latlon_deg"], dtype=np.float32, mode="r", shape=tuple(osv["shapes"]["latlon_deg"]))
         self._osv_tree = None
+
+    def widen(self, targets) -> None:
+        """Search the top `targets` (image, raw image, GPS) per modality instead of 8 / 2 / 2, each hit scored exactly as in the original pool
+        (rank / shortlist features for the original list sizes; pinpoint_set extract, lesson 70). The retrained pipeline's pools use 32 8 8."""
+
+        self.original = dict(self.targets)
+        self.multiplier = max(self.multiplier, 2)  # the released extraction searched 2x pools (tie order among equal fp16 scores depends on it)
+        self.targets = dict(zip(MODALITIES, (int(t) for t in targets)))
 
     def _autocast(self, dtype):
         return torch.autocast(device_type="cuda", dtype=dtype) if self.device.type == "cuda" else nullcontext()
@@ -269,7 +278,7 @@ class PinpointReranker:
     @torch.inference_mode()
     def rank_subset(self, embeddings: np.ndarray, allowed: list[np.ndarray]) -> RerankedCandidates:
         """Rerank each query's pool searched only among its own `allowed` index rows (e.g. photos near the places a name matches;
-        name_search.py). The three searches score those rows exactly (fp16, as _search), then the usual union and scoring. Needs
+        tools.pinpoint near / rows). The three searches score those rows exactly (fp16, as _search), then the usual union and scoring. Needs
         load_resident()."""
 
         raw, projected = self.encode_queries(embeddings)
@@ -301,7 +310,7 @@ class PinpointReranker:
     def _union(self, found) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Deduplicated pool (rows [Q, C], per-modality rank [Q, C, 3], in-shortlist flag [Q, C, 3]), as the original."""
 
-        capacity = sum(self.targets.values())
+        capacity = sum(len(found[m][0][0]) for m in MODALITIES)
         queries = len(next(iter(found.values()))[0])
         rows = np.full((queries, capacity), -1, dtype=np.int64)
         ranks = np.ones((queries, capacity, 3), dtype=np.float32)
@@ -310,14 +319,15 @@ class PinpointReranker:
             slots: dict[int, int] = {}
             for m, name in enumerate(MODALITIES):
                 indices, values = found[name]
-                denominator = max(self.targets[name] - 1, 1)
+                keep = (self.original or self.targets)[name]
                 for position, (row, value) in enumerate(zip(indices[q], values[q])):
                     if not np.isfinite(value):
                         continue
                     slot = slots.setdefault(int(row), len(slots))
                     rows[q, slot] = row
-                    ranks[q, slot, m] = min(ranks[q, slot, m], position / denominator)
-                    flags[q, slot, m] = 1.0
+                    if position < keep:  # wide lists: a hit beyond the original list gets rank 1 and flag 0, as one that list did not find
+                        ranks[q, slot, m] = min(ranks[q, slot, m], position / max(keep - 1, 1))
+                        flags[q, slot, m] = 1.0
         return rows, ranks, flags
 
     def _osv_support(self, rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

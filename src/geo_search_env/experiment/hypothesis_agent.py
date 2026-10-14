@@ -72,6 +72,15 @@ def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, 
     return out
 
 
+def area_points(tag: str, ckpt_tag: str = "setft_a") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """photo, source, restricted top-1 (centre if the search came back empty) of every area row (the zoom file)."""
+
+    zm = np.load(_paths(tag, ckpt_tag)[1])
+    s = np.where(zm["rows"] >= 0, zm["scores"], -np.inf)
+    point = zm["latlon"][np.arange(len(s)), s.argmax(1)].astype(np.float64)
+    return zm["photo"], zm["source"], np.where(np.isfinite(s.max(1))[:, None], point, zm["center"])
+
+
 def _post(f: dict) -> np.ndarray:
     cols = []
     for k in POST_ZOOM:
@@ -126,7 +135,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
-    for kind in ("mapcheck", "namecheck") if extra else ():  # map / name checks (map_checks, name_checks): column groups appended to the
+    for kind in ("mapcheck", "namecheck") if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
         path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}.npz"  # pre-zoom part; all but density need the clue reader
         if not path.exists():
             continue

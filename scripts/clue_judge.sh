@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Serve a VLM and judge every specific text-search clue of a photo set (clue_judge.py judge), then the report. RUN="vlm_country sample" runs
+# Serve a VLM and judge every specific text-search clue of a photo set (clue_judge.py judge), then the report. RUN="<module> <args>" runs
 # that module command against the server instead (no report).
 # Usage: [MODEL=<dir>] [PIXELS=786432] [NAME=4b] [TAG=dev3k] [CLUES=9b] [VS=1] [RUN=...] setsid nohup bash scripts/clue_judge.sh > artifacts/agent/logs/clue_judge.log 2>&1 &
 set -uo pipefail

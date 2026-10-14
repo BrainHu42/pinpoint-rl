@@ -74,33 +74,8 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
             photo_set: str | None = None) -> None:
     import torch
 
-    from ..models.pinpoint_reranker import MODALITIES, PinpointReranker
+    from ..models.pinpoint_reranker import PinpointReranker
     from .strategy_search import load_world
-
-    class _Wide(PinpointReranker):
-        def _union(self, found):
-            """The pool over the wide lists; rank / shortlist features as the original computes them for its 8 / 2 / 2 lists (a hit
-            beyond the original list size gets rank 1 and flag 0, as a candidate that list did not find)."""
-
-            capacity = sum(len(found[m][0][0]) for m in MODALITIES)
-            queries = len(found["image"][0])
-            rows = np.full((queries, capacity), -1, dtype=np.int64)
-            ranks = np.ones((queries, capacity, 3), dtype=np.float32)
-            flags = np.zeros((queries, capacity, 3), dtype=np.float32)
-            for q in range(queries):
-                slots: dict[int, int] = {}
-                for m, name_ in enumerate(MODALITIES):
-                    indices, values = found[name_]
-                    keep = self.original[name_]
-                    for position, (row, value) in enumerate(zip(indices[q], values[q])):
-                        if not np.isfinite(value):
-                            continue
-                        slot = slots.setdefault(int(row), len(slots))
-                        rows[q, slot] = row
-                        if position < keep:
-                            ranks[q, slot, m] = min(ranks[q, slot, m], position / max(keep - 1, 1))
-                            flags[q, slot, m] = 1.0
-            return rows, ranks, flags
 
     if name == "bench":  # both halves of im2gps3k and yfcc4k, in the bench pools' order (photo set full: "index")
         world = load_world()
@@ -109,11 +84,8 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
         if photo_set:  # only this photo set's photos, in its order ("index" into the query file)
             queries = [queries[e["index"]] for e in json.loads((Path("artifacts/photo_sets") / photo_set / "photos.json").read_text(encoding="utf-8"))]
         world = load_world(mp16_queries=queries[:limit])
-    model = _Wide(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
-    model.original = dict(model.targets)
-    # the released extraction searched 2x pools (tie order among equal fp16 scores depends on it); keep it for retrained rerankers
-    model.multiplier = max(model.multiplier, 2)
-    model.targets = dict(zip(MODALITIES, (int(t) for t in targets)))
+    model = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    model.widen(targets)
     captured: list[torch.Tensor] = []
     head = model.head.score_head
 

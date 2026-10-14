@@ -7,13 +7,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from geo_search_env.experiment.name_checks import _area_points
+from geo_search_env.experiment.hypothesis_agent import area_points
 from geo_search_env.experiment.sft_data import MP16Images
 
 tmp = Path("artifacts/agent/reader_test")  # images in reader/, key in reader_key/ (blind until scoring)
 photos = json.loads(Path("artifacts/photo_sets/dev3k_setft_a/photos.json").read_text())
 truth = np.asarray([p["truth"] for p in photos], np.float64)
-photo, _, point = _area_points("dev3k")
+photo, _, point = area_points("dev3k")
 p1, p2 = np.radians(truth[photo, 0]), np.radians(point[:, 0])
 h = np.sin((p2 - p1) / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(np.radians(point[:, 1] - truth[photo, 1]) / 2) ** 2
 km = 2 * 6371 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))

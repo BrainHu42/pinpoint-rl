@@ -129,6 +129,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   (oracle switch +1.25 / +1.37) but a learned switch gets +0.03 / -0.03: helps vs hurts is 1:10 and the best signal (score gap) has AUC 0.88.
 - **80: the reader is a bottleneck** (blind test, Claude as reader, 40 dev3k photos with no right area): 4 / 40 within 25 km (4B 0), country right
   where Pinpoint's is wrong 8 / 21 (4B 1); 22 / 40 have nothing place-specific; the gain is recognition and regional knowledge, not unread text.
+- **81: tools consolidated** into `tools/` (pinpoint with constraints, maps with phone / website lookup, web); older tool modules archived at
+  tag `pre-tool-consolidation`.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

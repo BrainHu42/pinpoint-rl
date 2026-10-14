@@ -1036,3 +1036,17 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       1 km (1.00; OSM 0 km), 'Thurzov dom' 0 km, 'Levoca' 0 km (0.98). The raw text strings mostly don't (book titles, slogans, 'Get Smart'
       17,000 km, the Slovak word 'OBUV', the Latin inscription). The corpus is not the limit: the right name, which comes from recognition,
       is; the 4B produced 'Hermannplatz Berlin', 'Girona cathedral' and 'PANDURIA' for the same photos.
+
+81. **Tool consolidation (2026-10-14, the user: the tools overlapped; landmark matching archived).** The agent's tools are now three, each
+    with a text face the agent reads and structured batch calls for training (`src/geo_search_env/tools/`):
+    - `pinpoint`: one `search` with per-photo constraints (none, box, country, region, near points, rows), replacing the restricted searches
+      of `pinpoint_constrained` (lesson 64), the zoom boxes (70) and `name_search` (79). Self-test on 64 dev3k photos with setft_a: unconstrained
+      top-1 = the saved pipeline pool's on 98% (the rest fp16 ties); box (streamed) vs the same rows (resident subset) 98% within 1 km;
+      restricted to the truth's country 34% < 25 km vs 30% unconstrained. Wide pools are `PinpointReranker.widen` (was a class inside
+      `pinpoint_set.extract`).
+    - `maps` (was `experiment/maps_search`): name search with near=, features_near, and now phone / website -> the Overture businesses that
+      list it (the places.db tables text_search already had). Overture's website field is noisy (louvre.fr is listed by shops in Mexico and the US).
+    - `web`: Wikipedia / Wikivoyage pages plus text_search's Flickr / place clusters for the same words.
+    - Archived at tag `pre-tool-consolidation`: landmark matching (lessons 58-63), the GeoNames / Overture POI tools and later clue checks
+      (55-67), and the map / name checks and name switch (77-79). Kept: the read chain the pipeline's clue features come from (observe,
+      text_search, region_evidence, clue_judge, yfcc_names, vlm_hypotheses, pinpoint_tool).

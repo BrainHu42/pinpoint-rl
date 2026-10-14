@@ -1,12 +1,12 @@
 """Are my blind-test queries findable? Each name / text item from fixtures/reader_test_dev3k.json through text_search (photo and photographer
-excluded, as the pipeline) and maps_search (OSM); top result's distance to the truth and whether any result is within 25 km."""
+excluded, as the pipeline) and tools.maps (OSM); top result's distance to the truth and whether any result is within 25 km."""
 import json
 import re
 from pathlib import Path
 
 import numpy as np
 
-from geo_search_env.experiment.maps_search import MapsSearch
+from geo_search_env.tools.maps import MapsSearch
 from geo_search_env.experiment.region_evidence import _owns
 from geo_search_env.experiment.text_search import TextSearch, haversine_km
 

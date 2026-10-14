@@ -3,9 +3,9 @@
 # Storage: Parquet parts under data/osm/extract/ (zstd); the node-location cache (~115 GB, dense) and the pair files go next to --cache.
 # Keep --cache on the EBS volume (data/osm/): the machine stops daily at 02:00 UTC and a restart wipes the NVMe drive. All reads of the
 # cache are sequential, so EBS is fast enough.
-# Usage: .venvs/osm/bin/python src/geo_search_env/experiment/osm_extract.py data/downloads/osm/planet-latest.osm.pbf data/osm/extract \
+# Usage: .venvs/osm/bin/python src/geo_search_env/tools/osm_extract.py data/downloads/osm/planet-latest.osm.pbf data/osm/extract \
 #            --cache data/osm/nodes.cache [--skip-nodes]   (memory-capped; --skip-nodes reuses the node rows and a complete cache)
-#        .venvs/osm/bin/python src/geo_search_env/experiment/osm_extract.py --summary data/osm/extract
+#        .venvs/osm/bin/python src/geo_search_env/tools/osm_extract.py --summary data/osm/extract
 
 """Kept: nodes, ways and multipolygon / boundary relations that carry a name-like tag (name, name:*, alt_name, brand, ...) or one of the
 FEATURES tags (churches, towers, bridges, peaks, rivers, stations...: what features_near asks about, named or not). Columns: osm_type

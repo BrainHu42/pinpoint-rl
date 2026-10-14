@@ -3,17 +3,19 @@
 # feature (church, river, rail bridge, ...) exist around a point. Data: the OSM planet extract (osm_extract.py) plus the GeoNames / Overture
 # names already in text_search's places.db. Storage: data/maps_search/osm.db (SQLite: FTS5 over every name variant, an R*Tree over boxes);
 # `stage` copies it to the NVMe drive for fast reads (wiped on restart, so redo after each one).
-# Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.maps_search build       (DuckDB; a few hours)
-#        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.maps_search features-index   (features_near in batch: FeatureIndex)
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search stage
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search query "City Island Avenue" [--near LAT LON KM]
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search near 41.651 -0.889 2 church river "rail bridge"
+# Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.tools.maps build       (DuckDB; a few hours)
+#        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.tools.maps features-index   (features_near in batch: FeatureIndex)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps stage
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps query "City Island Avenue" [--near LAT LON KM]
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps query "+33 1 42 60 34 56"      (a phone number or website: the business)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps near 41.651 -0.889 2 church river "rail bridge"
 
 """build: osm.db: places (one row per OSM object: name, every name variant, a few tag pairs as `kinds`, an address from addr:* tags, box),
        names (FTS5 over the variants, unicode61 without diacritics, as text_search), boxes (R*Tree over the boxes; rows written in a
        coarse spatial order so the tree builds faster).
 query: phrase match on all names in OSM and places.db (GeoNames, Overture); exact-name matches first, then (with near) by distance, then
        by how notable the place is; results sharing a name and kind are merged (within 0.5 km, 3 km for streets). Printed like a Maps result list.
+       A phone number or a website / domain instead finds the Overture businesses listing it (places.db phones / domains tables).
 near:  per requested feature, the matching objects whose box is within KM of the point: count, nearest distance and name. Feature words
        map to OSM tag pairs (FEATURES); a raw 'key=value' works too. Long features (rivers, rail lines) are boxes, so 'within' is generous."""
 
@@ -31,7 +33,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .text_search import PLACES_DB, _db_dir, haversine_km, norm
+from ..experiment.text_search import GENERIC_TLDS, PLACES_DB, _countries, _db_dir, domain_of, haversine_km, norm, phone_digits
 
 ROOT = Path("data/maps_search")
 NVME = Path("/opt/dlami/nvme/maps_search")
@@ -326,7 +328,40 @@ class MapsSearch:
         km = haversine_km(lat, lon, coords[near, 0], coords[near, 1])
         return names[near[int(np.argmin(km))]]
 
+    def _listed(self, query: str) -> list[Place] | None:
+        """Businesses listing a phone number or website read in the photo; None if the query is neither."""
+
+        if self.places is None:
+            return None
+        if not hasattr(self, "_tlds"):
+            self._tlds = GENERIC_TLDS | set(_countries()[0])  # country TLDs too ('St.Mary' is not a domain)
+        digits, domain = phone_digits(query), domain_of(query, self._tlds)
+        if digits:
+            intl, d = digits.startswith("+"), digits.lstrip("+")
+            if not intl:
+                d = d.lstrip("0")  # national number: drop the trunk prefix, match the end of the international one
+            ids = [p for p, full in self.places.execute("SELECT place, digits FROM phones WHERE tail = ? LIMIT ?", (d[-7:], MAX_MATCHES))
+                   if full.endswith(d) or (intl and d.endswith(full))]
+        elif domain:
+            ids = [r[0] for r in self.places.execute("SELECT place FROM domains WHERE domain = ? LIMIT ?", (domain, MAX_MATCHES))]
+        else:
+            return None
+        rows = []
+        for i in range(0, len(ids), 900):
+            chunk = ids[i: i + 900]
+            rows += self.places.execute(f"SELECT name, kind, lat, lon, src FROM places WHERE rowid IN ({','.join('?' * len(chunk))})", chunk).fetchall()
+        return [Place(name, kind, "", lat, lon, "overture" if src == 1 else "geonames", True, 0) for name, kind, lat, lon, src in rows]
+
     def query(self, query: str, near: tuple[float, float, float] | None = None, top: int = TOP) -> list[Place]:
+        listed = self._listed(query)
+        if listed is not None:
+            if near is not None:
+                for p in listed:
+                    p.km = float(haversine_km(near[0], near[1], np.asarray([p.lat]), np.asarray([p.lon]))[0])
+                listed = sorted((p for p in listed if p.km <= near[2]), key=lambda p: p.km)
+            for p in listed[:top]:
+                p.label = self._label(p.lat, p.lon)
+            return listed[:top]
         phrase, key = _phrase(query), norm(query)
         if phrase is None:
             return []

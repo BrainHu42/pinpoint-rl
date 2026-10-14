@@ -36,10 +36,12 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
   in-distribution. Next: new evidence (clues, tools) with RL deciding when to use it.
   Lesson 76 (`read_agent.py`): clue reading as a costly action; a learned read policy keeps +0.5 / +0.8 of the clue gain with 20% of the reads.
-  Lesson 77 (`map_checks.py`): OSM checks of the features the 4B sees add nothing (retrieval's wrong areas look alike).
-  Lesson 78 (`name_checks.py`): OSM name search inside areas is redundant with the text-search clue evidence.
-  Lesson 79 (`name_search.py`): names as a candidate generator (Pinpoint restricted to a name's matches): oracle +1.3, learned switch +0.
+  Lesson 77 (map checks): OSM checks of the features the 4B sees add nothing (retrieval's wrong areas look alike).
+  Lesson 78 (name checks): OSM name search inside areas is redundant with the text-search clue evidence.
+  Lesson 79 (name search): names as a candidate generator (Pinpoint restricted to a name's matches): oracle +1.3, learned switch +0.
   Lesson 80: a blind test with Claude as the reader beats the 4B on hard photos through recognition / regional knowledge (4 / 40 within 25 km vs 0).
+  Lesson 81: the agent's tools consolidated into `tools/` (pinpoint, maps, web); the modules of lessons 55-63 and 77-79 archived at tag
+  `pre-tool-consolidation`.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
@@ -93,16 +95,21 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact.
 - `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
 - `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`).
-- Agent tools (lessons 55-57): `agent_targets.py` (dev set, splits, fixable targets), `observe.py` + `scripts/observe.sh` (VLM clues,
-  landmarks, crops), `geo_tools.py` (GeoNames / Overture tools, CV combiner), `poi_query.py` / `poi_near.py` (Overture places,
-  env `.venvs/overture`), `landmark_match.py` (keypoints, env `.venvs/sft`), `agent_capacity.py`, `agent_vote.py`.
-- Landmark / name lookups (lessons 58-63): `landmark_id.py` (VLM object box -> crop search -> keypoint / DINOv2 checks), `landmark_vote.py`,
-  `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`, README there; name -> place proposals). 
-- Text search and Pinpoint as a tool (lessons 64-65; plan and target design in `TEXT_SEARCH_PLAN.md`): `text_search.py` (SQLite FTS5 over
-  GeoNames, Overture places / websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a
-  restart), `pinpoint_constrained.py` (Pinpoint restricted to a country / region), `region_evidence.py`, `clue_judge.py` + `scripts/clue_judge.sh`.
-  Expert clue catalogue: `GEOLOCATION_CLUES.md`. Later checks: `clue_points.py`, `web_geocode.py`, `recall_verify.py`, `clue_survey.py`,
-  `chain_footprint.py`, `vlm_country.py`, `plates.py`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
+- **Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`: a text face the agent reads, structured batch calls for training):**
+  - `tools/pinpoint.py`: `Pinpoint.search(embeddings, constraints, authors)`, constraint none / box / country / region / near points / rows
+    (photographer excluded; wide 32 / 8 / 8 pools as the pipeline; `selftest`). `PinpointReranker.widen` / `rank_subset` underneath.
+  - `tools/maps.py`: Maps name search with `near=`, phone / website -> the businesses listing it, `features_near`, batch `FeatureIndex`;
+    `data/maps_search/osm.db` (`stage` to the NVMe drive after a restart). `tools/osm_extract.py`: OSM planet -> `data/osm/extract`.
+  - `tools/web.py`: Wikipedia / Wikivoyage pages (`experiment/web_search.py`, owned by the osm-search session) + where the words occur in
+    Flickr titles / tags and named places (`text_search`).
+- The read chain behind the pipeline's clue features (lessons 55-65; `TEXT_SEARCH_PLAN.md`): `agent_targets.py` (dev set, splits, fixable
+  targets), `observe.py` + `scripts/observe.sh` (VLM clues, crops), `text_search.py` (SQLite FTS5 over GeoNames, Overture places / websites /
+  phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart), `region_evidence.py`,
+  `clue_judge.py` + `scripts/clue_judge.sh`, `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`), `pinpoint_tool.py` (Pinpoint's
+  pool as areas). Expert clue catalogue: `GEOLOCATION_CLUES.md`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
+  Archived at tag `pre-tool-consolidation`: landmark matching (`landmark_id`, `landmark_match`, `landmark_vote`), `geo_tools`, `poi_query`,
+  `poi_near`, `wiki_backend`, `web_geocode`, `clue_points`, `recall_verify`, `clue_survey`, `chain_footprint`, `vlm_country`, `plates`,
+  `pinpoint_constrained`, `agent_capacity`, `agent_vote`, `map_checks`, `name_checks`, `name_search` and their scripts.
 - **Agreement re-scoring of Pinpoint's pool (lesson 68, +1.0 pts on train): `pool_agreement.py`.**
 - **Hypothesis testing (lesson 69, +2.9 / +3.5 train, +3.8 / +4.6 dev3k):** `hypotheses.py` (Pinpoint areas, restricted search, clue
   hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator; best:
@@ -113,11 +120,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   - `area_model.py`: area-then-spot model over zoomed CLS states.
   - `hypothesis_agent.py`: merged pipeline (answer + action heads over area tokens; lesson 71). Retrained-reranker photo sets: `pinpoint_set photo-set`, `scripts/retrained_pipeline.sh`.
   - `zoom_agent.py`: RL zoom policy. `read_agent.py`: clue reading as a costly action with a learned read policy (lesson 76).
-  - Offline Google stand-ins (merged from branch osm-search): `osm_extract.py` (OSM planet -> `data/osm/extract`), `maps_search.py` (name search
-    with `near=`, `features_near`; `data/maps_search/osm.db`, `stage` to the NVMe drive; batch `FeatureIndex` over `features.npz`), `web_search.py`.
-    `map_checks.py` / `name_checks.py`: map / name checks on the pipeline's areas (lessons 77-78). `hypothesis_agent.fit_answers`: many answer
-    heads at once (vmap); `scripts/answer_mapchecks.py --variants` compares extra column groups with it.
-    `name_search.py`: Pinpoint restricted to the places a name matches (`PinpointReranker.rank_subset`, GPU-resident index); `scripts/name_switch.py`.
+  - `hypothesis_agent.fit_answers`: many answer heads at once (vmap); `load(extra=...)` appends column groups (lessons 77-78).
   - `models/set_head.py`.
   - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
     `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
@@ -135,8 +138,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. The one-step reranker, our ~17-candidate
   pool builder and the modules built on them (`verifiers`, `evidence_ranker`, `exemplar_judge`, `multi_exemplar`,
   `category_evidence`, `stage1_eval`, `evidence_test`, `query_headroom`, `query_evidence`) were removed when Pinpoint's reranker
-  became the reference (lesson 54); they are at commit 57918cb. Kept: `wiki_backend` (offline Wikipedia search), `coarse_filter`,
-  `feasibility`.
+  became the reference (lesson 54); they are at commit 57918cb. Kept: `coarse_filter`, `feasibility`.
 - Caches: `artifacts/` (not tracked). Photo sets and pools built before lesson 54 (`artifacts/query_evidence/*/dev.json`,
   `artifacts/sft/candidates.npz`, `artifacts/place_labels/candidates_*.json`) hold the old reranker's pools; current code doesn't read them.
   Setup from scratch: `SETUP.md`.
