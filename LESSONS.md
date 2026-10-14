@@ -1218,3 +1218,17 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       the top area is right (379, twice as many), a wrong area outscores it in 42%. Most read words (watermarks, brands, "cinema", English
       phrases) are spread over many areas; language narrows to a country Pinpoint mostly has right already. The names among them are what
       the existing clue chain already uses.
+
+93. **Same-place recognition (MegaLoc) is the first new signal in a while: +0.8 in the simple chooser, on top of the clue features too
+    (2026-10-14; `megaloc_gate.py`, dev3k gate; the user's question: better recognition without a frontier LLM).** MegaLoc (gberton/MegaLoc,
+    CVPR-W 2025; DINOv2 ViT-B/14 + optimal-transport aggregation, 8,448-d, trained for visual place recognition), float32 at 322 px; the 3,000
+    queries + 142,697 area photos (the zoom file's 12 restricted-search photos per hypothesis) in ~13 min (~190 photos/s).
+    - Per-area best / top-3 MegaLoc cosine and its margin over the photo's other areas. AUC right vs wrong areas (1,416 photos with both):
+      margin 0.71-0.72 (SigLIP2 forward similarity 0.655-0.68, lessons 89-90; YFCC word statistics 0.68); where the top area is wrong (485)
+      0.60-0.61.
+    - Right area beats the wrong top area by > 0.05: 120 / 485; a wrong area beats the right top area: 163 / 938 (a better ratio than any
+      earlier signal).
+    - Conditional logit, % < 25 km (2-fold x 3 seeds): Pinpoint features 37.2; + clue features 37.7; + MegaLoc 38.0; + both 38.5. So MegaLoc
+      adds +0.8 independently of the clue features, where crops / round trips / word statistics added 0.0-0.2.
+    - Next: MegaLoc for the train hypotheses' photos (~1.2M) and the answer-head test (go: >= +1 pt on dev3k), then the RL policy deciding
+      when to run it, and a full-index MegaLoc search as a candidate generator.

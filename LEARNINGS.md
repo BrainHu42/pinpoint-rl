@@ -152,6 +152,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   could fix). The choice among retrieved candidates is at chance with every signal we have, at every scale.
 - **92: word-location statistics (YFCC titles / tags) for all read text**: +0.1 over the existing clue features; generic words are as
   likely to favour a wrong area as the right one, and the names are already used.
+- **93: MegaLoc same-place similarity per area** (a visual place-recognition model, no LLM): +0.8 in the simple chooser on top of the
+  clue features (37.7 -> 38.5%); the first evidence since lesson 76 that adds clearly. Answer-head test pending.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
