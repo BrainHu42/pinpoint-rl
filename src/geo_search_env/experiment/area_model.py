@@ -16,6 +16,7 @@ hypothesis_features_{tag}_{ckpt}_e4_set.npz, zooms zoom_{tag}_{ckpt}.npz; gains 
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Sequence
 
@@ -25,6 +26,7 @@ from . import hypothesis_learn as hl
 
 FEATURES = {"train": hl.OUT / "hypothesis_features_train_e4_vlmhyps_set.npz", "dev3k": hl.OUT / "hypothesis_features_dev3k_e4_vlmhyps_set.npz"}
 ZOOM = Path("artifacts/pinpoint_set")
+VARIANT = os.environ.get("HYP_VARIANT", "")
 
 
 def _minimal(f: dict) -> np.ndarray:
@@ -48,6 +50,8 @@ def _minimal(f: dict) -> np.ndarray:
 def _paths(tag: str, ckpt_tag: str) -> tuple[Path, Path]:
     if not ckpt_tag:
         return FEATURES[tag], ZOOM / f"zoom_{tag}.npz"
+    if VARIANT:  # extra hypothesis sources (HYP_VARIANT=regionhyps: region_hyps.py)
+        return hl.OUT / f"hypothesis_features_{tag}_{ckpt_tag}_e4_{VARIANT}_set.npz", ZOOM / f"zoom_{tag}_{ckpt_tag}_{VARIANT}.npz"
     return hl.OUT / f"hypothesis_features_{tag}_{ckpt_tag}_e4_set.npz", ZOOM / f"zoom_{tag}_{ckpt_tag}.npz"
 
 

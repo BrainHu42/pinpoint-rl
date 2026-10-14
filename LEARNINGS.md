@@ -137,6 +137,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   single sample -19.6 and a votes + score selector +0.1 held out: proposals hold enough, verification is the bottleneck.
 - **84: retrieval proposes regions better than the 4B**: 16 regions from the 1,000 nearest index photos, best of 16 +19.0 pts vs the 4B's +6.1
   (the 4B adds +1.0); the 4B is confidently wrong where it disagrees with Pinpoint (precision 4-16%).
+- **85: region candidates + tool checks in the answer head add +0.3 at most** (dev3k 39.0 vs 38.7%); the head converts ~2 of the ~15 pts its own
+  areas hold (best area 51.7%). Choosing among look-alike areas is the bottleneck, not candidates.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

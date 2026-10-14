@@ -33,6 +33,8 @@ from .area_model import _paths
 from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
+if __import__("os").environ.get("HYP_VARIANT") == "regionhyps":
+    SOURCES = (0, 1, 2)  # + region hypotheses (region_hyps.py, lesson 85)
 BOX_KM = 25.0
 CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
@@ -135,7 +137,8 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
-    for kind in ("mapcheck", "namecheck") if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
+    kinds = ("regioncheck",) if "regionhyps" in str(feat_path) else ("mapcheck", "namecheck")  # extra columns aligned with these features
+    for kind in kinds if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
         path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}.npz"  # pre-zoom part; all but density need the clue reader
         if not path.exists():
             continue
@@ -473,11 +476,11 @@ def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str, zoom_rule: str 
              **{k.replace(" ", "_").replace(",", "").replace("(", "").replace(")", ""): v for k, v in answers.items()}, benchmark=te["benchmark"])
 
 
-def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1, zoom_rule: str = "gated") -> None:
+def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1, zoom_rule: str = "gated", extra: tuple[str, ...] = ()) -> None:
     from .strategy_search import _bootstrap
 
-    tr = load("train", ckpt_tag, zoom_rule=zoom_rule)
-    dv = load("dev3k", ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule)
+    tr = load("train", ckpt_tag, zoom_rule=zoom_rule, extra=extra)
+    dv = load("dev3k", ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule, extra=extra)
     n = tr["n"]
     print(f"agent ({ckpt_tag or 'released Pinpoint'}, zoom rule {zoom_rule}): {n} train photos, up to {tr['mask'].shape[1]} areas, "
           f"{tr['mask'].sum().item() / n:.2f} per photo", flush=True)
@@ -516,11 +519,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--zoom-rule", choices=("agree", "soft", "hybrid", "gated"), default="gated",
                         help="a zoomed area's answer: box agreement, soft kernel, kernel inside the box group, or kernel gated to 5 km of the box founder (default; lesson 74)")
     parser.add_argument("--apply-tag", help="apply the all-of-train models to this photo set (full = test set, only when the user asks)")
+    parser.add_argument("--extra", nargs="*", default=(), help="extra column groups (regioncheck: text, maps; region_checks.py)")
     args = parser.parse_args(argv)
     if args.apply_tag:
         apply(args.ckpt_tag, args.budgets, args.apply_tag, args.zoom_rule)
     else:
-        run(args.ckpt_tag, args.budgets, zoom_rule=args.zoom_rule)
+        run(args.ckpt_tag, args.budgets, zoom_rule=args.zoom_rule, extra=tuple(args.extra))
     return 0
 
 

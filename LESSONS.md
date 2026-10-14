@@ -1098,3 +1098,22 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       region far more often. Selection by restricted reranker score gave -0.1 there, so choosing among regions needs a learned verifier.
     - Best-of ceilings grow with the number of draws; +19 is an upper bound, not a forecast. Next: a learned region verifier over these
       candidates (per-region area tokens, neighbour mass, clue features, the 4B scoring a given region), RL on which regions to examine.
+
+85. **Region candidates and tool checks in the answer head: +0.3 at most; the head converts ~2 of the ~15 pts its own areas hold (2026-10-14;
+    `region_hyps.py`, `region_checks.py`, `scripts/region_pipeline.sh`, `HYP_VARIANT=regionhyps`; train + dev3k, retrained reranker).**
+    - Oracles, dev3k (train): retrained top-1 36.8% (35.5); best restricted top-1 over Pinpoint's ~4.6 areas 51.7% (50.3), + clue places
+      52.1 (50.7), + 16 retrieval regions (lesson 84; 34k / 405k kept after dropping those within 25 km of an area) 61.7 (59.7); wide-pool
+      oracle 63.4 (61.6).
+    - Answer head, all hypotheses examined, % < 25 km dev3k (train CV), vs the released Pinpoint:
+      | hypotheses | dev3k | train CV |
+      |---|---|---|
+      | pipeline (areas + clue places) | 38.7 (+5.3) | 37.3 (+4.9) |
+      | + region hypotheses | 39.0 (+5.5) | 37.7 (+5.3) |
+      | + region hypotheses + text checks | 38.7 (+5.3) | 37.6 (+5.2) |
+      | + region hypotheses + text + maps checks | 38.8 (+5.4) | 37.6 (+5.2) |
+      Budget-2 agent: 38.9 / 38.5 / 38.7 / 38.5 (the zoom policy wasn't adapted to region hypotheses).
+    - Checks (soft features per hypothesis: read / recalled clue regions and countries from region_evidence, phone / domain country hints,
+      tools.maps top-10 matches of read names labelled by area): non-zero on 3-30% of hypotheses; add nothing over region hypotheses.
+    - So more candidates and squashed tool evidence don't move the choice. The head sees visual-match statistics and a few clue numbers;
+      look-alike areas need evidence of a different kind (lessons 67, 77). Next: the names attached to each area's neighbour photos (YFCC
+      titles / tags, `data/yfcc100m/geo.npz`) read by the 4B, the tool-reading agent the user asked for.
