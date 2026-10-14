@@ -1085,3 +1085,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       lesson 79).
     - So the proposals now hold enough (+6.1); the bottleneck is verification. Next: feed sampled proposals as area tokens to the pipeline's
       trained answer head (it already verifies clue-place areas) and measure; RL on the proposer with that head as the verifier only if it adds.
+
+84. **Retrieval proposes regions far better than the 4B: best-of-16 +19.0 pts vs +6.1; the 4B is confidently wrong where it disagrees with
+    Pinpoint (2026-10-14; `scripts/region_candidates.py`, `scripts/proposal_calibration.py`; dev3k, lesson 83's photos, weighted to dev3k).**
+    - Calibration of the 4B's majority answer over 16 samples where it differs from Pinpoint's top-1: country precision 16% at >= 25% vote
+      share, falling to 4% at >= 75% (Pinpoint's country is right on 66% of photos); region 6-17%. More agreement among samples = more often
+      wrong, so the 4B's own confidence can't verify its proposals.
+    - Retrieval regions: the 16 most frequent (country, region) labels among the 1,000 nearest index photos, Pinpoint restricted to each.
+      True region among them where the top-1 is wrong: 65.8% (4B samples 27.1%). Best of Pinpoint + 16: **+19.0** (fixable +60.9, control
+      +14.3); the 4B adds +1.0 on top (union +20.1); retrieval-only fixes +13.9.
+    - The pool's own regions (5.6 per photo, TEXT_SEARCH_PLAN option 2) had an oracle below the pool's; a 1,000-neighbour list holds the true
+      region far more often. Selection by restricted reranker score gave -0.1 there, so choosing among regions needs a learned verifier.
+    - Best-of ceilings grow with the number of draws; +19 is an upper bound, not a forecast. Next: a learned region verifier over these
+      candidates (per-region area tokens, neighbour mass, clue features, the 4B scoring a given region), RL on which regions to examine.

@@ -45,6 +45,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 82 (`query_passk.py`): gate for query RL: novel pass@16 9.7% / pass@1 2% on fixable photos (~3 pts ceiling, ~0.4 at pass@1).
   Lesson 83 (`nested_passk.py`): nested country / region / place proposals: ceiling +6.1 (best of 16), single sample -19.6, simple selector +0.1;
   verification is the bottleneck.
+  Lesson 84: regions from Pinpoint's 1,000 nearest neighbours: best of 16 +19.0 vs the 4B's +6.1; the 4B is confidently wrong where it disagrees.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are

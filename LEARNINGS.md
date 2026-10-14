@@ -135,6 +135,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   top-1 at pass@32 (2.0% pass@1); ~3 pts dev3k ceiling, ~0.4 at pass@1. Shown Pinpoint's areas it echoes them; blind it finds more new places.
 - **83: nested proposals** (`nested_passk.py`; country / region / place -> restricted Pinpoint): best of 16 samples +6.1 pts on dev3k, but a
   single sample -19.6 and a votes + score selector +0.1 held out: proposals hold enough, verification is the bottleneck.
+- **84: retrieval proposes regions better than the 4B**: 16 regions from the 1,000 nearest index photos, best of 16 +19.0 pts vs the 4B's +6.1
+  (the 4B adds +1.0); the 4B is confidently wrong where it disagrees with Pinpoint (precision 4-16%).
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
