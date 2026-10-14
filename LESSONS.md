@@ -1117,3 +1117,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - So more candidates and squashed tool evidence don't move the choice. The head sees visual-match statistics and a few clue numbers;
       look-alike areas need evidence of a different kind (lessons 67, 77). Next: the names attached to each area's neighbour photos (YFCC
       titles / tags, `data/yfcc100m/geo.npz`) read by the 4B, the tool-reading agent the user asked for.
+
+86. **The 4B reading each area's neighbour titles / tags picks near chance; the titles name the area, not the query's match (2026-10-14;
+    `tag_reader.py`, dev3k, the user asked for the tool-reading test).** Per photo Pinpoint's ~4.6 areas (restricted searches, photographer
+    excluded) as letters A.. (A = Pinpoint's top area), each with its nearest town and up to 8 YFCC titles + tags of its restricted candidates
+    (`data/yfcc100m/geo.npz`; all 142k found, 7.9 per area); the 4B answers one letter, P(letter) from the first-token log-probabilities.
+    - % < 25 km: area A 36.2%, best area 51.5%, a random area 17.5%, the answer head 38.7%.
+    - 4B pick: labels only 18.7%, labels + titles 21.7% (picks another area than A on 77-79%, letter D most often: position bias). Switching
+      only at P >= 0.9: 36.1% (6 fixes, 7 breaks). Held-out (2-fold) mix of the rank prior and log P: 32.5% vs 32.4% for the prior alone.
+    - Signal: AUC of P for right vs wrong areas 0.61 with titles, 0.56 without. Titles name their own area's town on 41% of right and 38% of
+      wrong areas, and 19% are camera file names or one or two words: they say where the neighbours are (known from coordinates), rarely
+      what links the query photo to one area.
+    - With lessons 77-79, 83-85: none of our tool outputs (map features, names in areas, region checks, neighbour titles) separates the look-
+      alike areas Pinpoint confuses. The remaining gap (head 38.7% vs best area 51.5%) is visual near-misses and generic photos (lesson 67).

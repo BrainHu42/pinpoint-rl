@@ -139,6 +139,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   (the 4B adds +1.0); the 4B is confidently wrong where it disagrees with Pinpoint (precision 4-16%).
 - **85: region candidates + tool checks in the answer head add +0.3 at most** (dev3k 39.0 vs 38.7%); the head converts ~2 of the ~15 pts its own
   areas hold (best area 51.7%). Choosing among look-alike areas is the bottleneck, not candidates.
+- **86: the 4B reading neighbour titles / tags per area picks near chance** (21.7% vs area A 36.2%, random 17.5%; AUC 0.61); titles name the
+  area, not the query's link to it. No tool output so far separates Pinpoint's look-alike areas.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

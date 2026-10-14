@@ -48,6 +48,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 84: regions from Pinpoint's 1,000 nearest neighbours: best of 16 +19.0 vs the 4B's +6.1; the 4B is confidently wrong where it disagrees.
   Lesson 85 (`region_hyps.py`, `region_checks.py`, `HYP_VARIANT=regionhyps`): region candidates + maps / text checks in the head: +0.3 at most;
   the head gets 38.7% where the best of its own areas is 51.7%.
+  Lesson 86 (`tag_reader.py`): the 4B reading each area's neighbour YFCC titles / tags picks near chance (21.7% vs area A 36.2%).
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
