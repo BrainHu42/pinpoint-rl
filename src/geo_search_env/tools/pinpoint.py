@@ -81,8 +81,26 @@ class Pinpoint:
             region = np.full(z["row"].max() + 1, "", dtype=object)
             country[z["row"]] = z["country"]
             region[z["row"]] = [f"{c}|{r}" if c and r else "" for c, r in zip(z["country"], z["region"])]
+            self._mp16_labels = country, region
             self._labels = country[self.reranker.cache_indices], region[self.reranker.cache_indices]
         return self._labels
+
+    def mp16_labels(self, cache_rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(country, 'country|region') of MP16 photos (embedding-cache rows), e.g. a dev photo's true area."""
+
+        self.labels()
+        rows = np.minimum(cache_rows, len(self._mp16_labels[0]) - 1)
+        return self._mp16_labels[0][rows], self._mp16_labels[1][rows]
+
+    def labels_at(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(country, 'country|region') of the index photo nearest each point: an area label for any coordinate."""
+
+        from ..models.pinpoint_reranker import _unit_xyz
+
+        self.rows_near(np.zeros((1, 2)), 0.0)  # builds the tree
+        _, nearest = self._tree.query(_unit_xyz(np.asarray(points, np.float64).reshape(-1, 2)))
+        country, region = self.labels()
+        return country[nearest], region[nearest]
 
     def rows_near(self, points: np.ndarray, km: float) -> np.ndarray:
         from scipy.spatial import cKDTree

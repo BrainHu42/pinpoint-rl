@@ -1068,3 +1068,20 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Scaled to dev3k: about 94 of 3,000 photos (~3 pts) have a novel hit somewhere in 32 samples where the top-1 is wrong; at pass@1 about
       0.4 pts. So RL has signal above the 1-pt target only if it turns pass@16 into pass@1 and learns to abstain (wrong overrides are not
       counted here). Next: the GRPO run with the Pinpoint-relative reward, blind-style proposals, areas only at the answer step.
+
+83. **Nested proposals (country / region / place) double the ceiling to +6.1 pts, but the 4B overrides wrongly and simple verifiers recover
+    +0.1 (2026-10-14; `nested_passk.py`; dev3k, lesson 82's photos).** The base 4B, blind, 16 samples of {country, region, place?} or keep; each
+    sample -> one answer: a place whose OSM matches lie in the proposed region (else country) -> Pinpoint near them (5 km); else Pinpoint
+    restricted to the region; else the country; else Pinpoint's top-1. Names matched to the Overture labels of lesson 64 (Prešov Region ->
+    Region of Prešov etc.). Reference: the retrained reranker's top-1.
+    | group | samples: place / region / country / keep | true country / region in 16 (top-1 wrong) | first sample | best of Pinpoint + 16 |
+    |---|---|---|---|---|
+    | fixable (302) | 14 / 50 / 16 / 20% | 70% / 32% | -12.9 | **+28.1** |
+    | control (300) | 15 / 49 / 13 / 22% | 59% / 27% | -20.3 | +3.7 |
+    - dev3k-weighted: best of 16 **+6.1 pts** (lesson 82's named places: ~3); a single sample -19.6: the 4B overrides on 80% of samples and is
+      usually wrong (region samples on control: 13 fixes, 631 breaks).
+    - No-training selector (the most voted answer, override if its vote share and its restricted top-1 score minus Pinpoint's clear
+      thresholds): +0.12 held out (2-fold), +0.40 in-sample. Votes and reranker scores don't separate right overrides from wrong ones (as
+      lesson 79).
+    - So the proposals now hold enough (+6.1); the bottleneck is verification. Next: feed sampled proposals as area tokens to the pipeline's
+      trained answer head (it already verifies clue-place areas) and measure; RL on the proposer with that head as the verifier only if it adds.
