@@ -1230,5 +1230,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       earlier signal).
     - Conditional logit, % < 25 km (2-fold x 3 seeds): Pinpoint features 37.2; + clue features 37.7; + MegaLoc 38.0; + both 38.5. So MegaLoc
       adds +0.8 independently of the clue features, where crops / round trips / word statistics added 0.0-0.2.
-    - Next: MegaLoc for the train hypotheses' photos (~1.2M) and the answer-head test (go: >= +1 pt on dev3k), then the RL policy deciding
-      when to run it, and a full-index MegaLoc search as a candidate generator.
+    - Answer head (`hypothesis_agent --extra megaloc`: best / top-3 cosine and their margins as pre-zoom columns; train: 1.18M area photos,
+      streamed and resumable, ~1.5 h incl. a restart), % < 25 km vs the same head without them (crop_heads baseline, same seeds):
+      | | train CV | dev3k |
+      |---|---|---|
+      | budget 0 (no zoom) | 36.3 -> 37.1 (+0.8) | 37.3 -> 38.3 (+1.0) |
+      | budget 2, agent | 37.1 -> 38.0 (+0.9) | 38.9 -> 39.4 (+0.5) |
+      | budget 2, top areas | 37.0 -> 38.0 (+1.0) | 38.5 -> 39.6 (+1.1) |
+      | all areas zoomed | 37.3 -> 38.2 (+0.9) | 38.7 -> 39.3 (+0.6) |
+      1 km: train CV +0.5 to +0.6, dev3k +0.2 to +0.5. vs the released Pinpoint: dev3k +5.8 to +6.1 (was +5.3 to +5.4).
+    - The largest evidence gain since the zoom pipeline (lesson 70) and consistent: +0.8 to +1.0 on train CV (35k photos), +0.5 to +1.1 on
+      dev3k (noisier). At the 1-pt line on train, just under it on dev3k for the default (budget-2 agent) configuration.
+    - Caveat: the columns use every area's restricted-search photos, so in the budgeted rows they leak post-zoom information; as an agent
+      action, MegaLoc should be its own costly look (RL deciding when).
