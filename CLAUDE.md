@@ -14,8 +14,12 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
   exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
   (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; dev3k 17.0 / 33.4 (oracle 27.5 / 50.3).
-  All benchmark numbers exclude the query photographer's own photos from the index; the original protocol (kept) gives 28.9 / 46.4
-  (yfcc4k 33.5 / 44.8 vs 14.8 / 29.8; im2gps3k unchanged, no photographer overlap). Report both (user, 2026-10-13; lesson 54).
+  **Primary benchmark (user, 2026-10-15): the original Pinpoint protocol, the query photographer's photos kept in the index**
+  (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`; lesson 98): a table per benchmark (im2gps3k, yfcc4k, both) x 1 / 25 / 200 / 750 / 2500 km
+  vs the released Pinpoint under the same protocol (both 28.9 / 46.4 / 60.7 / 75.5 / 86.7; im2gps3k 21.8 / 48.9 / 64.6 / 79.6 / 89.8;
+  yfcc4k 33.5 / 44.8 / 58.2 / 73.0 / 84.8). Photographer-excluded numbers (our training rule so far; Pinpoint 17.5 / 37.2) are secondary.
+  Our models were all trained with the photographer excluded and lose at 1 km on yfcc4k under the primary protocol; expect to retrain
+  them (reranker, heads, policy, train / dev3k pools) without the exclusion.
 - Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
   over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
   visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
