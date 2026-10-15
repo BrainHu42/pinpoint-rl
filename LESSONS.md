@@ -1378,3 +1378,23 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Reading: recognition is real but sits where retrieval already succeeds (the same pattern as lessons 52-53); on the head's mistakes
       Sonnet is near chance. n = 40 (+-11 pts per half), direction only. A stronger reader (Opus) on the same 40 is the cheap next check.
 
+103. **A pair-specific discriminant ("what differs between these two areas", no LLM) adds nothing beyond the answer head (2026-10-15;
+    `pair_discriminant.py`).** Per decisive pair (5,000 train / 500 dev3k, lessons 99-101), kernel ridge between the two areas' index photos
+    within 25 km (raw SigLIP2, photographer excluded; 256 random or the 256 nearest the query per area), applied to the query; plus centroid
+    difference and a kNN vote. Alone: ridge AUC 0.60-0.62 vs centroid similarity 0.57-0.58 (cancelling the shared look helps a little);
+    with the head's margin: train CV AUC 0.819 -> 0.820-0.823, dev3k 85.0 -> 84.0-85.0% (0 fixes). Same wall as lessons 97-101: visual
+    evidence about the candidates is already in the head.
+
+104. **Named candidates: Claude Sonnet told *where* the two candidate areas are fixes head mistakes with no breaks at confidence >= 0.7
+    (2026-10-15; Claude Code Sonnet subagents as the reader; `artifacts/agent/names_contrast_sonnet.json`).** Decisive train pairs, the
+    query photo and the two areas as "near <GeoNames town >= 5k> (lat, lon), country", A/B randomised, reader limited to the image.
+    - Hard constraints on 20 far mistakes (wrong area > 1,500 km): only 2 / 20 photos show one (both landmarks); 12 / 20 are close-ups or
+      indoor. Driving side, script and plates never decided a case. The far head-right control: 7 hard rule-outs, all right.
+    - Pick accuracy (head wrong / head right): far pairs 15 / 20 and 18 / 20; all distances (median 185 km) 10 / 20 and 17 / 20.
+      At confidence >= 0.7: far 6 fixes / 0 breaks, all distances 6 fixes / 0 breaks (20 + 20 each); all misses on head-right photos
+      were at 0.5-0.6. Reweighted to dev3k's decisive mix (6% of photos head-wrong-but-fixable, 34% head-right) ~ +1.8 pts, but with
+      0 / 40 breaks the 95% bound allows up to ~7% breaks (-2.4 pts): needs the full 500 dev3k pairs.
+    - Versus lesson 102 (anonymous reference photos A / B): there 5 fixes / 2 breaks at >= 0.7. Names let the reader use what it knows
+      about the places ("Farm Tomita banner -> Nakafurano", "CSKA vs Rubin Kazan at Luzhniki", "George Bush Library -> College Station",
+      "Salzspeicher -> Lübeck"); most fixes are recognitions of events, venues and signs that retrieval cannot use.
+

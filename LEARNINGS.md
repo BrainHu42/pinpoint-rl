@@ -173,6 +173,9 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   alone (= global), stacked weight ~0 next to the head's margin; end to end -1.6 pts on dev3k. Visual matching of references is exhausted.
 - **102: Sonnet as the contrast reader** (40 pairs): specific features and right on all 8 confident answers, but those are photos the head
   already gets; on the head's mistakes 12 / 20 (4B 3 / 10); reweighted 81 vs the head's 85%.
+- **103: pair-specific discriminant** between the two areas' photos: AUC 0.62 alone (> similarity 0.58), nothing beyond the head.
+- **104: named candidates** (Sonnet told the two areas' towns): at confidence >= 0.7, 6 fixes / 0 breaks on 20 + 20 pairs, at all distances
+  (~ +1.8 pts if it holds); hard constraints are rare (2 / 20 far mistakes). The first reader signal beyond the head; needs the 500 dev3k pairs.
 
 **Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
 reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.

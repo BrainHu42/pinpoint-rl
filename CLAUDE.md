@@ -76,6 +76,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 100 (`contrast_model.py`): our own comparator over MegaLoc matches to fetched references adds nothing to the head (AUC 0.821 vs 0.819).
   Lesson 101 (`patch_matcher.py`): a learned patch-level matcher (frozen MegaLoc DINOv2 patches) over the same references: stacked weight ~0, end to end -1.6.
   Lesson 102: Sonnet (subagent) as the contrast reader, 40 pairs: right 12 / 20 where the head is wrong, 17 / 20 where right; confident answers only on landmarks the head gets.
+  Lesson 103 (`pair_discriminant.py`): a discriminant between the two areas' photos: nothing beyond the head.
+  Lesson 104: Sonnet told the candidates' town names (not photos): 6 fixes / 0 breaks at confidence >= 0.7 on 20 + 20 pairs (~ +1.8 pts if it holds).
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
