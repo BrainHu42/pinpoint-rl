@@ -89,6 +89,22 @@ pairs (lesson 106). Open: whether a local model can be trained (ground-truth rew
 - The machine stops daily at 02:00 UTC and the NVMe drive is wiped (`text_search stage`, `tools/maps` stage after a restart).
 - MegaLoc: DINOv2 ViT-B/14 + SALAD, output linearly projected to 8,448-d (chunks of it are not clusters); ~190 photos / s at 322 px.
 
+## Assumptions questioned (2026-10-15): reopened or under-tested
+- **"Only bucket 99 is in-distribution" (75) is false**: 44.2M geotagged non-video YFCC100M photos are not in MP16 (all 4.12M MP16 ids are
+  in YFCC), so Pinpoint's encoder never trained on them. Answer-head curve +0.5-0.8 per doubling (75). Caveats: MP16 filtered them out for a
+  reason (quality, per-user caps), images must be fetched (~90% alive), test photos and photographers must be excluded.
+- **"1 km refinement has no signal" (91) predates MegaLoc (93)**; 97 tried only a threshold switch, not a learned local chooser with MegaLoc.
+  Fetched references also did best at 1 km (99: 78 vs 67%; 101: AUC 0.885 vs margin 0.857, n = 77).
+- **"RL only buys cost" (94, 98) is about this action set** (cheap, independent, fixed reveals), not RL; outcome-dependent sequential actions
+  are untested. **"RL on the 4B learns silence" (87, 96)** came from rare-reward free-text pilots; a dense binary task (named A/B, 104-106) is untried.
+- **"Open models can't recognise" (59, 88, 106)**: only Qwen 4B / 9B / 27B, thinking off; other open families, geo-tuned open VLMs, the 27B with
+  thinking, and ~70B at 4 bits (fits the L40S) are untested. Knowledge SFT (52) was one 1-epoch run with loss still falling.
+- **"MegaLoc can't propose" (95)** was tested on a SigLIP2 top-200 shortlist only; a full-index MegaLoc search (~6 h) was never built.
+- **Ceilings from one reader by eye on small samples** (67: 47% "nothing place-specific" on 120 photos; 35: ~20% recoverable on 30) should not
+  cap ambition: Sonnet fixed photos such passes call generic (a white rhino -> San Diego Safari Park, a fire-lookout shirt -> Castaic).
+- **Sub-threshold gains were discarded one by one** (crops +0.4, OSM names +0.33, region hypotheses +0.3 on dev3k); never stacked.
+- Untested constraints: skyline vs elevation model (mountain photos); sun / shadow with capture date (metadata, a protocol question).
+
 ## Dead ends (don't redo without a new idea)
 - Choosing with the 4B from a candidate list, SFT or GRPO (1-3); query rewriting and search-query evidence (7, 11-17).
 - Exemplar comparators of every kind (22-26, 39-49): saturate near +1 pt.
