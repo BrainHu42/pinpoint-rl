@@ -138,7 +138,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
     # extra columns aligned with these features (cropcheck: crop_look.py, groups global / crop)
-    kinds = ("regioncheck",) if "regionhyps" in str(feat_path) else ("mapcheck", "namecheck", "cropcheck")
+    kinds = ("regioncheck",) if "regionhyps" in str(feat_path) else ("mapcheck", "namecheck", "cropcheck", "megaloc")
     for kind in kinds if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
         path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}.npz"  # pre-zoom part; all but density need the clue reader
         if not path.exists():
