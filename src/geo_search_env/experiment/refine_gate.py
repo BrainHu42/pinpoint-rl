@@ -4,8 +4,11 @@
 # the current answer, agreement of nearby candidates (soft kernels), forward cosine and reverse rank (round trip, lesson 90) in the contrastive
 # space, and the best crop's raw SigLIP2 cosine (lesson 89 views). Chooser: listwise logit / small MLP, 2-fold x 3 seeds on dev3k; measured as
 # the net change at every threshold vs keeping the top-1 (moves can also break photos already in a bucket).
+# Lesson 107 adds MegaLoc (visual place recognition, lesson 93) per candidate: same-place cosine with the query, relative to the list's best,
+# the best MegaLoc match among candidates within 1 km, and MegaLoc-weighted density (`megaloc` computes it; `gate` uses it when present).
 # Usage: PYTHONPATH=src PINPOINT_RERANKER_CKPT=... .venv/bin/python -m geo_search_env.experiment.refine_gate search --radius 25
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.refine_gate evidence --radius 25
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.refine_gate megaloc --radius 25
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.refine_gate gate --radius 25
 
 from __future__ import annotations
@@ -112,6 +115,55 @@ def evidence(radius: int, chunk: int = 512_000) -> None:
     print(f"-> {_path(radius, 'evidence')}; reverse rank median {np.median(rev):.0f}")
 
 
+def megaloc(radius: int, batch: int = 64, workers: int = 3) -> None:
+    """MegaLoc cosine of every candidate with the query; embeds the candidates lessons 93-97 did not."""
+
+    import torch
+    from torch.utils.data import DataLoader
+
+    from .megaloc_area import _Lookup
+    from .megaloc_gate import _image_ids, _model
+
+    z = np.load(_path(radius, "search"))
+    rows, cache_rows = z["rows"], z["cache_rows"]
+    valid = rows >= 0
+    look = _Lookup(TAG)
+    emb_path, key_path = OUT / f"refine_megaloc_emb_{TAG}_{CKPT_TAG}_r{radius}.npy", OUT / f"refine_megaloc_keys_{TAG}_{CKPT_TAG}_r{radius}.npy"
+    if not emb_path.exists():
+        need, first = np.unique(cache_rows[valid], return_index=True)
+        need_rows = rows[valid][first]
+        miss = ~np.isin(need, look.keys)
+        print(f"{len(need)} candidate photos, {miss.sum()} to embed", flush=True)
+        ids, nq, dataset_cls = _image_ids(TAG, need_rows[miss])
+        model = _model()
+        out = np.lib.format.open_memmap(emb_path, mode="w+", dtype=np.float16, shape=(int(miss.sum()), 8448))
+        with torch.inference_mode():
+            for k, (idx, x) in enumerate(DataLoader(dataset_cls(ids[nq:]), batch_size=batch, num_workers=workers)):
+                out[idx.numpy()] = model(x.cuda()).half().cpu().numpy()
+                if k % 100 == 0:
+                    print(f"  {k * batch} / {miss.sum()}", flush=True)
+        out.flush()
+        np.save(key_path, need[miss])
+    extra_keys, extra = np.load(key_path), np.load(emb_path, mmap_mode="r")
+    o = np.argsort(extra_keys)
+    extra_keys = extra_keys[o]
+    q = look.queries()
+    sim = np.full(rows.shape, np.nan, np.float32)
+    qi, ki = np.nonzero(valid)
+    for s in range(0, len(qi), 20_000):
+        a, b = qi[s:s + 20_000], ki[s:s + 20_000]
+        cr = cache_rows[a, b]
+        known = np.isin(cr, look.keys)
+        e = np.zeros((len(cr), 8448), np.float32)
+        e[known] = look.get(cr[known])
+        j = o[np.searchsorted(extra_keys, cr[~known])]
+        jo = np.argsort(j)
+        e[np.flatnonzero(~known)[jo]] = np.asarray(extra[j[jo]], np.float32)
+        sim[a, b] = (e * q[a]).sum(1)
+    np.savez(_path(radius, "megaloc"), sim=sim)
+    print(f"-> {_path(radius, 'megaloc')}; mean cosine {np.nanmean(sim):.3f}")
+
+
 def _features(radius: int):
     photos = _photos()
     z, ev = np.load(_path(radius, "search")), np.load(_path(radius, "evidence"))
@@ -136,6 +188,14 @@ def _features(radius: int):
             ev["fwd"], rel(ev["fwd"]), -ev["rev"], rel(-ev["rev"]), ev["crop"], rel(ev["crop"]), ev["full"], rel(ev["full"])]
     names = ["score_gap", "soft", "rank", "is_top", "log_move", "dens0.5", "dens1", "dens5", "count1", "fwd", "fwd_rel", "rev", "rev_rel",
              "crop", "crop_rel", "full", "full_rel"]
+    if _path(radius, "megaloc").exists():
+        ml = np.where(valid, np.nan_to_num(np.load(_path(radius, "megaloc"))["sim"], nan=0.0), 0.0)
+        near = (pair < 1.0) & ~np.eye(valid.shape[1], dtype=bool)[None]
+        nb = np.where(near, ml[:, None, :], -1.0).max(2)  # best same-place match among the other candidates within 1 km
+        w = np.where(valid, np.exp((ml - np.where(valid, ml, -np.inf).max(1, keepdims=True)) / 0.05), 0.0)
+        w /= w.sum(1, keepdims=True)
+        cols += [ml, rel(ml), nb, rel(nb), *[np.einsum("qcd,qd->qc", (pair < r_km).astype(np.float64), w) for r_km in (0.5, 1.0, 5.0)]]
+        names += ["ml", "ml_rel", "ml_nb1", "ml_nb1_rel", "ml_dens0.5", "ml_dens1", "ml_dens5"]
     x = np.stack([np.where(valid, np.nan_to_num(c, posinf=0, neginf=0), 0.0) for c in cols] + [z["features"][..., j] for j in range(9)], -1)
     names += [f"retr{j}" for j in range(9)]
     return x.astype(np.float32), valid, km, base_km, names
@@ -209,6 +269,16 @@ def gate(radius: int) -> None:
     evaluate(base + dens + sim + rev, 0, "+ similarity + reverse rank (linear)")
     evaluate(base + dens + sim + rev + crop, 0, "+ crops (linear)")
     evaluate(base + dens + sim + rev + crop, 32, "all (MLP 32)")
+    if "ml" in idx:
+        ml = [idx[c] for c in ("ml", "ml_rel")]
+        mlx = ml + [idx[c] for c in ("ml_nb1", "ml_nb1_rel", "ml_dens0.5", "ml_dens1", "ml_dens5")]
+        allc = base + dens + sim + rev + crop
+        evaluate(base + ml, 0, "reranker + MegaLoc (linear)")
+        evaluate(base + dens + mlx, 0, "+ agreement + MegaLoc all (linear)")
+        evaluate(allc + mlx, 0, "all + MegaLoc (linear)")
+        evaluate(allc + mlx, 32, "all + MegaLoc (MLP 32)")
+        evaluate(allc + mlx, 0, "all + MegaLoc, reward (linear)", "reward")
+        evaluate(allc + mlx, 32, "all + MegaLoc, reward (MLP 32)", "reward")
     evaluate(base, 0, "reranker features, reward (linear)", "reward")
     evaluate(base + dens + sim + rev + crop, 0, "all, reward (linear)", "reward")
     evaluate(base + dens + sim + rev + crop, 32, "all, reward (MLP 32)", "reward")
@@ -216,10 +286,10 @@ def gate(radius: int) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("cmd", choices=("search", "evidence", "gate"))
+    parser.add_argument("cmd", choices=("search", "evidence", "megaloc", "gate"))
     parser.add_argument("--radius", type=int, default=25, choices=(25, 200))
     args = parser.parse_args(argv)
-    {"search": search, "evidence": evidence, "gate": gate}[args.cmd](args.radius)
+    {"search": search, "evidence": evidence, "megaloc": megaloc, "gate": gate}[args.cmd](args.radius)
     return 0
 
 

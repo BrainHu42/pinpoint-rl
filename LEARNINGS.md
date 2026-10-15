@@ -93,7 +93,8 @@ pairs (lesson 106). Open: whether a local model can be trained (ground-truth rew
 - **"Only bucket 99 is in-distribution" (75) is false**: 44.2M geotagged non-video YFCC100M photos are not in MP16 (all 4.12M MP16 ids are
   in YFCC), so Pinpoint's encoder never trained on them. Answer-head curve +0.5-0.8 per doubling (75). Caveats: MP16 filtered them out for a
   reason (quality, per-user caps), images must be fetched (~90% alive), test photos and photographers must be excluded.
-- **"1 km refinement has no signal" (91) predates MegaLoc (93)**; 97 tried only a threshold switch, not a learned local chooser with MegaLoc.
+- **"1 km refinement has no signal" (91) predates MegaLoc (93)**: tested in 107, a learned local chooser with MegaLoc gets +0.6-0.8 at
+  1 km on dev3k (vs +0.1 without), 25 km unchanged; real but below the 1-pt bar.
   Fetched references also did best at 1 km (99: 78 vs 67%; 101: AUC 0.885 vs margin 0.857, n = 77).
 - **"RL only buys cost" (94, 98) is about this action set** (cheap, independent, fixed reveals), not RL; outcome-dependent sequential actions
   are untested. **"RL on the 4B learns silence" (87, 96)** came from rare-reward free-text pilots; a dense binary task (named A/B, 104-106) is untried.

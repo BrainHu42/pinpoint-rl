@@ -155,3 +155,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     (head 85%) and position-biased (62%); Qwen3.8-27B-FP8 60.5%, unbiased. At every confidence threshold their switches are mostly breaks
     (best: 4B -0.4, 27B -0.9 pts). Evidence first + stated confidence (Sonnet's format, `NAME=27b_reason`): 71.4% overall, but right on
     only 37% of the head's mistakes; confident switches 7 fixes / 22 breaks (-2.8). Calibration, not just accuracy, is what Sonnet had.
+107. **MegaLoc local chooser for 1 km** (`refine_gate megaloc` + `gate --radius 25`; dev3k, Pinpoint restricted to 25 km around the
+    retrained top-1, ~43 candidates; top-1 < 1 km 17.9%, list oracle 29.9%): MegaLoc cosine per candidate (+ relative to the list's best,
+    best match among candidates within 1 km, MegaLoc-weighted density). Reward-trained listwise chooser (2-fold x 3 seeds): linear +0.33 /
+    +0.90 / +0.70 pts at 1 km (SE ~0.3; 49-54 fixes vs 27-43 breaks), MLP +0.40 / +0.77 / +0.80; the same choosers without MegaLoc +0.0-0.3
+    (lesson 91). 25 km unchanged. MegaLoc alone is worse than the reranker (argmax 15.7% vs 17.9%; switching on its lead nets negative).
+    Real but below the 1-pt bar: ~+0.6 at 1 km, measured against Pinpoint's top-1, not the action agent's answer.

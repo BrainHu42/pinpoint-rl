@@ -80,6 +80,8 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
   Lesson 104: Sonnet told the candidates' town names (not photos): 6 fixes / 0 breaks at confidence >= 0.7 on 20 + 20 pairs (~ +1.8 pts if it holds).
   Lesson 105: the same on dev3k (202 decisive pairs): 8 fixes / 3 breaks at confidence >= 0.7, +0.94 pts at 25 km; the first gain beyond the head since lesson 94.
   Lesson 106 (`names_judge.py`): local readers on the same pairs (4B 55%, Qwen3.8-27B 60-71%) are uncalibrated; every threshold nets negative. No paid LLMs (user, 2026-10-15).
+  Lesson 107 (`refine_gate megaloc`): MegaLoc in a learned 1 km local chooser around the top-1: +0.6 to +0.8 pts at 1 km on dev3k
+  (SE ~0.3; without MegaLoc +0.1), 25 km unchanged; below the 1-pt bar.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
