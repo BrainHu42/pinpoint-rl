@@ -1323,3 +1323,19 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       im2gps3k is identical under both protocols (no shared photographers).
     - The RL policy matches the fixed take-everything row (43.5 vs 43.4), as on dev3k (lesson 94): its value is cost, not accuracy.
 
+99. **Contrast with fetched references (EXPERT_PLAN.md, first experiment): the 4B reader can't beat the answer head; fetched YFCC references
+    beat Pinpoint's own photos as evidence for it (2026-10-15; `contrast_gate.py`, 500 dev3k photos).** The answer head's top two areas
+    (lesson 94 net, read + recognise, all areas zoomed); per area 24 YFCC100M photos fetched live from Flickr within 300 m of its top 3
+    restricted candidates (photo and photographer excluded; 87% of 22.8k downloads alive, median 23 per area), the 4 most MegaLoc-similar
+    to the query shown (cosine < 0.95). Control: the 4 most MegaLoc-similar of the area's 12 restricted-search photos. The 4B (thinking off,
+    JSON schema forced: it ignores "JSON only" otherwise) names the distinguishing feature and picks A or B, both orders.
+    - Exactly one of the pair right: 200 photos at 25 km (head right on 85.0%), 77 at 1 km (92.2%).
+    - Position bias: the 4B answers the first-shown place 81% (fetched) / 84% (control); order-consistent on 35% / 26% of photos.
+    - Where consistent and exactly one is right: 25 km reader 67.1% vs head 82.9% (82 photos, fetched), 56.9% vs 81.5% (65, control); 1 km
+      77.8% vs 88.9% (36, fetched), 54.8% vs 90.3% (31, control). Following the reader when both orders switch: net -2.6 (fetched) /
+      -3.2 (control) pts of photos at 25 km, -0.8 / -2.2 at 1 km. MegaLoc's best shown photo alone: pair accuracy 65.5 / 64.5% (head 85%).
+    - Its features are sensible but generic ("Baroque ceiling frescoes", "Ford logo on the wall", "tents and a sandy beach").
+    - Reading: fetched references carry more for the reader than Pinpoint's own photos (+10 pts consistent accuracy at 25 km, +23 at 1 km,
+      on small n), but the 4B is far below the head, which already sees all the evidence. The contrast needs a stronger reader (lesson 80);
+      next: the same pairs with a frontier reader (needs an API key), cached as the plan's paid tool.
+

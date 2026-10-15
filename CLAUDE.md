@@ -71,6 +71,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   it is worse than Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%).
   Lesson 98 (test set, `action_agent --apply`): 43.5% < 25 km (+6.2) / 19.1% < 1 km (+1.6) photographer excluded; original protocol
   (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`) 48.2-48.7% (+1.8 to +2.3), 1 km 25.5-28.6% vs 28.9.
+  Lesson 99 (`contrast_gate.py`, EXPERT_PLAN first experiment): the 4B contrasting the head's top two areas with fetched YFCC references is
+  position-biased and below the head (67 vs 83% on decisive, order-consistent pairs); fetched references beat Pinpoint's photos (67 vs 57%).
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 

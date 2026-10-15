@@ -165,6 +165,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%). The verifier is saturated on Pinpoint's photos.
 - **98: test set** (eval halves): the action agent 43.5% < 25 km (+6.2 [+5.2, +7.3]), 19.1% < 1 km (+1.6) with the photographer
   excluded; original protocol 48.2-48.7% (+1.8 to +2.3) but 1 km 25.5-28.6% vs 28.9 (the pipeline was trained not to use the photographer's photos).
+- **99: contrast with fetched references** (EXPERT_PLAN first experiment): the 4B picks the first-shown place 81% of the time and, when
+  consistent, is right 67% vs the head's 83% on decisive pairs; fetched YFCC references beat Pinpoint's own photos for it (67 vs 57%). Needs a stronger reader.
 
 **Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
 reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.
