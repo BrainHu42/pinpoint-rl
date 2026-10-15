@@ -167,6 +167,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   excluded; original protocol 48.2-48.7% (+1.8 to +2.3) but 1 km 25.5-28.6% vs 28.9 (the pipeline was trained not to use the photographer's photos).
 - **99: contrast with fetched references** (EXPERT_PLAN first experiment): the 4B picks the first-shown place 81% of the time and, when
   consistent, is right 67% vs the head's 83% on decisive pairs; fetched YFCC references beat Pinpoint's own photos for it (67 vs 57%). Needs a stronger reader.
+- **100: our own contrast model** (MegaLoc global + cluster cosines to fetched references, 5k decisive train pairs): AUC 0.64 alone, adds
+  nothing to the head's margin (0.821 vs 0.819; dev3k 85.5 vs 85.0% on decisive pairs).
 
 **Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
 reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.

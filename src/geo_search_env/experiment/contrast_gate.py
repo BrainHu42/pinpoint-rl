@@ -70,9 +70,11 @@ def pairs(n: int = N_PHOTOS) -> None:
           f"exactly one of the pair right (25 km) {np.mean([(a < 25) != (b < 25) for a, b in (o['km'] for o in out)]):.1%}")
 
 
-def fetch(workers: int = 32) -> None:
+def fetch(workers: int = 32, tag: str = "dev3k", pairs_path: Path | None = None, out_name: str = "contrast_refs_dev3k.json",
+          k_fetch: int = K_FETCH, size: str = "z") -> None:
     """YFCC photos within RADIUS_KM of each pair area's top 3 restricted candidates, nearest first (round robin over the points), excluding
-    the query photo and its photographer; up to K_FETCH downloaded per area (Flickr 640 px)."""
+    the query photo and its photographer; up to k_fetch downloaded per area (Flickr size suffix: z 640 px, n 320 px). Files are shared by
+    photo id across runs (REFS); contrast_model fetches the training pairs with this."""
 
     import urllib.request
     from concurrent.futures import ThreadPoolExecutor
@@ -81,9 +83,9 @@ def fetch(workers: int = 32) -> None:
 
     from .strategy_search import load_world
 
-    photos = json.loads((Path("artifacts/photo_sets") / f"dev3k_{CKPT_TAG}" / "photos.json").read_text(encoding="utf-8"))
-    pr = json.loads(_pairs_path().read_text(encoding="utf-8"))
-    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_dev3k_{CKPT_TAG}.npz")
+    photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{CKPT_TAG}" / "photos.json").read_text(encoding="utf-8"))
+    pr = json.loads((pairs_path or _pairs_path()).read_text(encoding="utf-8"))
+    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{CKPT_TAG}.npz")
     world = load_world()
     inv = {i: a for a, i in world.vocab["author"].items()}
     g = np.load("data/yfcc100m/geo.npz")
@@ -113,7 +115,7 @@ def fetch(workers: int = 32) -> None:
             chosen, seen = [], set()
             for k in range(max((len(x) for x in lists), default=0)):
                 for x in lists:
-                    if k < len(x) and int(x[k]) not in seen and len(chosen) < K_FETCH:
+                    if k < len(x) and int(x[k]) not in seen and len(chosen) < k_fetch:
                         seen.add(int(x[k]))
                         chosen.append(int(x[k]))
             plan[str(h)] = [int(pid[i]) for i in chosen]
@@ -125,7 +127,7 @@ def fetch(workers: int = 32) -> None:
     def get(job):
         p, srv, sec = job
         try:
-            data = urllib.request.urlopen(f"https://live.staticflickr.com/{srv}/{p}_{sec}_z.jpg", timeout=20).read()
+            data = urllib.request.urlopen(f"https://live.staticflickr.com/{srv}/{p}_{sec}_{size}.jpg", timeout=20).read()
             if len(data) > 5000 and data[:2] == b"\xff\xd8":
                 (REFS / f"{p}.jpg").write_bytes(data)
                 return True
@@ -141,9 +143,9 @@ def fetch(workers: int = 32) -> None:
             if k % 2000 == 0:
                 print(f"  {k} / {len(todo)} ({got} ok)", flush=True)
     plan = {h: [p for p in v if (REFS / f"{p}.jpg").exists()] for h, v in plan.items()}
-    (OUT / "contrast_refs_dev3k.json").write_text(json.dumps(plan), encoding="utf-8")
+    (OUT / out_name).write_text(json.dumps(plan), encoding="utf-8")
     n = np.asarray([len(v) for v in plan.values()])
-    print(f"-> contrast_refs_dev3k.json: references per area median {np.median(n):.0f}, none for {np.mean(n == 0):.1%} of areas", flush=True)
+    print(f"-> {out_name}: references per area median {np.median(n):.0f}, none for {np.mean(n == 0):.1%} of areas", flush=True)
 
 
 def embed(batch: int = 64) -> None:

@@ -1339,3 +1339,15 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       on small n), but the 4B is far below the head, which already sees all the evidence. The contrast needs a stronger reader (lesson 80);
       next: the same pairs with a frontier reader (needs an API key), cached as the plan's paid tool.
 
+100. **Our own contrast model over fetched references (MegaLoc features) adds nothing beyond the answer head (2026-10-15; `contrast_model.py`;
+    the user: train our own model instead of an LLM, the faster version).** 5,000 decisive train photos (exactly one of the head's top two
+    areas < 25 km; head logits out of fold, 5-fold cross-fit; head right on 83.2%), 12 YFCC references per area fetched at 320 px with 128
+    workers (113k downloads in ~10 min, 90% alive), MegaLoc on all 114k references (~10 min). Per area: global / scene-token cosine and the
+    64 per-cluster cosines of MegaLoc's aggregation (part-level matches), best and top-3 over the references.
+    - Alone the fetched-reference evidence separates the right area (train AUC 0.61-0.64 for the best-cosine differences) but the head's
+      margin is 0.82, and together 0.821 (train CV accuracy 83.1 vs 83.2%; dev3k decisive pairs 85.5 vs 85.0%, 1 fix / 0 breaks in 500).
+      An MLP over all 264 features overfits (train CV 80.8%; dev3k net -1.4 pts).
+    - Reading: global and cluster-level MegaLoc matching of fetched references is redundant with the head, which already has MegaLoc on
+      Pinpoint's photos (lesson 93); the denser references don't change that. What's untested is learned matching below the global
+      descriptor (patch level, trained on these pairs) and world knowledge (a frontier reader).
+
