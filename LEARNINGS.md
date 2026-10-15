@@ -176,6 +176,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - **103: pair-specific discriminant** between the two areas' photos: AUC 0.62 alone (> similarity 0.58), nothing beyond the head.
 - **104: named candidates** (Sonnet told the two areas' towns): at confidence >= 0.7, 6 fixes / 0 breaks on 20 + 20 pairs, at all distances
   (~ +1.8 pts if it holds); hard constraints are rare (2 / 20 far mistakes). The first reader signal beyond the head; needs the 500 dev3k pairs.
+- **105: named candidates on dev3k** (202 decisive pairs, Sonnet): follow at confidence >= 0.7 -> 8 fixes / 3 breaks, +0.94 pts at 25 km
+  (p ~ 0.11); at chance on the head's mistakes overall, the gain is its calibrated confident cases. Half the calls suffice (head margin < 2).
 
 **Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
 reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.

@@ -78,6 +78,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 102: Sonnet (subagent) as the contrast reader, 40 pairs: right 12 / 20 where the head is wrong, 17 / 20 where right; confident answers only on landmarks the head gets.
   Lesson 103 (`pair_discriminant.py`): a discriminant between the two areas' photos: nothing beyond the head.
   Lesson 104: Sonnet told the candidates' town names (not photos): 6 fixes / 0 breaks at confidence >= 0.7 on 20 + 20 pairs (~ +1.8 pts if it holds).
+  Lesson 105: the same on dev3k (202 decisive pairs): 8 fixes / 3 breaks at confidence >= 0.7, +0.94 pts at 25 km; the first gain beyond the head since lesson 94.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 

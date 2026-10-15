@@ -1398,3 +1398,17 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       about the places ("Farm Tomita banner -> Nakafurano", "CSKA vs Rubin Kazan at Luzhniki", "George Bush Library -> College Station",
       "Salzspeicher -> Lübeck"); most fixes are recognitions of events, venues and signs that retrieval cannot use.
 
+105. **Named candidates on dev3k: following Sonnet when it is confident (>= 0.7, the threshold fixed in lesson 104) adds +0.9 pts at 25 km
+    (2026-10-15; 11 Sonnet subagents, ~$2; `artifacts/agent/names_contrast_dev3k_sonnet.json`).** The 202 of the 500 contrast pairs
+    (lesson 99) where exactly one of the head's top two areas is right at 25 km (200) or 1 km (77); other pairs cannot change. Same
+    protocol as lesson 104 (query photo + "near <town> (lat, lon), country" for both areas, A/B randomised).
+    - Accuracy on the 25 km decisive pairs: head right 141 / 170 (83%), head wrong 16 / 30 (53%, chance): on the head's mistakes the
+      reader is at chance overall; its value is calibration, not accuracy.
+    - Follow when confidence >= 0.7: 11 switches, 8 fixes, 3 breaks at 25 km: +1.0 pts of the 500 photos, +0.94 pts of dev3k (94% of
+      photos have >= 2 areas); 1 km 2 fixes / 1 break (+0.2). At >= 0.85: 5 / 0 (+0.9). Sign test 8 vs 3: p ~ 0.11.
+    - The head's margin does not sharpen it (Sonnet only disagrees confidently where the head is unsure anyway: margin < 2 keeps 7 / 3
+      with half the calls) -> a cost-aware policy can skip half the calls at no loss.
+    - Reading: the first evidence since lesson 94 that adds beyond the head on dev3k, just under the 1 pt bar and not yet significant;
+      the train-sample estimate (+1.8, lesson 104) was optimistic. The fixes are recognitions (events, venues, signs, landmarks) that
+      retrieval cannot use. Next options: more candidates per call (top 3), Opus as the reader, the 1 km pick within the area.
+
