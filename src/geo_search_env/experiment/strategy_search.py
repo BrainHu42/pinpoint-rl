@@ -15,6 +15,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import time
 from types import SimpleNamespace
@@ -45,6 +46,11 @@ def _memmap_gallery(root: Path) -> dict[str, np.ndarray]:
         "latlon": np.fromfile(root / manifest["files"]["latlon_deg"], dtype=np.float32).reshape(count, 2).astype(np.float64),
         "row_index": np.fromfile(root / manifest["files"]["row_index"], dtype=np.int64),
     }
+
+
+# PINPOINT_KEEP_OWN=1: benchmark queries carry no photographer, so no stage excludes the query photographer's own index photos (the original
+# Pinpoint protocol, lesson 54's "kept" rows; the user asked for it on the test set, 2026-10-15). Default: excluded (our rule).
+KEEP_OWN = os.environ.get("PINPOINT_KEEP_OWN") == "1"
 
 
 def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, Any]] | None = None, benchmarks: Sequence[str] | None = None) -> SimpleNamespace:
@@ -99,7 +105,7 @@ def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, 
                 "benchmark": name,
                 "image_id": image_id,
                 "path": str(bench.image_paths[i]),
-                "author": vocab["author"].get(bench.authors[i], -1),
+                "author": -1 if KEEP_OWN else vocab["author"].get(bench.authors[i], -1),
                 "split": "tune" if digest % 2 == 0 else "eval",
             })
         embeddings.append(bench.embeddings)

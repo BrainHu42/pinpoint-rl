@@ -28,16 +28,45 @@ UNITS = {"zoom": 1.0, "read": 2.0, "recognise": 1.0}
 MAX_STEPS = 8
 
 
-def _data(tag: str, stats=None):
+def _data(tag: str, stats=None, ckpt: str = CKPT_TAG):
+    import json
+    from pathlib import Path
+
     import torch
 
-    d = load(tag, CKPT_TAG, stats=stats, extra=("megaloc",))
+    d = load(tag, ckpt, stats=stats, extra=("megaloc",))
     assert d["pre"].shape[-1] == d["pre_noclue"].shape[-1]
     # the free glance: the photo's own SigLIP2 embedding (crop_look view 0 = the full image, unit norm), as read_agent found it decides
-    # whether reading pays
-    g = np.load(f"artifacts/agent/crops_{tag}_{CKPT_TAG}.npy", mmap_mode="r")[:, 0]
-    d["glance"] = torch.as_tensor(np.asarray(g, np.float32), device="cuda")
+    # whether reading pays; benchmark photos (no crop file): their cached SigLIP2 embedding, the same full view
+    crops = Path(f"artifacts/agent/crops_{tag}_{ckpt}.npy")
+    if crops.exists():
+        g = np.asarray(np.load(crops, mmap_mode="r")[:, 0], np.float32)
+    else:
+        from ..data.benchmarks import load_benchmark
+        from .strategy_search import BENCHMARK_NAMES
+
+        photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
+        g = np.concatenate([load_benchmark(n).embeddings for n in BENCHMARK_NAMES])[[e["index"] for e in photos]]
+        g /= np.linalg.norm(g, axis=1, keepdims=True)
+    d["glance"] = torch.as_tensor(g, device="cuda")
     return d
+
+
+def _released_own_km(tag: str, ckpt: str) -> np.ndarray:
+    """The released Pinpoint's top-1 km with the query photographer's photos kept in the index (pinpoint_reference bench-own; lesson 54)."""
+
+    import json
+    from pathlib import Path
+
+    from .refine_headroom import _hav
+
+    photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
+    z = np.load("artifacts/pinpoint_reference/bench_own.npz")
+    idx = np.asarray([e["index"] for e in photos])
+    top = np.where(z["rows"][idx] >= 0, z["scores"][idx], -np.inf).argmax(1)
+    ll = z["latlon"][idx, top]
+    truth = np.asarray([e["truth"] for e in photos], np.float64)
+    return _hav(truth[:, 0], truth[:, 1], ll[:, 0], ll[:, 1])
 
 
 def view(b, read, rec):
@@ -234,11 +263,42 @@ def run(lambdas: Sequence[float]) -> None:
         report(name, rows, d_ev["base_km"][photos], d_ev["rt_base_km"][photos])
 
 
+def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
+    """The answer net and policies trained on all of train (as for dev3k), applied once to each target "tag:ckpt" (test set only when the user
+    asks; full:setft_aown = the photographer's photos kept, compared with the released Pinpoint under the same protocol). dev3k is re-run as a check."""
+
+    tr = _data("train")
+    sets = {"dev3k": _data("dev3k", stats=tr["stats"])}
+    for t in targets:
+        tag, ckpt = t.split(":")
+        sets[t] = _data(tag, stats=tr["stats"], ckpt=ckpt)
+        if ckpt.endswith("own"):
+            sets[t]["base_km"] = _released_own_km(tag, ckpt)
+    n = tr["n"]
+    print(f"action agent: trained on all {n} train photos; lambdas {list(lambdas)}; applied to {list(sets)}", flush=True)
+    net = fit_answer(tr, np.arange(n), seed=7)
+    pols = {lam: fit_policy(net, tr, np.arange(n), lam, seed=11) for lam in lambdas}
+    saved = {}
+    for name, d in sets.items():
+        groups = [("all", np.arange(d["n"]))]
+        groups += [(b, np.flatnonzero(d["benchmark"] == b)) for b in sorted(set(d["benchmark"])) if len(set(d["benchmark"])) > 1]
+        for label, photos in groups:
+            rows = evaluate(net, pols, d, photos, d["base_km"][photos])
+            report(f"{name} / {label} ({len(photos)} photos)", rows, d["base_km"][photos], d["rt_base_km"][photos])
+            if label == "all":
+                saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
+    np.savez("artifacts/agent/action_agent_apply_km.npz", **saved)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lambdas", type=float, nargs="*", default=(0.0, 0.0025, 0.005, 0.0075, 0.01, 0.015))
+    parser.add_argument("--apply", nargs="*", help="tag:ckpt photo sets to apply the train-fitted agent to (e.g. full:setft_a full:setft_aown)")
     args = parser.parse_args(argv)
-    run(args.lambdas)
+    if args.apply:
+        apply(args.lambdas, args.apply)
+    else:
+        run(args.lambdas)
     return 0
 
 

@@ -1306,3 +1306,20 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Reading: MegaLoc's gain (lesson 93) is already captured by the 12 restricted photos; where it recognises the place, Pinpoint already does.
       The 1 km headroom (any of 76: 30.8 vs 17.0) is other scenes of the same area again (lesson 91), not same-place matches.
 
+98. **The action agent on the test set: +6.2 at 25 km with the photographer excluded, +1.8 to +2.3 under the original protocol, where 1 km
+    drops (2026-10-15, the user asked; `action_agent.py --apply full:setft_a full:setft_aown`).** Trained on all of train (as for dev3k, which
+    reproduces 39.7%), applied once to the eval halves (3,795). Original protocol (`setft_aown`): the whole chain rebuilt with
+    `PINPOINT_KEEP_OWN=1` (no stage excludes the query photographer: retrained wide pools, areas, restricted searches, clue places, zooms,
+    MegaLoc; the text-search clue evidence keeps its own-photo / user exclusion). Glance on benchmarks: the cached SigLIP2 embedding.
+    - Photographer excluded, % within 1 / 25 / 200 / 750 / 2500 km vs the released Pinpoint 17.5 / 37.2 / 53.9 / 71.4 / 84.6:
+      RL lambda 0: 19.1 / **43.5** / 58.4 / 73.2 / 85.5 (+1.6 [+0.8, +2.4] / **+6.2 [+5.2, +7.3]** / +4.5 / +1.8 / +0.9);
+      lambda 0.005 (3.0 units): 19.5 / 42.7 (+2.0 / +5.5); fixed everything (7.5 units): 19.2 / 43.4 (+1.7 / +6.2).
+      im2gps3k 53.6% (+4.7), yfcc4k 37.0% (+7.2). Previous test result (lesson 73, 2 zooms, no read / recognise): 42.0% (+4.8).
+    - Original protocol (released Pinpoint 28.9 / 46.4 / 60.7 / 75.5 / 86.7): RL lambda 0: 25.5 / 48.2 (-3.4 / +1.8 [+0.7, +2.9]);
+      lambda 0.005: 27.6 / 48.6 (-1.3 / +2.2); read + recognise, no zoom: 28.6 / 48.5 (-0.3 / +2.1). The retrained reranker's own top-1 is
+      45.9% (released 46.4): it was trained with the photographer excluded and doesn't exploit the photographer's near-duplicates; zooming
+      (restricted searches, trained the same way) moves yfcc4k answers off them (yfcc4k zoom 2: 41.0 vs 42.2 unzoomed; 1 km 24.9 vs 28.6).
+      MegaLoc recovers them (yfcc4k + recognise +3.6 at 25 km, +3.5 at 1 km): same-place matching finds the photographer's own shots.
+      im2gps3k is identical under both protocols (no shared photographers).
+    - The RL policy matches the fixed take-everything row (43.5 vs 43.4), as on dev3k (lesson 94): its value is cost, not accuracy.
+

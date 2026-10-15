@@ -65,6 +65,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   new right places 0.6 -> 0.3% of dev3k.
   Lesson 97 (`megaloc_area.py`): MegaLoc over 64 photos per area instead of 12: AUC 0.707 -> 0.737, area pick +0.1; inside an area
   it is worse than Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%).
+  Lesson 98 (test set, `action_agent --apply`): 43.5% < 25 km (+6.2) / 19.1% < 1 km (+1.6) photographer excluded; original protocol
+  (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`) 48.2-48.7% (+1.8 to +2.3), 1 km 25.5-28.6% vs 28.9.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are

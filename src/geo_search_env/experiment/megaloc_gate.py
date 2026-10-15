@@ -178,7 +178,9 @@ def _image_ids(tag: str, need: np.ndarray):
         reader = csv.reader(stream)
         next(reader)
         csv_ids = [r[0] for r in reader]
-    ids = [e["image_id"] for e in photos] + [csv_ids[row_index[cache[r]]] for r in need]
+    # benchmark queries (photo set full) are read from their files, MP16 photos from the tar shards
+    ids = [str(Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"]) if "benchmark" in e else e["image_id"] for e in photos]
+    ids += [csv_ids[row_index[cache[r]]] for r in need]
     mean, std = np.asarray([0.485, 0.456, 0.406], np.float32), np.asarray([0.229, 0.224, 0.225], np.float32)
 
     class Images(Dataset):
@@ -194,7 +196,9 @@ def _image_ids(tag: str, need: np.ndarray):
             if self.images is None:
                 self.images = MP16Images()
             try:
-                im = Image.open(io.BytesIO(self.images.read(self.keys[i]))).convert("RGB").resize((SIZE, SIZE), Image.BILINEAR)
+                key = self.keys[i]
+                data = Path(key).read_bytes() if key.startswith("data/pinpoint/") else self.images.read(key)
+                im = Image.open(io.BytesIO(data)).convert("RGB").resize((SIZE, SIZE), Image.BILINEAR)
                 a = (np.asarray(im, np.float32) / 255.0 - mean) / std
                 return i, torch.from_numpy(a.transpose(2, 0, 1).copy())
             except Exception:  # noqa: BLE001
@@ -367,7 +371,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cmd", choices=("embed", "gate", "features", "columns"))
     parser.add_argument("--tag", default="dev3k")
+    parser.add_argument("--ckpt-tag", default=CKPT_TAG, help="photo set / zoom file suffix (setft_aown: the test set with the photographer's photos kept)")
     args = parser.parse_args(argv)
+    globals()["CKPT_TAG"] = args.ckpt_tag
     {"embed": embed, "gate": gate, "features": features, "columns": columns_from_gate}[args.cmd](args.tag)
     return 0
 
