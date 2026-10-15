@@ -1267,3 +1267,15 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       0.2-0.45 units = recognise-for-everyone at 1.0; held-out fifth: 38.0 vs 37.6 at ~4.9, 36.7 at 0.46 vs 35.6 for nothing). Margins of
       0.3-0.4 are within noise; the robust result is the low-cost end (MegaLoc's gain with 12-19% of photos recognised).
     - 1 km: the policy keeps 17.8-18.4% (fixed 17.2-18.7).
+
+95. **MegaLoc as a proposer fails: its same-place search finds right new places on ~1% of photos; it is a verifier, not a generator
+    (2026-10-15; `megaloc_deep.py`, dev3k; step 1 of the user's "proposer, then free-text queries").** Per query the 200 nearest index photos in
+    raw SigLIP2 space (photographer excluded; 517k distinct photos), re-ranked by MegaLoc (~35 min).
+    - < 25 km: retrained top-1 36.8%; any Pinpoint area 51.5%; any of the 200 67.9%; top-1 of the shortlist by SigLIP2 21.9%, by MegaLoc 22.4%
+      (< 1 km: any 37.3%, MegaLoc top-1 13.1% vs retrained 17.9%).
+    - Photos where no Pinpoint area is right (1,454, 48.5%): the shortlist holds a right photo for 42.8%, but MegaLoc's top match is right for
+      2.1% (SigLIP2's 1.3%).
+    - MegaLoc's top match as a new area (> 25 km from every Pinpoint area): 2,006 photos, right 1.4% (28 fixes, 0.9% of photos); higher
+      similarity doesn't help (>= 0.3: 1.6%; >= 0.5: 0 of 52).
+    - Reading: the right photos in the shortlist are nearby scenes, not the same place, so a same-place model has nothing to latch onto; where
+      the same place is in the index, Pinpoint's areas already hold it (lesson 93's verifier gain). The full-index MegaLoc build is not worth it.

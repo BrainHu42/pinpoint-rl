@@ -60,6 +60,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   +0.8 to +1.0 train CV, +0.5 to +1.1 dev3k; the largest evidence gain since lesson 70. Weights in `data/hf/hub/models--gberton--MegaLoc`.
   Lesson 94 (`action_agent.py`): RL action policy over zoom / read / recognise with costs; at or above every fixed combination, best
   39.7% on dev3k (+6.3 over Pinpoint). The current best pipeline.
+  Lesson 95 (`megaloc_deep.py`): MegaLoc as a proposer (deep same-place search) finds right new places on ~1% of photos; verifier only.
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are

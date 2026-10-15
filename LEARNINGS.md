@@ -157,6 +157,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   lesson 70.
 - **94: RL action policy over zoom / read / recognise** (MegaLoc as an action, the photo's embedding as a free glance): accuracy-vs-cost
   curve at or above every fixed combination; best 39.7% on dev3k (+6.3 over Pinpoint); MegaLoc's gain kept with 12-19% of photos recognised.
+- **95: MegaLoc as a proposer** (same-place re-ranking of a 200-photo SigLIP2 shortlist): right new places on ~1% of photos; a verifier,
+  not a generator. No full-index build.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
