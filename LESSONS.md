@@ -1279,3 +1279,15 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       similarity doesn't help (>= 0.3: 1.6%; >= 0.5: 0 of 52).
     - Reading: the right photos in the shortlist are nearby scenes, not the same place, so a same-place model has nothing to latch onto; where
       the same place is in the index, Pinpoint's areas already hold it (lesson 93's verifier gain). The full-index MegaLoc build is not worth it.
+
+96. **GRPO on free-text search queries with the tool's result as reward learns precision by silence, not new places (2026-10-15;
+    `query_grpo.py`; step 2 of the user's "proposer, then free-text queries").** The 4B sees the photo only (lesson 82's blind prompt) and
+    writes up to 2 queries or none; each goes through text_search (top cluster, photo and photographer excluded). Reward vs the truth: a query
+    < 25 km of the truth and > 25 km from every Pinpoint area +1, < 25 km inside an area +0.2, wrong -0.1, unresolved -0.05, none 0. GRPO,
+    LoRA r32, 8 samples, 8 photos / step, ~28 s / step; stopped at step ~130 of a 2.5 h pilot.
+    - Training: samples with no queries 57% -> 80-88% within 40 steps; new-place rate flat at ~0.1% of samples (about one per 16 steps).
+    - dev3k, greedy, base -> step 100: queries on 46.1% -> 8.4% of photos; precision (< 25 km) 26.0% -> 63.6%; unresolvable queries
+      23.6% -> 2.3% of photos; new right places 0.60% (18) -> 0.27% (8).
+    - Reading: the new-place reward is too rare to give a gradient (lesson 82: pass@1 ~2% on fixable photos); the penalties dominate, so the
+      policy keeps only the safe queries, which confirm Pinpoint's areas. Same failure as lesson 87. Queries as an RL action would need a
+      denser proposer signal than the open-model 4B's recognition provides.

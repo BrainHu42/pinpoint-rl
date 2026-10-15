@@ -159,6 +159,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   curve at or above every fixed combination; best 39.7% on dev3k (+6.3 over Pinpoint); MegaLoc's gain kept with 12-19% of photos recognised.
 - **95: MegaLoc as a proposer** (same-place re-ranking of a 200-photo SigLIP2 shortlist): right new places on ~1% of photos; a verifier,
   not a generator. No full-index build.
+- **96: GRPO on free-text search queries** (tool result vs truth as reward): learns silence and precision (26 -> 64%) on safe queries;
+  new right places 0.6% -> 0.3% of dev3k. The novel-hit reward is too sparse for the 4B.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the
