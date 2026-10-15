@@ -1,249 +1,100 @@
-# Learnings so far (Sep 2026)
+# Learnings (rewritten 2026-10-15)
 
-What the base-model diagnostic, SFT, single-turn GRPO and the follow-up headroom checks established, and what they
-rule out. The current plan is `EXPERT_PLAN.md` (earlier plans at git tag `plans-2026-10-15`); the numbered lessons with full numbers are in `LESSONS.md`
-(lesson numbers cited anywhere, e.g. "LEARNINGS 50", refer to it). Numbers are % of
-photos within 1 km / 25 km of the truth, with same-photographer gallery images excluded. "Full eval halves" = every
-im2gps3k + yfcc4k eval-half query (n = 3,795; SE about 0.6 pts at 1 km, 0.8 at 25 km). "300 subset" = the stratified
-study subset (SE about 2 / 3 pts; don't trust gaps under ~4 pts there).
+What is true now, in one page. Numbered lessons, one entry each: `LESSONS.md` (cited as "lesson N"; full original text at git tag
+`lessons-full-2026-10-15`). Plan: `EXPERT_PLAN.md`. Numbers are % of photos within 1 / 25 km of the truth unless stated.
 
-## Summary (read this first; numbered lessons in `LESSONS.md`)
+## Conventions
+- **Reference**: Pinpoint's attention reranker (released model, exact port; lesson 54). Lessons 1-53 used our retired one-step reranker.
+- **Primary benchmark** (user, 2026-10-15): im2gps3k + yfcc4k eval halves (3,795 photos), the original Pinpoint protocol (query photographer's
+  photos kept in the index), a table per benchmark x 1 / 25 / 200 / 750 / 2500 km vs the released Pinpoint. Photographer-excluded numbers
+  (our training rule so far) are secondary. im2gps3k is the same under both (no shared photographers); yfcc4k is not (same YFCC100M source).
+- **Splits**: train = MP16 bucket 99 minus dev (35,359; the only photos Pinpoint's encoder never saw, lesson 75); dev3k (3,000; paired SE
+  ~0.26 pts, so a 1-pt gain resolves); test = the eval halves, touched only when the user asks. Decide on dev3k / train CV.
+- **Go/no-go**: measure what a change adds beyond the current best pipeline and the pool oracle, not beyond a weaker baseline (lesson 10);
+  target >= 1 pt at 25 km. Small subsets are for plumbing.
+- **No paid LLMs** (user, 2026-10-15): local open models and our own models only. No distillation from Gemini / Claude; ground-truth labels only.
 
-**Reference changed (2026-10-07, lesson 54).** "The reranker" is now Pinpoint's attention reranker (its released final model, ported
-exactly): top-1 **17.5 / 37.2** on the full eval halves (MP16 dev 16.0 / 33.9), and its pool (<= 12 candidates, oracle 30.1 / 54.7) is the
-pool we choose from. In lessons 1-53 and the numbers below, "the reranker" is our earlier one-step reranker (an MLP over 17 hand-made
-features, top-1 16.7 / 38.2) over our ~17-candidate pool (oracle 33.4 / 59.0); gains quoted against it need re-measuring against Pinpoint.
+## Where we are
+**Best pipeline (lesson 94, `action_agent.py`)**: Pinpoint's reranker fine-tuned on its own training data with wide pools and photographer
+exclusion (`setft_a`, lesson 70) -> candidate areas (agreement clusters + clue places) -> an answer head over area tokens, with costly actions
+(zoom = restricted Pinpoint search in an area, read = 4B clue reading + text search, recognise = MegaLoc same-place similarity) chosen by a
+REINFORCE policy. dev3k 39.7% < 25 km (Pinpoint 33.4). The policy matches "take every action"; its value is cost (lesson 98).
 
-**Where we are (2026-10-04).** Against the one-step reranker's top-1 (before lesson 54; never re-measured against Pinpoint), the best confirmed gain is **+0.9 points** [+0.3, +1.6] top-1 within 25 km,
-from a fine-tuned 4B comparator (query photo + exemplar photo of a candidate -> same place?) combined with the reranker's rank (lessons 24, 29, 40, 41).
-On the 3,713 im2gps3k + yfcc4k eval-half photos (placeholders dropped), nothing fitted on them:
+Test set (lesson 98), RL lambda 0:
 
-| | < 1 km | < 25 km | < 200 km |
-|---|---|---|---|
-| Reranker top-1 (baseline) | 17.1% | 38.9% | 56.4% |
-| + comparator-b, 4 exemplars, combiner trained on dev | 17.2% | 39.9% | 56.9% |
-| Oracle over the reranker's top 8 | 30.1% | 52.5% | 70.1% |
-| Oracle over the whole ~17-candidate pool | 34.2% | 60.2% | 80.3% |
-
-The headroom is in choosing (13.5 pts at 25 km to the top-8 oracle). How much a model could recover is open: a rough by-eye look at 30 photos (one reader, lesson 35)
-put it near 3 pts, but Gemini closed ~2/3 of the gap on the 300 subset (lesson 9) and our open models, zero-shot, close none of it. Place knowledge is the likely
-lever; we are testing it on the 4B first and scaling up only on a promising signal.
-Every lever tried lands between -0.5 and +1 point. Wikimedia (lesson 42): reranker top-1 25.0% within 25 km, top-8 oracle 38.9%, comparator +0.4 to +0.8 (balanced subset): no wikimedia-specific gain.
-Near-misses (21.9% of benchmark photos, top-1 1-25 km off; lessons 43-46): 1 km oracle over local candidates 30.1% vs 17.1% today; a comparator trained for the band
-reaches AUC 0.8 but the combined top-1 gain at 1 km is +0.8 [+0.2, +1.3] on the benchmarks, 4x the band data (lesson 45) gives the same (+0.9), and better
-combiners (incumbent-relative features, a switching margin; lesson 46) give the same (+0.7). The single-exemplar visual signal is the limit, not data or calibration.
-
-**One line per lesson.**
-- 1-4 (SFT / GRPO): the 4B reaches reranker parity, not better; GRPO sharpens but doesn't discover; the LLM wins only on photos with readable text.
-- 5-10: "where to search" is not the bottleneck; GeoNames needs fuzzy matching; rewriting retrieval queries adds < 2 oracle pts; per-candidate evidence helps an
-  untrained chooser a little; go/no-go must be measured beyond what we already have (the shown-candidate oracle), on the full eval halves.
-- 11-19 (stage 1, new evidence): 4B / 27B search queries, geotagged Wikipedia, transcribed text, an 80M-place name index add 1-3 oracle pts over the pool and
-  nothing for a learned chooser; the evidence is right on the photos retrieval is already right on (17, 18, 19).
-- 20: train / dev / val audit is sound; Flickr "no longer available" placeholders (flagged) and near-duplicates make absolute numbers ~1.5 pts optimistic.
-- 21: the VLM's photo attributes are accurate but redundant with what retrieval encodes.
-- 22-23: a zero-shot exemplar judge separates the true place from far away, not from its neighbours; its skill is mostly exemplar similarity.
-- 24-26, 29: the fine-tuned comparator is the only positive: +0.7 [+0.3, +1.2] on all benchmark photos; pairwise and 25 km variants are no better.
-- 27-28: bigger zero-shot choosers (9B, 27B) and nearby Wikipedia text stay below the reranker.
-- 30: the gallery isn't thin; reranking deeper than the pool (50 clusters) is worse (-0.8).
-- 31-32: a region-diversified pool adds ~2 oracle pts at matched budget; the region head is the bottleneck and a bigger one barely helps.
-- 33-34: the models' own answers and nearby place categories add nothing beyond rank + comparator.
-- 35: by eye, of 30 choosing photos 9 are near-misses at the 25 km line, 10 have nothing place-specific, 6 show a specific place, 4 need knowledge, 1 is label noise.
-- 36-37: coarse thresholds (200 / 750 / 2500 km) have as much headroom and the same null results; the 4B's candidate-free guess is far below retrieval.
-- 38: a geo-aware adapter on SigLIP2 adds ~+1 pt candidate recall over the region prior; Pinpoint's own retriever has worse top-10 recall than raw + prior.
-- 39-41: several exemplars per candidate help ~+0.3-0.6 without retraining; comparator-b (3x pairs) adds ~+0.3 more; full benchmark test +0.9 (the rule dev
-  picks is null, +0.4; the post-hoc best-of-4 rule +1.7 is a hypothesis, not a result).
-- 42: wikimedia is harder (top-1 25.0% < 25 km) with the same choosing headroom; the comparator gives +0.4 to +0.8 there, nothing wikimedia-specific.
-- 43: near-misses are the largest 1 km target; 93% have a gallery photo within 1 km of the truth, 73% among cached neighbours, 59% among our local candidates.
-- 44-45: a near-band comparator (c: 55k rows, d: 219k rows) lifts within-photo AUC 0.735 -> ~0.80 but top-1 < 1 km only +0.8 / +0.9; 4x data adds nothing.
-- 46: combiner variants (relative-to-top-1 features, switching margin) chosen by CV on held-out train photos: +0.7; fixes and breaks move together.
-- 47-49 (map search pivot): searching within 25 km of the top-1 reaches 70-82% of near-misses within 100-300 photos (fixed list 56%), but SigLIP2 (AUC
-  0.54), keypoint matching (0.52; it finds what is shown, not where the camera stood) and the comparator (0.58) can't separate the right place from its
-  look-alikes; 4 exemplars on the fixed list: AUC 0.84, +0.9 at 1 km. The old directions 1-3 (`archive/directions-2026-10-05.md` at tag `plans-2026-10-15`) are tested and closed.
-- 51: concept-query similarity around each candidate is real alone but adds +0.3 / +0.0 to the reranker (lesson 15's open variant).
-- 52: knowledge SFT (250k photos) names the right country / region +7.7 / +4.4 pts more often where the reranker fails, but as a chooser adds
-  -0.2 / -0.1; true-region knowledge would add +10.8 at 25 km, yet the model names the right region on only 10.9% of those photos. GRPO not run.
-- 53: not a coverage gap: at equal training photos per region the model names the region 55% on reranker-right photos, 6% on
-  the fixable ones. Those photos don't look like their region; next is non-appearance clues via tools (`AGENT_DIRECTION.md`).
-- 54: Pinpoint's attention reranker, ported exactly, is the reference: 17.5 / 37.2 (one-step reranker 16.7 / 38.2), pool oracle 30.1 / 54.7
-  with <= 12 candidates; 371 region-fixable target photos (+9.5 at 25 km), the knowledge SFT names their region 13.2%.
-- 55 (old pool): constraint tools from VLM-read clues: text matched to GeoNames near the candidate +0.2 [+0.0, +0.3] at 25 km on the eval halves when fitted
-  on MP16 dev only (+0.1 on photos never used; the first +0.4 was fitted on the 'val' benchmark photos); POI names +0.2, features / rules / country guess ~0; text names the true region on ~5% of fixable photos.
-- 56 (old pool): 9B vs 4B right region on fixable photos 16.8 vs 13.9% (n.s.); resolution helps up to 786k px; model agreement trades fixes for breaks.
-- 57 (old pool): by eye, 58% of fixable photos have nothing place-specific; ~15% a business name, 12% a landmark, 12% country-level objects.
-- 58: landmark / object identification by VLM object box + SigLIP2 crop search over MP16 + keypoint / RANSAC verification: best +0.0 on dev3k;
-  verification prefers wrong hits (right wins 12% with RANSAC inliers). Needs real recognition, not crop retrieval.
-- 59: Qwen3.6-27B landmark naming: city right on 1.7% of Pinpoint's mistakes (9B 0.6%, user's estimate ~6% identifiable); as a pool-restricted
-  switch rule +0.2 pts (16 fixes / 10 breaks). Larger open VLMs don't close the recognition gap.
-- 60: DINOv2-large re-scoring of the crop search's top 100: top-1 right on 3.3% of Pinpoint's mistakes (SigLIP 2.3%); best rule +0.2 pts.
-  The landmark / object line tops out near +0.2 pts with open models and MP16 as the reference collection.
-- 61: deciding by place doesn't help: location voting over crop hits best -0.0; crop-hit features on Pinpoint's candidates +0.1 [-0.4, +0.5].
-- 62: by eye, dev3k mistakes: 5% clear landmark / object, 7.5% searchable text (matches the user's test estimate). Models recognise only some;
-  answers outside Pinpoint's pool + a Pinpoint-confidence gate: +0.2 (8 fixes / 2 breaks); 27B naming caps at +1.0 pt even with perfect gating.
-- 63: YFCC100M extracted (48.5M geotagged photos, titles / tags / descriptions; data/yfcc100m/geo.npz). Its names locate 68 of Pinpoint's dev3k
-  mistakes (ceiling +2.3, same as region_evidence) but count-based gates give +0.1: clue selection needs the agent that sees the photo.
-- 64: Pinpoint restricted to the true region reaches 61.3% < 25 km on dev3k (+27.9 pts, 859 fixes / 23 breaks; true country +7.8), above its own
-  pool oracle (50.3%): a clue only has to name the region. Target design: the agent calls Pinpoint as a tool, restricted to where clues point.
-- 65: text search (GeoNames, Overture, YFCC; `text_search.py`) gives the right region where Pinpoint's is wrong on only ~150 dev3k photos and
-  loses 1:18 on disagreements; a 4B judge looking at the photo flips accepted clues to 14:6, but end to end only +0.3 pts.
-- 66: a fine-tuned 4B clue judge (GPS labels, train clues; then disagreement-only; then +35k photos from buckets 0-98) lifts read-text clues
-  to +0.5 / +0.6 / +0.7 pts on dev3k (25 fixes / 4 breaks at best); recalled landmark names stay unsolved; ceiling +1.7 for read clues.
-- 67: blind locatability pass on 120 dev3k photos: 47% show nothing place-specific; ceiling from content + today's retrieval ~42-48% < 25 km
-  (Pinpoint 37% there). The gap is photos with a recognisable country / region but no spot; Pinpoint's misses are near-misses or generic.
-- **68 (positive): agreement among Pinpoint's candidates** (score mass within 25 km, `pool_agreement.py`): **+1.0 pts on train** [+0.7, +1.2],
-  +2.0 on dev3k; -0.6 at 1 km (the best-in-area variant keeps 1 km at +0.7 / +1.7). First gain >= 1 pt on independent data.
-- **69 (positive): geolocation as hypothesis testing** (`HYPOTHESIS_PLAN.md`): Pinpoint areas + clue places + 4B place proposals, Pinpoint
-  restricted to each, a learned set-level comparator picks one: **+2.9 / +3.5 pts on train** (CV; top-1 / agreement pick inside), **+3.8 /
-  +4.6 on dev3k**. Oracle 49-51%. More hypotheses, more training photos and a 4B plausibility judge (zero-shot or fine-tuned) add nothing:
-  misses are evidence-ambiguous (the right hypothesis has the weaker retrieval evidence in ~70%).
-- **70 (positive): look-zoom-rerank** (`PINPOINT_SET_PLAN.md`):
-  - Fine-tuning Pinpoint's own reranker (1.5M of its training photos, wide pools, photographer exclusion, co-trained set head) gives
-    **+3.1 / +3.3** as one model; +2.1 / +2.3 without the set head.
-  - Area model over zoomed CLS states: **+4.4 / +4.9**; areas + clues **+4.2 / +5.2**.
-  - RL zoom agent: 1 zoom reaches ~90% of the gain, 2 zooms all of it.
-  - A flat global + zoom set model doesn't help (+1.4).
-  - Trap: training against the shipped submission index disables leave-one-out (source-name mismatch; alias in `pinpoint_train/`).
-    This is a setup issue, not a bug in Pinpoint's training.
-- **71: merged pipeline** (`hypothesis_agent.py`): area model on the retrained reranker **+4.9 / +5.4** (vs +4.2 / +5.2 on released
-  Pinpoint).
-  - One network with answer + RL action heads: 2 zooms +4.7 / +5.5, no zoom +3.9 / +3.8.
-  - The learned zoom policy adds only +0.0 to +0.3 over zooming the top areas.
-- **72 (negative): replacing the agreement rule** (`location_density.py`):
-  - Soft kernels match it at 25 km and keep 1 km (Laplace 10 km).
-  - A learned per-candidate weight + spread, and coverage-trained proposals (best-of-K, multiple-choice heads), don't beat it.
-  - Top-5 coverage stays at ~51 / 53% vs a 62 / 63% candidate-list ceiling.
-- **73: merged pipeline on the test set** (user asked): 2 zooms, agreement pick **42.1 % < 25 km, +4.9** [+4.0, +5.9] over Pinpoint
-  (set pick +4.1, +1.5 at 1 km). Ties the previous pipeline (41.8; paired +0.2): simpler, not more accurate.
-- **74: final pick, longer lists, reranker training**: gated kernel pick (peak within 5 km of the box founder) keeps 25 km and adds +1.2 / +1.5 at
-  1 km (default). 123-candidate lists: ceiling 63 -> 73% on dev3k, pick +0.1. Reranker ablations: continued training +1.5 / +2.0, + photographer
-  exclusion +2.4 / +2.2, + wide lists and set head +3.1 / +3.3; wide lists without exclusion +0.3 / +0.5; a full pass is no better than 6,000 steps.
-- **75 (negative): cross-fitted labels**: 135k photos scored by photographer-half rerankers add nothing to the answer head (36.8 / 38.7% vs
-  37.0 / 38.8%): Pinpoint's encoder trained on them, so their lists are easier (ceiling 69% vs 62-63%). Near-duplicate exclusion: no
-  train / evaluation asymmetry (3.4-3.7% everywhere), not run.
-- **76: reading clues as a costly action** (`read_agent.py`): a policy on a free glance (SigLIP2 embedding) + Pinpoint features reads 20% of
-  photos and keeps +0.51 / +0.80 of always reading's +0.5 / +1.0 (5% reads: +0.39 / +0.57); "read when Pinpoint is unsure" = random.
-- **77 (negative): map checks of visible features** (`map_checks.py`, OSM `features_near`): the features the 4B sees are near the truth far more
-  often than chance, but Pinpoint's wrong areas have them too; as answer-head evidence they add nothing (-0.05 to -0.9). Next: names inside areas.
-- **78 (negative): OSM names inside areas** (`name_checks.py`, `maps_search`): names near right areas 30% vs wrong 11%, but as evidence +0.04 /
-  +0.33 at best; they only partly replace the existing text-search clue features (-0.45 / -0.77 when masked, +0.07 / +0.25 back). Redundant.
-- **79 (negative): names as a candidate generator** (`name_search.py`): Pinpoint restricted to a name's OSM matches finds new right places
-  (oracle switch +1.25 / +1.37) but a learned switch gets +0.03 / -0.03: helps vs hurts is 1:10 and the best signal (score gap) has AUC 0.88.
-- **80: the reader is a bottleneck** (blind test, Claude as reader, 40 dev3k photos with no right area): 4 / 40 within 25 km (4B 0), country right
-  where Pinpoint's is wrong 8 / 21 (4B 1); 22 / 40 have nothing place-specific; the gain is recognition and regional knowledge, not unread text.
-- **81: tools consolidated** into `tools/` (pinpoint with constraints, maps with phone / website lookup, web); older tool modules archived at
-  tag `pre-tool-consolidation`.
-- **82: query-RL gate** (`query_passk.py`): the base 4B's place queries hit < 25 km outside Pinpoint's pool on 9.7% of fixable photos with a wrong
-  top-1 at pass@32 (2.0% pass@1); ~3 pts dev3k ceiling, ~0.4 at pass@1. Shown Pinpoint's areas it echoes them; blind it finds more new places.
-- **83: nested proposals** (`nested_passk.py`; country / region / place -> restricted Pinpoint): best of 16 samples +6.1 pts on dev3k, but a
-  single sample -19.6 and a votes + score selector +0.1 held out: proposals hold enough, verification is the bottleneck.
-- **84: retrieval proposes regions better than the 4B**: 16 regions from the 1,000 nearest index photos, best of 16 +19.0 pts vs the 4B's +6.1
-  (the 4B adds +1.0); the 4B is confidently wrong where it disagrees with Pinpoint (precision 4-16%).
-- **85: region candidates + tool checks in the answer head add +0.3 at most** (dev3k 39.0 vs 38.7%); the head converts ~2 of the ~15 pts its own
-  areas hold (best area 51.7%). Choosing among look-alike areas is the bottleneck, not candidates.
-- **86: the 4B reading neighbour titles / tags per area picks near chance** (21.7% vs area A 36.2%, random 17.5%; AUC 0.61); titles name the
-  area, not the query's link to it. No tool output so far separates Pinpoint's look-alike areas.
-- **87: GRPO on the clue output (pilot, 2.3k photos)**: -1.13 -> -0.37 pts vs the retrained top-1; the 4B learns silence (none 28 -> 40%,
-  no overrides on empty photos) but not precision (23-24% of real overrides right). Full-train run stopped at step 950 (reward flat at ~-0.01).
-- **88: Qwen3.8-27B as the reader is worse than the 4B**: a phrase within 25 km on 3.6% vs 5.1% of top-1 mistakes, country right 34 vs
-  40%. Bigger open readers don't add recognition.
-- **89: crop views of the photo vs each area's photos add +0.0 / +0.4** (train CV / dev3k) in the answer head; no RL look policy built.
-- **90: round-trip (reverse-rank) verification**: AUC 0.66 vs forward similarity 0.655; simple chooser +0.1. Right areas are generic
-  from their side too.
-- **91: next-bucket refinement**: oracle +11-17 pts per step, but a local chooser nets +-0.1 (within-list AUC ~0.5 on the photos a move
-  could fix). The choice among retrieved candidates is at chance with every signal we have, at every scale.
-- **92: word-location statistics (YFCC titles / tags) for all read text**: +0.1 over the existing clue features; generic words are as
-  likely to favour a wrong area as the right one, and the names are already used.
-- **93: MegaLoc same-place similarity per area** (a visual place-recognition model, no LLM): +0.8 in the simple chooser on top of the
-  clue features (37.7 -> 38.5%); in the answer head +0.8 to +1.0 on train CV, +0.5 to +1.1 on dev3k: the largest evidence gain since
-  lesson 70.
-- **94: RL action policy over zoom / read / recognise** (MegaLoc as an action, the photo's embedding as a free glance): accuracy-vs-cost
-  curve at or above every fixed combination; best 39.7% on dev3k (+6.3 over Pinpoint); MegaLoc's gain kept with 12-19% of photos recognised.
-- **95: MegaLoc as a proposer** (same-place re-ranking of a 200-photo SigLIP2 shortlist): right new places on ~1% of photos; a verifier,
-  not a generator. No full-index build.
-- **96: GRPO on free-text search queries** (tool result vs truth as reward): learns silence and precision (26 -> 64%) on safe queries;
-  new right places 0.6% -> 0.3% of dev3k. The novel-hit reward is too sparse for the 4B.
-- **97: MegaLoc with 64 photos per area** (vs 12): AUC 0.707 -> 0.737, area pick +0.1; its best photo inside an area is worse than
-  Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%). The verifier is saturated on Pinpoint's photos.
-- **98: test set** (eval halves): the action agent 43.5% < 25 km (+6.2 [+5.2, +7.3]), 19.1% < 1 km (+1.6) with the photographer
-  excluded; original protocol 48.2-48.7% (+1.8 to +2.3) but 1 km 25.5-28.6% vs 28.9 (the pipeline was trained not to use the photographer's photos).
-- **99: contrast with fetched references** (EXPERT_PLAN first experiment): the 4B picks the first-shown place 81% of the time and, when
-  consistent, is right 67% vs the head's 83% on decisive pairs; fetched YFCC references beat Pinpoint's own photos for it (67 vs 57%). Needs a stronger reader.
-- **100: our own contrast model** (MegaLoc global cosines to fetched references, 5k decisive train pairs): AUC 0.64 alone, adds
-  nothing to the head's margin (0.821 vs 0.819; dev3k 85.5 vs 85.0% on decisive pairs).
-- **101: learned patch-level matcher** (frozen MegaLoc DINOv2 patches, late interaction, saliency; same pairs): patch score AUC 0.61
-  alone (= global), stacked weight ~0 next to the head's margin; end to end -1.6 pts on dev3k. Visual matching of references is exhausted.
-- **102: Sonnet as the contrast reader** (40 pairs): specific features and right on all 8 confident answers, but those are photos the head
-  already gets; on the head's mistakes 12 / 20 (4B 3 / 10); reweighted 81 vs the head's 85%.
-- **103: pair-specific discriminant** between the two areas' photos: AUC 0.62 alone (> similarity 0.58), nothing beyond the head.
-- **104: named candidates** (Sonnet told the two areas' towns): at confidence >= 0.7, 6 fixes / 0 breaks on 20 + 20 pairs, at all distances
-  (~ +1.8 pts if it holds); hard constraints are rare (2 / 20 far mistakes). The first reader signal beyond the head; needs the 500 dev3k pairs.
-- **105: named candidates on dev3k** (202 decisive pairs, Sonnet): follow at confidence >= 0.7 -> 8 fixes / 3 breaks, +0.94 pts at 25 km
-  (p ~ 0.11); at chance on the head's mistakes overall, the gain is its calibrated confident cases. Half the calls suffice (head margin < 2).
-
-**Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
-reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.
-
-**Traps worth remembering.** Choose scorers on dev, not by looking at val or the benchmarks (41). A judge's Yes/No logit level can drift in training; always
-check the failed-score count and restrict output to the answer tokens (40). Compare against the reranker top-1, not current greedy; the pool oracle is the
-baseline for new evidence (10, 13).
-
-## Headline numbers (full eval halves)
-
-| System | Greedy | Single sample | Best of 8 | Right answer among shown candidates |
+| Protocol | Set | Released Pinpoint | Ours | Change at 25 km |
 |---|---|---|---|---|
-| Pinpoint attention reranker #1 (the reference since lesson 54) | 17.5 / 37.2 | | | 30.1 / 54.7 (its pool) |
-| One-step reranker #1 (the reference in lessons 1-53) | 16.7 / 38.2 | | | |
-| sft-34k (reranker top-10 in prompt) | 15.8 / 37.6 | 11.5 / 33.0 | 22.3 / 48.0 | 30.8 / 53.6 |
-| sft-34k-retrieval (all ~17 pooled candidates, retrieval order, evidence; no reranker) | 16.3 / 37.2 | 12.6 / 32.8 | 22.3 / 48.2 | 33.4 / 59.0 |
-| grpo-kl step 200 (from sft-34k-retrieval) | 16.9 / 37.9 | 15.9 / 36.8 | 21.7 / 45.1 | 33.4 / 59.0 |
+| original (kept, primary) | both | 28.9 / 46.4 / 60.7 / 75.5 / 86.7 | 25.5 / 48.2 / 61.5 / 75.2 / 86.7 | +1.8 [+0.7, +2.9] |
+| | im2gps3k | 21.8 / 48.9 / 64.6 / 79.6 / 89.8 | 22.8 / 53.6 / 67.4 / 79.9 / 90.8 | +4.7 [+3.1, +6.4] |
+| | yfcc4k | 33.5 / 44.8 / 58.2 / 73.0 / 84.8 | 27.3 / 44.7 / 57.7 / 72.1 / 84.1 | -0.1 |
+| photographer excluded | both | 17.5 / 37.2 / 53.9 / 71.4 / 84.6 | 19.1 / 43.5 / 58.4 / 73.2 / 85.5 | +6.2 [+5.2, +7.3] |
 
-300 subset only: base Qwen3.5-4B greedy 12.0 / 38.0, best-of-8 21.7 / 49.7; Gemini 3.8 Flash with top-10 candidates
-27.7 / 55.7 (best-of-8 31.3 / 58.0; oracle over its samples + candidates 40.7 / 65.7).
+Under the primary protocol we lose at 1 km on yfcc4k (-6.2): every model was trained not to use the photographer's own photos, and zooming
+moves answers off them. Retraining the chain without the exclusion is pending (~4-5 h machine time; must drop the query photo itself, since
+MP16 queries are in the index; lesson 74 found the exclusion was the fine-tune's key ingredient, so re-test that first).
 
-## Data and leakage rules we established
-- Splits are in `CLAUDE.md` (train / dev10k / test, `artifacts/agent/splits.json`; simplified 2026-10-07).
-- Why bucket 99: Pinpoint's retriever trained on MP16 md5(image_id) % 100 < 99, so those photos get inflated candidates
-  (Pinpoint top-1 <25 km 40.6% vs 30.4% held out); bucket-99 candidate quality matches yfcc4k eval.
-- The `val` photo-set tag is 1,000 test photos; using it for development contaminated lesson 54's first numbers.
-- Burned-in GPS overlays: base-Qwen P(yes) ≥ 0.64 drops 8 photos of the pool.
-- Reserve data: yfcc26k (~19.3k usable after photographer exclusion; lat/lon only).
+## What moved the number (all retrieval-side)
+| Change | Gain at 25 km (train CV / dev3k) | Lesson |
+|---|---|---|
+| Agreement among Pinpoint's candidates (score mass within 25 km) | +1.0 / +2.0 | 68 |
+| Areas as hypotheses, Pinpoint restricted to each, a learned comparator | +2.9 / +3.8 | 69 |
+| Fine-tuning Pinpoint's reranker (wide pools, photographer exclusion, set head) | +3.1 / +3.3 | 70, 74 |
+| Area model / answer head on the fine-tuned reranker | +4.9 / +5.4 | 71 |
+| Clue reading (4B + text search + fine-tuned clue judge) | +0.5 / +1.0 | 66, 76 |
+| MegaLoc same-place similarity per area | +0.8-1.0 / +0.5-1.1 | 93 |
+
+## Why almost everything else adds nothing
+1. **Retrieval's wrong candidates look like the photo.** They were retrieved for looking alike, so any visual or descriptive check agrees with
+   them as much as with the right one: attributes (21), map features (34, 77), crops (89), round trips (90), fetched references at global or
+   patch level (99-101), pair discriminants (103). Verification signals plateau at AUC ~0.6-0.74 against right-vs-wrong areas.
+2. **Evidence and knowledge sit where retrieval already succeeds.** Text, names, landmarks, the 4B's and the knowledge SFT's place knowledge
+   are right on the photos Pinpoint gets right and silent or wrong on its failures (17-19, 52-53, 65, 78-79, 92).
+3. **About half the photos carry nothing place-specific** (food, pets, interiors, concerts; 47% of dev3k, lesson 67). Of the rest, most
+   mistakes are near-misses (another scene of the same kind of place 25-100 km away). The right area's own photos are "same kind of scene
+   nearby", not same-spot matches (90, 91, 95, 97).
+4. **Open models can't propose or verify beyond retrieval.** The 4B / 9B / 27B name too few right places (59, 82, 88), are confidently wrong
+   where they disagree with Pinpoint (84), and as A/B readers are at chance and badly calibrated (99, 106). RL on their outputs learns silence
+   (87, 96). Retrieval proposes regions far better (84: best of 16 +19 vs +6).
+5. **The ceiling is choosing, not finding**: some Pinpoint area is right for ~51% of dev3k, the head picks ~40%; restricted to the true region
+   Pinpoint reaches 61% (64). Refinement to the next distance bucket has +11-17 oracle points but no signal (91).
+
+## The one signal beyond the head, and why it's out of reach
+Sonnet told the two candidate areas' town names (not shown photos) and following it only when it is confident: +0.94 pts at 25 km on dev3k
+(8 fixes / 3 breaks; lessons 104-105). Its fixes are recognitions of events, venues, signs and landmarks retrieval can't use, and its
+confidence is calibrated. Paid LLMs are ruled out, and the local 4B and Qwen3.8-27B are at chance with uncalibrated confidence on the same
+pairs (lesson 106). Open: whether a local model can be trained (ground-truth reward on decisive pairs) to that calibration.
+
+## Method rules learned the hard way
+- Choose scorers, thresholds and combiners on dev / train, never by looking at the test set (41, 66). Pre-declare the threshold (105 used 104's).
+- Report fixes and breaks, not only accuracy; a switch needs > 50% precision at the base rate of mistakes (79: AUC 0.88 wasn't enough at 1:10).
+- Judges: restrict output to the answer tokens and check the failed count (40); test both A/B orders for position bias (99, 106).
+- Best-of-N ceilings grow with N; they are upper bounds, not forecasts (83-84).
+- Photos Pinpoint's encoder trained on are easier than evaluation: train only on bucket 99 (54, 75). Keep near-duplicates in mind (~4%, 20).
+
+## Data and leakage
+- Bucket 99 = MP16 md5(image_id) % 100 == 99, never seen by Pinpoint's retriever; dev3k and train come from it (`artifacts/agent/splits.json`).
+- The `val` photo set is 1,000 test photos (never use); burned-in GPS photos are filtered out of train and dev.
+- Fetched references (YFCC / Flickr) must drop the query photo and near-duplicates (yfcc4k photos are YFCC photos) and, by default, the
+  photographer. Text-search clue evidence always drops the photo and its photographer.
 
 ## Engineering facts
-- HF processors ignore `chat_template_kwargs`; pass `enable_thinking=False` directly (TRL GRPO passes
-  `chat_template_kwargs` straight through, which works). Prompt suffix must be `assistant\n<think>\n\n</think>\n\n`.
-- Merged LoRA checkpoints load in vLLM 0.30 (MTP weights dropped; fine without MTP).
-- TRL SFT `chunked_nll` computes logits only at labelled positions (LoRA must not wrap lm_head).
-- Keep gradient checkpointing on: batch 4 without it OOMs on ~1,250-token prompts.
-- GRPO step (~45 s, 8 photos × 8 samples) is dominated by trainer passes over 64 copies of a ~1,200-token prompt
-  (old-policy forward for vLLM importance sampling, reference forward for KL, forward+backward); vLLM generation is
-  only 4.5 s. Prompt length and duplicated prompt compute are the cost, not generation.
-- TRL colocated vLLM needs `mm_processor_kwargs={"max_pixels": 786432}` patched in (`grpo_train.py`), or image-token
-  counts disagree with the trainer. Generating 64 answers at once with HF generate OOMs in the prefill.
-- `np.load` NpzFile re-reads an array on every key access: wrap in `dict(...)` (`strategy_search coarse` hung 45+ min
-  without it; 3.5 min with it).
-- vLLM 0.30's Triton build needs Python 3.12 headers; without `python3.12-dev`, `uv python install 3.12` and set
-  `C_INCLUDE_PATH` to its `include/python3.12`. When sharing the GPU at ~0.3 utilization, lower `--max-num-seqs`
-  (Mamba cache blocks limit it), and retry if a neighbour's memory changes during profiling.
-- This machine has 30 GB RAM and no swap. `MP16Images` used to unpickle the 4.1M-entry tar index (~5.4 GB per process);
-  four dataloader workers ran the machine out of memory and it had to be rebooted (2026-10-06). It now memory-maps a
-  compact index (`metadata/tar_index_compact`, ~150 MB shared). Run long jobs in a capped cgroup
-  (`systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0`, as `scripts/knowledge_run.sh` does).
-- Knowledge SFT on the L40S: ~20 photos/s at batch 8 x 2 with LoRA dropout 0, the language model `torch.compile`d and
-  sequences padded to 240 (`--compile --pad-to 240`); 15.5 photos/s without. vLLM here needs uv's Python 3.12 headers
-  on `C_INCLUDE_PATH` and `VLLM_USE_FLASHINFER_SAMPLER=0` (no CUDA toolkit for its JIT).
-- Temperature: T=0.7 for SFT-model sampling; resolution caps below 786k px change nothing within noise.
+- RAM 30 GB, no swap: long jobs in `systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0`. `np.load` NpzFile re-reads an array on
+  every key access: load each array once. `MP16Images` memory-maps a compact tar index (the pickled one OOMed the machine).
+- Pinpoint fine-tune: ~400 ms / step, CPU-bound in pinpoint-main's pool union; 6,000 steps ~65 min; validation flat from ~4,500 (74).
+  Training against the shipped index needs the "mp16" source alias or leave-one-out silently breaks (70).
+- vLLM 0.30: Python 3.12 headers on `C_INCLUDE_PATH`, `VLLM_USE_FLASHINFER_SAMPLER=0`, no MTP; serve with `scripts/clue_judge.sh`
+  (`RUN="<module> <cmd>"`). Force JSON with `response_format` json_schema (the 4B ignores "JSON only"). Thinking off via
+  `chat_template_kwargs` in requests; HF processors need `enable_thinking=False` directly.
+- GRPO (TRL, colocated vLLM): patch `mm_processor_kwargs` max_pixels; steps are dominated by trainer passes over duplicated prompts.
+- The machine stops daily at 02:00 UTC and the NVMe drive is wiped (`text_search stage`, `tools/maps` stage after a restart).
+- MegaLoc: DINOv2 ViT-B/14 + SALAD, output linearly projected to 8,448-d (chunks of it are not clusters); ~190 photos / s at 322 px.
 
-## Dead ends (don't redo)
-- Verifying candidates by image matching (SigLIP, SIFT/RANSAC) or zero-shot VLM judges (Gemma).
-- A region choice learned from retrieval evidence; VLM-chosen region + region-restricted retrieval top-1.
-- Zero-shot Gemma 4; Qwen3.5 thinking mode; llama.cpp for rollouts.
-- More SFT data or temperature tuning to raise best-of-8 (flat at ~21–23 / 48–55 across all settings).
-- GRPO without KL/entropy control; longer runs of the same single-turn GRPO setup (flat after ~25 steps).
-- Query rewriting for retrieval: SigLIP2 text queries of place names; fixed image crops (see lesson 7).
-- Evidence numbers on the reranker's top-10 (superseded by the no-reranker prompt before it finished training).
-- A "LLM picks region → retrieve inside it" pipeline (lesson 5).
-
-## Kept artifacts
-- None of the old machine's models or caches were transferred (2026-10-06). On this machine: `artifacts/strategy_search/`
-  (benchmark caches, rebuilt with the released Pinpoint index; reproduced the one-step reranker 16.8 / 38.5, oracle 33.6 / 58.9),
-  `artifacts/pinpoint_reference/` (Pinpoint's pools), `artifacts/photo_sets/` and `data/pinpoint/geonames/allCountries.txt`.
-  Everything else is rebuilt per `SETUP.md`.
+## Dead ends (don't redo without a new idea)
+- Choosing with the 4B from a candidate list, SFT or GRPO (1-3); query rewriting and search-query evidence (7, 11-17).
+- Exemplar comparators of every kind (22-26, 39-49): saturate near +1 pt.
+- Region heads, geo adapters, deeper pools, longer lists (30-32, 38, 74); cross-fitted labels (75).
+- Photo attributes, place categories, map features, OSM names, word statistics as evidence (21, 34, 77-78, 92).
+- Landmark / object crop search and descriptors (58-61); names as candidate generators (79); MegaLoc as a proposer (95).
+- RL on open-model text outputs (clues, queries) with label rewards: learns silence (87, 96).
+- Visual verification of candidates beyond MegaLoc's 12 photos per area: more photos, crops, round trips, fetched references, patches,
+  pair discriminants (89-90, 97, 99-101, 103). Local LLM readers for A/B choice (99, 106).

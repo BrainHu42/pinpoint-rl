@@ -32,7 +32,7 @@ matters.
     `data/yfcc100m/geo.npz`, images in the public `multimedia-commons` S3 bucket; ~10x the index's density near dev3k truths). Live: Flickr,
     Mapillary, Wikimedia Commons. Matched with MegaLoc and shown to the reader.
   - `contrast(A, B)`: a reader sees the photo and the references of two areas, names the feature that distinguishes them and picks one.
-    Readers: the local 4B (free); Claude Haiku 5.5 / Opus 5.5 as paid tools (~$0.0002 / ~$0.006 per call with the Batch API).
+    Readers: local open models only (the 4B, larger open VLMs on our GPU, our own trained models); no paid LLMs (user, 2026-10-15).
   - `features_near(area, feature)`: map check of the distinguishing feature only (`tools/maps.py`).
   - `read`, `recognise`, `zoom` (existing), `stop`.
 - **Reward:** [answer < 25 km] (and < 1 km) minus lambda x the call's real cost (seconds or dollars). Ground truth only, no distillation.
@@ -42,7 +42,7 @@ matters.
 
 ## First experiment (real task, dev3k)
 500 dev3k photos, top 3 areas each. Fetch YFCC references near each area's top candidates; run `contrast` on the top pair with the 4B (and
-Opus if we have an API key). Measure net fixes / breaks of following the contrast's pick over the answer head's, at 25 and 1 km.
+a larger local VLM). Measure net fixes / breaks of following the contrast's pick over the answer head's, at 25 and 1 km.
 Same-recipe control: the same reader shown each area's existing 12 restricted-search photos instead of fetched references, which isolates
 what the reference imagery adds. Worth building the agent if the fetched-reference contrast is clearly ahead of the control and of the
 answer head on the photos where they disagree.
@@ -58,6 +58,6 @@ answer head on the photos where they disagree.
 
 ## Open questions
 - Should `references` return the photographer's other photos under the primary protocol (consistent with it, but it is trip retrieval)?
-- Can the 4B name distinguishing features at all, or is the contrast only useful with a frontier reader (lesson 80: 4B far behind)?
+- Can a local reader do what Sonnet did with named candidates (lesson 105: +0.94 pts at 25 km; the 4B is at chance), or must we train one?
 - Flickr link rot and the S3 image key mapping for YFCC; Mapillary needs a token.
 - About a third of hard photos show nothing place-specific (lessons 35, 80); no check fixes those, and the policy should learn to stop.

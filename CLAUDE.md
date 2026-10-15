@@ -2,7 +2,7 @@
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
 inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read its summary before proposing
-experiments); full numbered lessons in `LESSONS.md`.**
+experiments); numbered lessons, condensed, in `LESSONS.md` (full original text at git tag `lessons-full-2026-10-15`).**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -79,6 +79,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 103 (`pair_discriminant.py`): a discriminant between the two areas' photos: nothing beyond the head.
   Lesson 104: Sonnet told the candidates' town names (not photos): 6 fixes / 0 breaks at confidence >= 0.7 on 20 + 20 pairs (~ +1.8 pts if it holds).
   Lesson 105: the same on dev3k (202 decisive pairs): 8 fixes / 3 breaks at confidence >= 0.7, +0.94 pts at 25 km; the first gain beyond the head since lesson 94.
+  Lesson 106 (`names_judge.py`): local readers on the same pairs (4B 55%, Qwen3.8-27B 60-71%) are uncalibrated; every threshold nets negative. No paid LLMs (user, 2026-10-15).
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
