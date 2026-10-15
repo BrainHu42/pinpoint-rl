@@ -10,7 +10,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Base model: **Qwen3.5-4B, thinking off**, LoRA.
 - Work toward one research idea with novelty, not small incremental experiments.
 
-## Research plan (2026-10-07)
+## Research plan (2026-10-15)
 - **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
   exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
   (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; dev3k 17.0 / 33.4 (oracle 27.5 / 50.3).
@@ -23,18 +23,18 @@ experiments); full numbered lessons in `LESSONS.md`.**
 - Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
   over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
   visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
-- **Direction: `AGENT_DIRECTION.md`** (agreed 2026-10-07): train an agent that geolocates like a professional, using
-  constraints, not similarity: read text, apply rule-like clues, query maps for features that co-occur near each
-  candidate, geocode names, then eliminate and verify. Retrieval is the candidate-generator tool. Target: the photos
-  where the reranker is wrong but knowing the region would fix it (dev3k: 302 of 3,000, `agent_targets --tags dev3k`).
-- **Current plan (2026-10-12): `PINPOINT_SET_PLAN.md`**: look, zoom, rerank. Results of the autonomous run (lesson 70):
+- **Plan: `EXPERT_PLAN.md`** (2026-10-15): choose among retrieval's candidate areas the way an expert does: contrast the candidates,
+  fetch reference imagery (`references`: YFCC100M offline, Flickr / Mapillary / Commons live) and map data of each, eliminate, verify,
+  stop; an RL policy decides which check on which candidates, with real costs. Earlier plans (agent direction, hypothesis testing,
+  look-zoom-rerank, text search, knowledge SFT) were deleted; they are at git tag `plans-2026-10-15`, which lessons citing them refer to.
+- Results of the look-zoom-rerank line (lesson 70):
   - retrained Pinpoint reranker +3.1 / +3.3 (train CV / dev3k) as one model;
   - area model over zoomed states +4.4 / +4.9;
   - RL zoom agent: 2 zooms = the full gain.
   - Next: run the area pipeline on the retrained reranker.
 
   Benchmark result (eval halves, lesson 73): merged pipeline (retrained reranker, 2 agent zooms, answer head) 42.1% < 25 km,
-  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, `HYPOTHESIS_PLAN.md`). With the gated pick (lesson 74 default): +4.8 at 25 km, +0.8 at 1 km.
+  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, hypothesis testing). With the gated pick (lesson 74 default): +4.8 at 25 km, +0.8 at 1 km.
   Lesson 74: gated final pick (default), longer lists and more reranker training don't help (fine-tune saturates at ~+3; photographer
   exclusion is its key ingredient). Training throughput notes in lesson 74.
   Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
@@ -71,11 +71,6 @@ experiments); full numbered lessons in `LESSONS.md`.**
   it is worse than Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%).
   Lesson 98 (test set, `action_agent --apply`): 43.5% < 25 km (+6.2) / 19.1% < 1 km (+1.6) photographer excluded; original protocol
   (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`) 48.2-48.7% (+1.8 to +2.3), 1 km 25.5-28.6% vs 28.9.
-- **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
-  areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
-  agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
-  in `TEXT_SEARCH_PLAN.md`.
-- Superseded plans (knowledge SFT + GRPO, earlier directions) are in `archive/`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
@@ -131,7 +126,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
     `data/maps_search/osm.db` (`stage` to the NVMe drive after a restart). `tools/osm_extract.py`: OSM planet -> `data/osm/extract`.
   - `tools/web.py`: Wikipedia / Wikivoyage pages (`experiment/web_search.py`, owned by the osm-search session) + where the words occur in
     Flickr titles / tags and named places (`text_search`).
-- The read chain behind the pipeline's clue features (lessons 55-65; `TEXT_SEARCH_PLAN.md`): `agent_targets.py` (dev set, splits, fixable
+- The read chain behind the pipeline's clue features (lessons 55-65): `agent_targets.py` (dev set, splits, fixable
   targets), `observe.py` + `scripts/observe.sh` (VLM clues, crops), `text_search.py` (SQLite FTS5 over GeoNames, Overture places / websites /
   phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart), `region_evidence.py`,
   `clue_judge.py` + `scripts/clue_judge.sh`, `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`), `pinpoint_tool.py` (Pinpoint's
