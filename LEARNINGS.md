@@ -155,6 +155,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
 - **93: MegaLoc same-place similarity per area** (a visual place-recognition model, no LLM): +0.8 in the simple chooser on top of the
   clue features (37.7 -> 38.5%); in the answer head +0.8 to +1.0 on train CV, +0.5 to +1.1 on dev3k: the largest evidence gain since
   lesson 70.
+- **94: RL action policy over zoom / read / recognise** (MegaLoc as an action, the photo's embedding as a free glance): accuracy-vs-cost
+  curve at or above every fixed combination; best 39.7% on dev3k (+6.3 over Pinpoint); MegaLoc's gain kept with 12-19% of photos recognised.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

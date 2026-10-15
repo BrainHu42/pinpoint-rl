@@ -1243,3 +1243,27 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       dev3k (noisier). At the 1-pt line on train, just under it on dev3k for the default (budget-2 agent) configuration.
     - Caveat: the columns use every area's restricted-search photos, so in the budgeted rows they leak post-zoom information; as an agent
       action, MegaLoc should be its own costly look (RL deciding when).
+
+94. **An RL action policy over zoom / read / recognise (MegaLoc) traces an accuracy-vs-cost curve at or above every fixed tool combination;
+    best pipeline 39.7% on dev3k (+6.3 over Pinpoint) (2026-10-15; `action_agent.py`; the user: fit text clues and MegaLoc in as actions,
+    train the policy with RL).** Area tokens as hypothesis_agent; actions zoom area k (1 unit), read (2: clue-place tokens + clue columns of
+    every area), recognise (1: MegaLoc columns of every area; hidden until taken, which removes lesson 93's free-information caveat), stop.
+    Answer head supervised on random reveal patterns; policy (per-area zoom logits + read / recognise / stop from the frozen encoding)
+    trained with REINFORCE, greedy-rollout baseline, entropy 0.01; return = [< 25 km] - lambda x units. Trained on all of train (dev3k) or
+    four fifths (held-out fifth).
+    - Fixed combinations, dev3k (held-out fifth) % < 25 km at cost: nothing 36.6 (35.6) at 0; recognise 37.7 (36.5) at 1; read 37.2 (36.3)
+      at 2; zoom top 2 38.0 (36.0) at 1.9; recognise + zoom 2 38.7 (37.0) at 2.9; read + recognise + zoom 2 39.5 (37.6) at 4.9; all 39.4
+      (38.0) at 7.6. Per unit, recognise is the most efficient action (+1.1 for 1 unit), then zoom (+1.4 for 2), then read (+0.6 for 2).
+    - Policy on area features only: lambda 0 = everything (39.5); lambda 0.005 38.7 at 2.2 units (= recognise + zoom 2 at 2.9); lambda >= 0.01
+      collapses to no actions (36.6): each action is worth ~0.01 on average, so mid costs need knowing which photos benefit.
+    - With the photo's SigLIP2 embedding as a free glance (read_agent's finding): dev3k (held-out fifth)
+      | lambda | < 25 km | cost | zooms | read | recognise |
+      |---|---|---|---|---|---|
+      | 0 | 39.7 (38.1) | 6.6 (6.7) | 4.4 | 77% | 69% |
+      | 0.0025 | 39.2 (38.0) | 3.7 (4.9) | 2.2 | 39% | 64% |
+      | 0.005 | 39.0 (36.8) | 2.9 (1.0) | 1.5 | 36% | 65% |
+      | 0.0075-0.015 | 37.5-37.7 (35.9-36.7) | 0.2-0.5 | ~0.1 | 0-10% | 6-19% |
+      No collapse; at each cost the policy matches or beats the fixed combination of the same cost (dev3k: 39.0 vs 38.7 at 2.9; 37.7 at
+      0.2-0.45 units = recognise-for-everyone at 1.0; held-out fifth: 38.0 vs 37.6 at ~4.9, 36.7 at 0.46 vs 35.6 for nothing). Margins of
+      0.3-0.4 are within noise; the robust result is the low-cost end (MegaLoc's gain with 12-19% of photos recognised).
+    - 1 km: the policy keeps 17.8-18.4% (fixed 17.2-18.7).
