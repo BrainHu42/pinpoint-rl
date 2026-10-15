@@ -1365,3 +1365,16 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
       areas look like the right ones at every visual grain we can match. What remains of the contrast idea is non-visual knowledge
       (a frontier reader, lesson 80).
 
+102. **A Claude Sonnet reader on the contrast task: far better than the 4B, still not better than the answer head (2026-10-15; 40 dev3k
+    pairs, Claude Code Sonnet subagents as the reader, no API).** The head's top two areas, exactly one < 25 km; 20 pairs where the head is
+    right, 20 where it is wrong (of 170 / 30 among the 200 decisive pairs of lesson 99); the query and the same 4 fetched YFCC references
+    per area (lesson 99), EXIF stripped, neutral names, A/B randomised, reader limited to reading those images. Answers + key:
+    `artifacts/agent/contrast40_sonnet.json`.
+    - Head right: Sonnet agrees 17 / 20. Head wrong: Sonnet picks the right area 12 / 20 (chance 10; the 4B, order-consistent, 3 / 10).
+      Reweighted to the 170 / 30 mix: 81% vs the head's 85%; following it always -1.5 pts of dev3k, at confidence >= 0.7 -1.9.
+    - Its features are specific where the 4B's were generic ("Gruene Hall signage", "Swanage Railway, semaphore signal", "storks on
+      El Badi Palace ramparts", "Singapore HDB void deck"). All 8 answers at confidence >= 0.9 are right, but 7 of them are photos the head
+      already gets (recognisable landmarks); 1 fix. Confident errors (0.8-0.85) are "same garage / same van" matches to the wrong area.
+    - Reading: recognition is real but sits where retrieval already succeeds (the same pattern as lessons 52-53); on the head's mistakes
+      Sonnet is near chance. n = 40 (+-11 pts per half), direction only. A stronger reader (Opus) on the same 40 is the cheap next check.
+

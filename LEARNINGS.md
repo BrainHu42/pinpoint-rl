@@ -171,6 +171,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   nothing to the head's margin (0.821 vs 0.819; dev3k 85.5 vs 85.0% on decisive pairs).
 - **101: learned patch-level matcher** (frozen MegaLoc DINOv2 patches, late interaction, saliency; same pairs): patch score AUC 0.61
   alone (= global), stacked weight ~0 next to the head's margin; end to end -1.6 pts on dev3k. Visual matching of references is exhausted.
+- **102: Sonnet as the contrast reader** (40 pairs): specific features and right on all 8 confident answers, but those are photos the head
+  already gets; on the head's mistakes 12 / 20 (4B 3 / 10); reweighted 81 vs the head's 85%.
 
 **Next.** `EXPERT_PLAN.md` (2026-10-15): choose among the candidate areas the way an expert does (contrast the candidates, fetch
 reference imagery and map data of each, eliminate, verify), with an RL policy deciding which check to run on which candidates.
