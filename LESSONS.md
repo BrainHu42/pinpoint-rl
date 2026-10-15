@@ -1343,11 +1343,25 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     the user: train our own model instead of an LLM, the faster version).** 5,000 decisive train photos (exactly one of the head's top two
     areas < 25 km; head logits out of fold, 5-fold cross-fit; head right on 83.2%), 12 YFCC references per area fetched at 320 px with 128
     workers (113k downloads in ~10 min, 90% alive), MegaLoc on all 114k references (~10 min). Per area: global / scene-token cosine and the
-    64 per-cluster cosines of MegaLoc's aggregation (part-level matches), best and top-3 over the references.
+    cosines of 64 chunks of the descriptor, best and top-3 over the references. (Correction: MegaLoc's 8448-d output passes through a
+    linear projection after SALAD's per-cluster aggregation, so these chunks are not clusters or parts; the comparator only had global matching.)
     - Alone the fetched-reference evidence separates the right area (train AUC 0.61-0.64 for the best-cosine differences) but the head's
       margin is 0.82, and together 0.821 (train CV accuracy 83.1 vs 83.2%; dev3k decisive pairs 85.5 vs 85.0%, 1 fix / 0 breaks in 500).
       An MLP over all 264 features overfits (train CV 80.8%; dev3k net -1.4 pts).
-    - Reading: global and cluster-level MegaLoc matching of fetched references is redundant with the head, which already has MegaLoc on
+    - Reading: global MegaLoc matching of fetched references is redundant with the head, which already has MegaLoc on
       Pinpoint's photos (lesson 93); the denser references don't change that. What's untested is learned matching below the global
       descriptor (patch level, trained on these pairs) and world knowledge (a frontier reader).
+
+101. **A learned patch-level matcher over fetched references adds nothing beyond the answer head (2026-10-15; `patch_matcher.py`).** The
+    same 5,000 decisive train pairs / 500 dev3k pairs as lessons 99-100; per area the 8 most MegaLoc-similar fetched YFCC references.
+    MegaLoc's frozen DINOv2 backbone gives 12 x 12 pooled patch tokens per image (89k images, 19.7 GB, ~20 min). Trained head: projection
+    768 -> 128, for each query patch its best patch in each reference, soft-max over references, learned query-patch saliency, area score
+    = weighted sum; pair logit = score(A) - score(B) + w * head margin, BCE, 3 seeds, 5-fold CV on train.
+    - Patch score alone: train CV AUC 0.607 (global MegaLoc cosine 0.61-0.64, lesson 100), dev3k 0.688 (200 decisive pairs, noisy).
+    - End to end with the margin it does worse than the margin alone: train CV AUC 0.791 vs 0.820; dev3k decisive 81.0 vs 85.0% at 25 km
+      (7 fixes / 15 breaks, -1.6 pts), 92.2 vs 92.2% at 1 km.
+    - Stacked (logistic regression on margin + out-of-fold patch score) the patch weight is ~0 (0.04 vs 0.92): 0 fixes, 0 breaks.
+    - Reading: neither global nor part-level visual matching of fetched references knows anything the head doesn't. The head's wrong
+      areas look like the right ones at every visual grain we can match. What remains of the contrast idea is non-visual knowledge
+      (a frontier reader, lesson 80).
 

@@ -74,6 +74,7 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 99 (`contrast_gate.py`, EXPERT_PLAN first experiment): the 4B contrasting the head's top two areas with fetched YFCC references is
   position-biased and below the head (67 vs 83% on decisive, order-consistent pairs); fetched references beat Pinpoint's photos (67 vs 57%).
   Lesson 100 (`contrast_model.py`): our own comparator over MegaLoc matches to fetched references adds nothing to the head (AUC 0.821 vs 0.819).
+  Lesson 101 (`patch_matcher.py`): a learned patch-level matcher (frozen MegaLoc DINOv2 patches) over the same references: stacked weight ~0, end to end -1.6.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
