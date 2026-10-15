@@ -1291,3 +1291,18 @@ Modules and scripts named in lessons 1-53 that were removed with the one-step re
     - Reading: the new-place reward is too rare to give a gradient (lesson 82: pass@1 ~2% on fixable photos); the penalties dominate, so the
       policy keeps only the safe queries, which confirm Pinpoint's areas. Same failure as lesson 87. Queries as an RL action would need a
       denser proposer signal than the open-model 4B's recognition provides.
+
+97. **More photos per area sharpen MegaLoc a little but don't change the pick; MegaLoc can't choose the point inside an area (2026-10-15;
+    `megaloc_area.py`, dev3k; the user's go-ahead for "verification is the gap", step 1).** Per area the 64 index photos within 25 km of its
+    centre nearest the query in raw SigLIP2 (photographer excluded; median 2,703 photos within 25 km), MegaLoc on them (455k new embeddings,
+    ~40 min) besides the zoom file's 12.
+    - Right vs wrong areas (1,416 photos with both), AUC of the best-similarity margin: 12 photos 0.707, 64 0.733, 12 + 64 0.737; where the top
+      area is wrong (485): 0.610 -> 0.633.
+    - Conditional logit (< 25 km, Pinpoint + clue features 37.7%): + MegaLoc over 12 photos 38.5, over 64 38.5, 12 + 64 38.6 (separate
+      groups 38.6). The extra photos add +0.1, within noise.
+    - Point inside an area, % < 1 km: Pinpoint's top area, restricted top-1 17.0%, MegaLoc's best photo 15.5%, SigLIP2-nearest 14.0%, any of
+      the 76 30.8%; on right areas 38.3 / 35.2 / 31.0, any 75.2%. Where MegaLoc is confident (similarity >= 0.4, 10% of photos) its best photo
+      is the restricted top-1's answer (57-65% < 1 km for both); a switch on similarity / margin (threshold on one half) nets -0.35 / +0.03 at 1 km.
+    - Reading: MegaLoc's gain (lesson 93) is already captured by the 12 restricted photos; where it recognises the place, Pinpoint already does.
+      The 1 km headroom (any of 76: 30.8 vs 17.0) is other scenes of the same area again (lesson 91), not same-place matches.
+

@@ -161,6 +161,8 @@ combiners (incumbent-relative features, a switching margin; lesson 46) give the 
   not a generator. No full-index build.
 - **96: GRPO on free-text search queries** (tool result vs truth as reward): learns silence and precision (26 -> 64%) on safe queries;
   new right places 0.6% -> 0.3% of dev3k. The novel-hit reward is too sparse for the 4B.
+- **97: MegaLoc with 64 photos per area** (vs 12): AUC 0.707 -> 0.737, area pick +0.1; its best photo inside an area is worse than
+  Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%). The verifier is saturated on Pinpoint's photos.
 
 **Next.** `AGENT_DIRECTION.md` (agreed 2026-10-07): an agent that geolocates like a professional, with constraint clues (text, rules,
 feature co-occurrence map queries) through tools and retrieval as the candidate generator. Superseded plans (knowledge SFT + GRPO, the

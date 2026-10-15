@@ -63,6 +63,8 @@ experiments); full numbered lessons in `LESSONS.md`.**
   Lesson 95 (`megaloc_deep.py`): MegaLoc as a proposer (deep same-place search) finds right new places on ~1% of photos; verifier only.
   Lesson 96 (`query_grpo.py`): GRPO on free-text search queries with the tool result as reward learns silence (precision 26 -> 64%),
   new right places 0.6 -> 0.3% of dev3k.
+  Lesson 97 (`megaloc_area.py`): MegaLoc over 64 photos per area instead of 12: AUC 0.707 -> 0.737, area pick +0.1; inside an area
+  it is worse than Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%).
 - **Previous plan (2026-10-09): `HYPOTHESIS_PLAN.md`, geolocation as hypothesis testing.** Propose area hypotheses (Pinpoint's agreement
   areas, clue places), gather evidence inside each with Pinpoint restricted to it, compare with a learned set-level comparator; later an RL
   agent choosing which hypotheses to test. Development reference: Pinpoint + agreement (lesson 68). The text-search line and its results are
