@@ -215,3 +215,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     B / C, orders agree on 41%. Signal sits on the top area (P right 0.40 vs wrong 0.16 at rank 0), little below it (0.29 vs 0.24 at rank 2).
     Listwise linear chooser, 5-fold CV x 3 seeds on dev3k: area features 44.8-45.0%, + MegaLoc 46.9-47.0, + MegaLoc + names 47.0-47.2.
     Stopped during the train pass (6.3k of 66k answers kept in names_train_setft_own_27b.jsonl; resumable) at the user's request.
+115. **Where reading loses on commons26 dev** (977 photos; `scripts/commons26_read_funnel.py`, `scripts/commons26_wiki_probe.py`). The 4B reads text /
+    names on 52%, writes queries on 90%; a text-search result < 25 km exists for 19.0%; a right clue judged yes 10.7%; final 24.8% (retrained
+    top-1 19.7%). Photos whose text names the place (place_text, 29%): read 98%, a right result only 47.5% (~15% of dev lost at search);
+    found-but-lost 5.2% of dev (judge said no on 25 of 51, never judged 9, judged yes but not chosen 17). Precision of a search < 25 km:
+    read place names 33%, queries / text ~5%. The 4B's country guess is right on 53% (place_text 76%). Offline Wikipedia (25 languages,
+    top-3 hits with coordinates, same names + queries) is redundant: a hit < 25 km on 56.5% of photos the read chain already finds, 0.9% of
+    the rest; tier "none" 0.4% findable by any search. The limit is the queries (misreads, ambiguous common names), not the search backend.
