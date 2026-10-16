@@ -32,6 +32,8 @@ Test set (lesson 98), RL lambda 0:
 Under the primary protocol we lose at 1 km on yfcc4k (-6.2): every model was trained not to use the photographer's own photos, and zooming
 moves answers off them. Retraining the chain without the exclusion is pending (~4-5 h machine time; must drop the query photo itself, since
 MP16 queries are in the index; lesson 74 found the exclusion was the fine-tune's key ingredient, so re-test that first).
+Lesson 108 did: under the original protocol setft_a is below released on dev3k (-2.3 / -1.0 at 1 / 25 km; it skips the photographer's own
+near-identical photos), and the same fine-tune without exclusion (`setft_own`) is +0.9 / +2.0 over released. Pipeline retrain in progress.
 
 ## What moved the number (all retrieval-side)
 | Change | Gain at 25 km (train CV / dev3k) | Lesson |

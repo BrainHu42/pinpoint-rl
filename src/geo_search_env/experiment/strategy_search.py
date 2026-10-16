@@ -49,7 +49,8 @@ def _memmap_gallery(root: Path) -> dict[str, np.ndarray]:
 
 
 # PINPOINT_KEEP_OWN=1: benchmark queries carry no photographer, so no stage excludes the query photographer's own index photos (the original
-# Pinpoint protocol, lesson 54's "kept" rows; the user asked for it on the test set, 2026-10-15). Default: excluded (our rule).
+# Pinpoint protocol, lesson 54's "kept" rows; the user asked for it on the test set, 2026-10-15). Default: excluded (our rule). For MP16 queries
+# (train / dev3k, which are in the index) it drops only the query photo itself, as Pinpoint's training leave-one-out does (lesson 108).
 KEEP_OWN = os.environ.get("PINPOINT_KEEP_OWN") == "1"
 
 
@@ -75,6 +76,8 @@ def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, 
     mp16 = _memmap_gallery(MP16_EMBED)
     order = mp16["row_index"]
     mp16["author"] = np.asarray(authors, dtype=np.int64)[order]
+    if KEEP_OWN:  # MP16 queries are in the index: each photo becomes its own "author", so exclusion drops only the query photo itself
+        mp16["author"] = np.arange(len(order), dtype=np.int64)
     mp16["country"] = np.asarray(countries, dtype=np.int64)[order]
     mp16["region"] = np.asarray(regions, dtype=np.int64)[order]
     country_grid = LabelGrid(mp16["latlon"][:, 0], mp16["latlon"][:, 1], mp16["country"])

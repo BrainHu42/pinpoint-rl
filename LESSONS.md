@@ -161,3 +161,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     +0.90 / +0.70 pts at 1 km (SE ~0.3; 49-54 fixes vs 27-43 breaks), MLP +0.40 / +0.77 / +0.80; the same choosers without MegaLoc +0.0-0.3
     (lesson 91). 25 km unchanged. MegaLoc alone is worse than the reranker (argmax 15.7% vs 17.9%; switching on its lead nets negative).
     Real but below the 1-pt bar: ~+0.6 at 1 km, measured against Pinpoint's top-1, not the action agent's answer.
+108. **Original protocol on dev3k; retrained reranker without photographer exclusion** (`PINPOINT_KEEP_OWN=1` now drops only the query photo
+    for MP16 queries; run `setft_own` = setft_a's recipe with `EXCL=0`). dev3k top-1 within 1 / 25 km under the original protocol: released
+    27.4 / 42.3 (test: 28.9 / 46.4, so dev3k is a fair proxy); setft_a 25.1 / 41.3 (-2.3 / -1.0): trained with the photographer masked, it
+    passes over the photographer's own near-identical photos (top-1 own 13.9 vs 17.2%; on the 132 photos where only released picks one,
+    7.6 vs 73.5% within 1 km), though it is still +0.5 / +1.3 on the other photos. setft_own wide pool 28.3 / 44.3: +0.9 [+0.1, +1.7] /
+    +2.0 [+1.2, +2.8] over released. The base for retraining the pipeline under the primary protocol.

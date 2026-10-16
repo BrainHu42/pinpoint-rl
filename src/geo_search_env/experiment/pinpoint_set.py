@@ -29,7 +29,8 @@ import numpy as np
 OUT = Path("artifacts/pinpoint_set")
 SFT_ROOT = Path("artifacts/sft")
 NVME_INDEX = Path("/opt/dlami/nvme/pinpoint/attention_retrieval_index")  # staged copy of the index (hypotheses.NVME_INDEX), if present
-QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json",
+QUERY_FILES = {"mp16": SFT_ROOT / "queries.json" if (SFT_ROOT / "queries.json").exists() else Path("artifacts/pinpoint_reference/mp16_queries.json"),  # same list
+"mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json",
                "xfit0": OUT / "queries_xfit0.json", "xfit1": OUT / "queries_xfit1.json"}  # cross-fitting halves (scripts/xfit_halves.py)
 
 

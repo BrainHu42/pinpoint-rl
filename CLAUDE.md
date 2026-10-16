@@ -82,6 +82,8 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
   Lesson 106 (`names_judge.py`): local readers on the same pairs (4B 55%, Qwen3.8-27B 60-71%) are uncalibrated; every threshold nets negative. No paid LLMs (user, 2026-10-15).
   Lesson 107 (`refine_gate megaloc`): MegaLoc in a learned 1 km local chooser around the top-1: +0.6 to +0.8 pts at 1 km on dev3k
   (SE ~0.3; without MegaLoc +0.1), 25 km unchanged; below the 1-pt bar.
+  Lesson 108: dev3k under the original protocol (`PINPOINT_KEEP_OWN=1` drops only the query photo for MP16 queries): released 27.4 / 42.3,
+  setft_a 25.1 / 41.3 (it skips the photographer's own photos); `setft_own` (no exclusion) 28.3 / 44.3, +0.9 / +2.0: the new base.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
