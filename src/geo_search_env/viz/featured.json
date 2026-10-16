@@ -1,0 +1,10 @@
+[
+  {"set": "full", "i": 38, "note": "Vladivostok sign: a read clue becomes a new area (6,559 km → 2.8 km)"},
+  {"set": "full", "i": 2501, "note": "Polish Coca-Cola ad in Atlanta: zooming finds the museum (7,873 km → 60 m)"},
+  {"set": "full", "i": 1, "note": "Dolphin show: Bermuda vs Nassau look-alikes, zoom settles it (1,466 → 6.4 km)"},
+  {"set": "full", "i": 1102, "note": "Copenhagen mannequin: a lower-ranked area wins after zooming (521 km → 450 m)"},
+  {"set": "full", "i": 985, "note": "Stornoway seafront: right area found and pinned to < 1 km (977 km → 730 m)"},
+  {"set": "full", "i": 2571, "note": "Family photo: the retrained reranker finds the exact place Pinpoint missed (2,648 km → 0 m)"},
+  {"set": "full", "i": 1744, "note": "A break: released Pinpoint was exact, the agent moves 644 km away"},
+  {"set": "full", "i": 3200, "note": "No place signal (DJ booth): every stage is far off"}
+]

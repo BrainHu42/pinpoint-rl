@@ -108,6 +108,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
     `load(extra=("megaloc",))`), `zoom_agent.py`, `read_agent.py` (lesson 76), `megaloc_gate.py` (MegaLoc columns, lesson 93),
     `crop_look.py` (crop views; view 0 is the policy's free glance), `refine_headroom.py` (geometry helpers), `action_agent.py` (the RL action
     policy, `--apply`, `--one-km`).
+- Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
+  per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
+  pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).
 - Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`): `pinpoint.py` (`Pinpoint.search` with constraints), `maps.py` (OSM /
   GeoNames / Overture name search, `features_near`; `data/maps_search/osm.db`), `osm_extract.py` (`.venvs/osm`), `web.py` (Wikipedia /
   Wikivoyage via `experiment/web_search.py` + `text_search`).
