@@ -14,6 +14,13 @@ shortlist: per query, the nearest --k new YFCC photos within --radius km of the 
 fetch:     downloads the shortlist from Flickr and embeds it with SigLIP2 (photos already in the MP16 cache, i.e. bucket 99,
            reuse their cached embedding); stores only the embeddings.
 report:    does a new nearby photo beat the current global top-1 (so nearest-neighbour retrieval would land near the truth)?
+
+Results (2026-10-16, artifacts/density_probe/; 395k shortlisted, 21% gone from Flickr):
+- The index already has a photo within 1 km of the truth for ~85% of queries (25 km: >99%); when the reranker misses at 1 km,
+  ~17% are coverage gaps and the rest ranking failures (near-truth photo at SigLIP rank 12-999 or >= 1000).
+- + up to 50 nearest new YFCC photos within 1 km: a new photo beats the SigLIP top-1 for 3.7 / 2.7 / 4.3 % of dev3k / im2gps3k /
+  yfcc4k (near-duplicates >= 0.95 only 0.1-0.4 %); still growing with k (nearest 10 / 25 / 50: 1.3 / 2.5 / 3.7 on dev3k).
+  Where the retrained reranker is wrong at 1 km, a new photo wins for 1.8 / 1.2 / 2.8 % (the truth-centred ceiling for 1 km fixes).
 """
 
 from __future__ import annotations
