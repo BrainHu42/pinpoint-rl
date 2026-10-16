@@ -167,3 +167,6 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     passes over the photographer's own near-identical photos (top-1 own 13.9 vs 17.2%; on the 132 photos where only released picks one,
     7.6 vs 73.5% within 1 km), though it is still +0.5 / +1.3 on the other photos. setft_own wide pool 28.3 / 44.3: +0.9 [+0.1, +1.7] /
     +2.0 [+1.2, +2.8] over released. The base for retraining the pipeline under the primary protocol.
+    Pipeline stages on setft_own (original protocol, no MegaLoc / RL yet; `hypothesis_agent --ckpt-tag setft_own`): dev3k top-1 44.3 / 28.3,
+    area oracle (K = 5) 60.3%; answer head with all zooms 46.1 / 29.0 (set pick) or 46.7 / 27.6 (agree pick) = +3.8 / +1.6 or +4.4 / +0.2
+    over released under the same protocol (42.3 / 27.4). The script's "released Pinpoint" line is the photographer-excluded baseline.
