@@ -209,3 +209,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     (+1.5 / +7.4 / +5.5 / +2.4 / +0.3; plain mean 5.9 / 23.9 vs 4.7 / 17.5), dev 7.2 / 26.7 / 42.0 / 63.1 / 79.4; retrained top-1 alone
     18.1 at 25 km. The gain is reading: read alone +4.4 at 25 km, recognise (MegaLoc) +0.0, zooms +0.1-0.5 (all 5,023 photos). By the 27B's
     tier at 25 km: landmark 25.3 -> 36.6, city 26.0 -> 40.7, region 16.6 -> 19.4, none 6.9 -> 8.3.
+114. **27B named-area choice as head evidence: +0.2** (`names_feature.py`, `scripts/names_gate.py`; dev3k, setft_own). Qwen3.8-27B-FP8 sees
+    the photo and all of its areas named "near <town> (lat, lon), country" and picks a letter (first-token P, both orders averaged; ~2.4
+    photos/s). Its pick is right (centre < 25 km) on 18.3% of photos with > 1 area vs first area 39.5% (any 59.1%); position-biased toward
+    B / C, orders agree on 41%. Signal sits on the top area (P right 0.40 vs wrong 0.16 at rank 0), little below it (0.29 vs 0.24 at rank 2).
+    Listwise linear chooser, 5-fold CV x 3 seeds on dev3k: area features 44.8-45.0%, + MegaLoc 46.9-47.0, + MegaLoc + names 47.0-47.2.
+    Stopped during the train pass (6.3k of 66k answers kept in names_train_setft_own_27b.jsonl; resumable) at the user's request.
