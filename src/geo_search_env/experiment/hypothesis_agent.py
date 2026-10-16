@@ -24,23 +24,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 
-from .area_model import _paths
+from .area_model import VARIANT, _paths
 from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
 if __import__("os").environ.get("HYP_VARIANT") == "regionhyps":
     SOURCES = (0, 1, 2)  # + region hypotheses (region_hyps.py, lesson 85)
 BOX_KM = 25.0
+LOCAL_REFINE = os.environ.get("LOCAL_REFINE") == "1"  # lesson 111: answer points moved by local_refine.py
 CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
 
 
-def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, gate: bool = False) -> np.ndarray:
+def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, gate: bool = False, return_pick: bool = False):
     """km to the truth of each zoomed area's soft-kernel pick: argmax over its restricted candidates of sum_j softmax(s / T)_j exp(-d_ij / KERNEL_KM).
     in_group (hybrid rule): only among the box rule's winning group (the founder with the most softmax(s / 0.2) mass within BOX_KM, and its
     members), so the 25 km decision stays the box rule's and the kernel only places the point.
@@ -50,6 +52,7 @@ def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, 
     from .pinpoint_set import _haversine_matrix
 
     out = np.full(len(rows), np.inf)
+    picks = np.full(len(rows), -1)
     for c in range(0, len(rows), 8192):
         r = rows[c:c + 8192]
         valid = zm["rows"][r] >= 0
@@ -71,7 +74,8 @@ def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, 
         both = np.stack([truth[zm["photo"][r]], lat[np.arange(len(r)), pick]], 1)
         km = _haversine_matrix(both)[:, 0, 1]
         out[c:c + 8192] = np.where(valid.any(1), km, np.inf)
-    return out
+        picks[c:c + 8192] = np.where(valid.any(1), pick, -1)
+    return (out, picks) if return_pick else out
 
 
 def area_points(tag: str, ckpt_tag: str = "setft_a") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -93,19 +97,22 @@ def _post(f: dict) -> np.ndarray:
     return np.nan_to_num(np.stack(cols, 1)).astype(np.float32)
 
 
-def _unzoomed_km(f: dict, photos: list[dict]) -> np.ndarray:
-    """Answer km of an area that was not zoomed: the global pool's best-scored candidate within BOX_KM of its centre (the centre if none)."""
+def _unzoomed_km(f: dict, photos: list[dict], return_pick: bool = False):
+    """Answer km of an area that was not zoomed: the global pool's best-scored candidate within BOX_KM of its centre (the centre if none).
+    return_pick: also that candidate's pool position (-1: the centre)."""
 
     from .strategy_search import _haversine_km
 
     out = np.zeros(len(f["photo"]))
+    pick = np.full(len(f["photo"]), -1)
     for i, (ph, c) in enumerate(zip(f["photo"], f["center"])):
         e = photos[ph]
         pool = np.asarray(e["pool"], np.float64)  # sorted by score
         inside = np.flatnonzero(_haversine_km(c[0], c[1], pool) < BOX_KM)
         point = pool[inside[0]] if len(inside) else np.asarray(c, np.float64)
+        pick[i] = inside[0] if len(inside) else -1
         out[i] = _haversine_km(*e["truth"], point[None])[0]
-    return out
+    return (out, pick) if return_pick else out
 
 
 def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated", extra: tuple[str, ...] = ()) -> dict:
@@ -140,7 +147,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     # extra columns aligned with these features (cropcheck: crop_look.py, groups global / crop)
     kinds = ("regioncheck",) if "regionhyps" in str(feat_path) else ("mapcheck", "namecheck", "cropcheck", "megaloc")
     for kind in kinds if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
-        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}.npz"  # pre-zoom part; all but density need the clue reader
+        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"  # pre-zoom part; all but density need the clue reader
         if not path.exists():
             continue
         mc = np.load(path)
@@ -160,6 +167,10 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     if zoom_rule in ("soft", "hybrid", "gated"):
         soft_km = _kernel_km(zm, rows, np.asarray([e["truth"] for e in photos], np.float64), in_group=zoom_rule == "hybrid", gate=zoom_rule == "gated")
         zoom_km = np.where(np.isfinite(soft_km), soft_km, zoom_km)
+    if LOCAL_REFINE and zoom_rule == "gated":  # lesson 111: both answer points of every area moved by the MegaLoc local chooser (local_refine.py)
+        ref = np.load(Path("artifacts/agent") / f"local_refine_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz")
+        assert len(ref["km_unzoom"]) == len(f["photo"])
+        un_km, zoom_km = ref["km_unzoom"][rows], np.where(np.isfinite(ref["km_zoom"][rows]), ref["km_zoom"][rows], zoom_km)
     set_km = np.where(f["set_top_in"][rows] > 0, f["set_km"][photo], zoom_km)
     cell = cand[valid]
     if stats is None:  # train: its own statistics; other sets reuse them

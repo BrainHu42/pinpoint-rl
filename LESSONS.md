@@ -192,3 +192,12 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     32.6 at 1 km, lesson 110). Extra areas for C errors (ceiling): seeding 1 / 2 / 3 areas at the top-scored pool candidates outside every
     area adds a right area on 1.9 / 3.7 / 4.7% of dev3k misses (MegaLoc-ranked seeds 1.4 / 2.0 / 2.6%); with the head converting low-ranked
     areas rarely, expect ~+0.5-1 pt; not built.
+112. **Lesson 111 on the test set, extra areas, MegaLoc local refinement** (original protocol, setft_own). Test (eval halves), W = 0.5
+    lambda 0: both 31.6 / 50.6 / 62.7 / 75.1 / 86.6 (vs released +2.7 [+1.9, +3.6] at 1 km, +4.2 [+3.3, +5.2] at 25 km; lesson 109 29.1 / 51.2);
+    im2gps3k 23.2 / 52.4; yfcc4k 37.1 / 49.5 (+3.6 / +4.7). dev3k % < 25 / 1 km, reference W = 0.5 lambda 0 47.3 / 30.8:
+    - extra areas (`hypotheses run --k 8 --min-rank 5`, `HYP_VARIANT=more8`: Pinpoint areas ranked 5-7 through restricted search, features,
+      zoom, MegaLoc): RL lambda 0 47.6 / 30.7 (+0.3 / -0.1), lambda 0.005 46.7 / 29.9; fixed "everything" 47.6 / 31.0; train CV +0.3.
+    - MegaLoc local refinement of each area's two answer points (`local_refine.py`: candidates within 25 km of the point, listwise MLP over
+      score / density / MegaLoc columns, fitted on 12k train photos; option level +0.63 at 1 km; `action_agent --refine`): RL lambda 0
+      47.2 / 31.1 (-0.1 / +0.3), lambda 0.005 46.9 / 30.9.
+    Both below the 1-pt bar; not adopted. Lessons 110-112: the remaining misses are retrieval's (D) and the head's ranking of areas it has (A).

@@ -235,7 +235,7 @@ def _write_columns(tag: str, zm, sims: np.ndarray) -> None:
         cols.append(rel)
     x = np.stack(cols, 1).astype(np.float32)
     dst = OUT / f"megaloc_{tag}_{CKPT_TAG}.npz"
-    np.savez(dst, photo=photo, source=zm["source"], x=x, groups=np.asarray(["megaloc"] * x.shape[1]))
+    np.savez(dst, photo=photo, source=zm["source"], x=x, groups=np.asarray(["megaloc"] * x.shape[1]), sims=sims.astype(np.float16))
     print(f"-> {dst}: {np.mean(np.isnan(sims[zm['rows'] >= 0])):.2%} pairs missing")
 
 
