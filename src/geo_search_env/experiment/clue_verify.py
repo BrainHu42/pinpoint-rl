@@ -272,7 +272,7 @@ def report(tag: str, split: str) -> None:
                 return b["right"], True
         return km[r["photo"]] < RIGHT_KM, False
 
-    grid = [(t, mg) for t in np.arange(0.3, 0.9, 0.025) for mg in (0.0, 0.05, 0.1, 0.15, 0.2, 0.3)]
+    grid = [(t, mg) for t in np.arange(0.05, 0.6, 0.0125) for mg in (0.0, 0.025, 0.05, 0.1, 0.15, 0.2)]
     g_of = np.asarray([groups.get(r["image_id"], r["image_id"]) for r in rows])
     ug = np.unique(g_of)
     fold = {gg: k % 5 for k, gg in enumerate(np.random.default_rng(0).permutation(ug))}
@@ -290,10 +290,27 @@ def report(tag: str, split: str) -> None:
               f"fixes {fixes}, breaks {breaks})")
     oracle = np.asarray([b or any(p["right"] for p in r["places"] if p["kind"] == "text") for r, b in zip(rows, base)])
     print(f"  ceiling (switch exactly when a text place is right and the answer wrong): {100 * oracle.mean():.1f}%")
-    for t in (0.5, 0.6, 0.7):
+    for t in (0.15, 0.2, 0.25, 0.3):
         out = [apply(r, t, 0.0) for r in rows]
         res = np.asarray([o[0] for o in out]); sw = np.asarray([o[1] for o in out])
         print(f"  fixed t={t}, m=0: {100 * res.mean():.1f}% (switched {sw.sum()}, fixes {int((res & ~base).sum())}, breaks {int((~res & base).sum())})")
+    tiers = {}
+    if meta.exists():
+        with meta.open(encoding="utf-8", newline="") as f:
+            tiers = {r["IMG_ID"]: r.get("tier", "") for r in csv.DictReader(f)}
+    if tiers:
+        print("\nby tier (commons26): text places right / wrong with sim >= 0.15 and >= 0.2, AUC of sim vs weight, fixed t=0.2 switch")
+        for tier in ("landmark", "city", "region", "none"):
+            idx = [k for k, r in enumerate(rows) if tiers.get(r["image_id"]) == tier]
+            tp = [p for k in idx for p in rows[k]["places"] if p["kind"] == "text"]
+            pos, neg = [p for p in tp if p["right"]], [p for p in tp if not p["right"]]
+            out = [apply(rows[k], 0.2, 0.0) for k in idx]
+            res = np.asarray([o[0] for o in out]); b = base[idx]
+            print(f"  {tier:8s} photos {len(idx):4d}; right places {len(pos):3d}: >=0.15 {100 * np.mean([p['sim'] >= .15 for p in pos]):4.1f}% "
+                  f">=0.2 {100 * np.mean([p['sim'] >= .2 for p in pos]):4.1f}% | wrong {len(neg):4d}: >=0.15 {100 * np.mean([p['sim'] >= .15 for p in neg]):4.1f}% "
+                  f">=0.2 {100 * np.mean([p['sim'] >= .2 for p in neg]):4.1f}% | AUC sim {_auc([p['sim'] for p in pos], [p['sim'] for p in neg]):.2f} "
+                  f"weight {_auc([p['weight'] for p in pos], [p['weight'] for p in neg]):.2f} | t=0.2: {100 * b.mean():.1f} -> {100 * res.mean():.1f}% "
+                  f"(fixes {int((res & ~b).sum())}, breaks {int((~res & b).sum())})")
 
 
 def main(argv=None) -> int:
