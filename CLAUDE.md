@@ -95,7 +95,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 |---|---|---|
 | **train** | MP16 bucket 99 (Pinpoint never trained on it) minus dev | 35,359 |
 | **dev** | `dev3k` (photo set `artifacts/photo_sets/dev3k`, Pinpoint's pool): choose and tune everything here | 3,000 |
-| **test** | im2gps3k + yfcc4k eval halves (photo set `full`) | 3,795 |
+| **test** | **all of im2gps3k + yfcc4k** (both halves; user, 2026-10-16). Results through lesson 111 used only the eval halves (photo set `full`, 3,795), Pinpoint's reference rows too | 7,533 |
 - **Leave the test set alone** (user, 2026-10-07): no training, tuning, model runs, feature extraction, diagnostics or measurements on
   it unless the user asks. Everything is chosen and measured on dev.
 - No photographer-based splits. (The cached retrieval already drops gallery photos by the query's own photographer; nothing to do about it.)
