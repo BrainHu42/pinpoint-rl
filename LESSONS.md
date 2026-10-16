@@ -246,3 +246,13 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     Confidence switch (threshold from other folds): 24.8 -> 25.5% (+0.7, SE 0.7; landmark +3.3, city +3.8, region -1.6). Source ablations:
     dropping Overture / Flickr / OSM each costs ~1.3-1.5 pts of top-1 and ~1 pt of switch gain; GeoNames is redundant (its names are in Overture / OSM).
     The candidates that would fix the pipeline (16.5% of dev under the cap) are not the ones a ranker can pick without knowing the pipeline's answer.
+120. **Why the candidate ranker (lesson 119) barely helps** (`scripts/commons26_ranker_diag.py`; commons26 dev). (1) Much of the headroom was luck:
+    with all ~200 candidates per photo, some candidate lies < 25 km of a *random other photo's* truth on 12.2% (tier none 9.7 vs 15.5% for the
+    real truth); the 64 cap cuts chance to 3.7% while real recall drops 45.5 -> 35.0% (net of chance ~33 vs ~31). (2) On the 16.5% of photos
+    with a right candidate and a wrong pipeline answer, the right candidate's evidence is weaker than the ranker's wrong top on every feature
+    (queries 1.5 vs 2.0 log, sources 2.5 vs 3.2, top-of-a-query 57 vs 89%, near area 1 4 vs 44%, Pinpoint mass 0.04 vs 0.30); it ranks 1st on
+    29% (86% on pipeline-right photos), median P 0.02. The ranker correctly learns that Pinpoint agreement + many agreeing queries = right, which
+    the pipeline already knows. (3) Rare matches don't separate: 52% of right candidates have a query with <= 5 matches, but so do wrong tops
+    (dates, single Flickr titles, generic descriptions). (4) Not mostly geometry: the wrong top is 25-100 km off on 19%, 100-300 km on 35%.
+    The fixable photos are ones where text evidence is thin and contradicts retrieval; a better ranker can't find them, better reading or
+    evidence that the pipeline is wrong (its own confidence) might.
