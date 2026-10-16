@@ -15,6 +15,12 @@ leak guard beyond that; dev3k (MP16 photos) would need the photo's own id and ph
 shortlist: places + photo ids -> artifacts/clue_verify/<tag>_<split>_shortlist.json
 fetch:     downloads each unique photo once, MegaLoc-embeds it (and the queries) -> <tag>_<split>_megaloc.npz
 report:    separation of right / wrong places, the pipeline's answer vs the best text place, and a switch rule chosen by grouped CV.
+
+Result (commons26 dev, 2026-10-16; 6,693 places, 51k photos, 42k fetched): negative. Right vs wrong text places, best MegaLoc cosine
+AUC 0.60 (targeted 0.60, nearby 0.51) vs text-search weight 0.68; within a photo the visual top is right on 27% vs weight order 59%
+(weight + MegaLoc at most 63%, in-sample). Scores are low throughout (right places median 0.07, p90 0.16; >= 0.3 on 2.2%; random pairs
+0.03, fetched photos of the same place and phrase match each other at median 0.20): 2004-14 Flickr photos rarely show the same view as
+the 2026 query. Switch rule (grouped CV): 24.8 -> 24.6-24.7%, ceiling 31.0%.
 """
 
 from __future__ import annotations

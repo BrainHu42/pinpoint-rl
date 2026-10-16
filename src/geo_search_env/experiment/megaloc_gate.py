@@ -179,7 +179,15 @@ def _image_ids(tag: str, need: np.ndarray):
         next(reader)
         csv_ids = [r[0] for r in reader]
     # benchmark queries (photo set full) are read from their files, MP16 photos from the tar shards
-    ids = [e.get("path") or str(Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"]) if "benchmark" in e else e["image_id"] for e in photos]
+    def bench_path(e) -> str:  # stored paths can point into deleted worktrees; commons26 images live under release/
+        options = [e.get("path"), Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"],
+                   Path("data/pinpoint") / e["benchmark"] / "release" / "images" / e["image_id"]]
+        found = next((str(p) for p in options if p and Path(p).exists()), None)
+        if found is None:
+            raise FileNotFoundError(f"no image file for {e['benchmark']} {e['image_id']}")
+        return found
+
+    ids = [bench_path(e) if "benchmark" in e else e["image_id"] for e in photos]
     ids += [csv_ids[row_index[cache[r]]] for r in need]
     mean, std = np.asarray([0.485, 0.456, 0.406], np.float32), np.asarray([0.229, 0.224, 0.225], np.float32)
 
@@ -197,7 +205,7 @@ def _image_ids(tag: str, need: np.ndarray):
                 self.images = MP16Images()
             try:
                 key = self.keys[i]
-                data = Path(key).read_bytes() if key.startswith("data/pinpoint/") else self.images.read(key)
+                data = Path(key).read_bytes() if key.startswith("data/pinpoint/") or key.startswith("/") else self.images.read(key)
                 im = Image.open(io.BytesIO(data)).convert("RGB").resize((SIZE, SIZE), Image.BILINEAR)
                 a = (np.asarray(im, np.float32) / 255.0 - mean) / std
                 return i, torch.from_numpy(a.transpose(2, 0, 1).copy())
