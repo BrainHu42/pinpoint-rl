@@ -26,6 +26,8 @@ CKPT_TAG = "setft_a"
 N_ML = 4  # megaloc columns, appended last by load(extra=("megaloc",))
 UNITS = {"zoom": 1.0, "read": 2.0, "recognise": 1.0}
 MAX_STEPS = 8
+ONE_KM = 0.0  # --one-km W (lesson 111): the answer chooses a point per area (the global pool's best near the area, or the zoomed kernel peak)
+# and both the answer head's loss and the policy's return add W x [answer < 1 km]; 0 = lesson 94's area-only answer.
 
 
 def _data(tag: str, stats=None, ckpt: str | None = None):
@@ -105,6 +107,8 @@ def fit_answer(d, photos, seed, epochs=25):
     torch.manual_seed(seed)
     gen = torch.Generator(device="cuda").manual_seed(seed)
     net = _net(d["pre"].shape[-1] + 2, d["post"].shape[-1], d["cand"].shape[-1]).cuda()
+    if ONE_KM:
+        net.point = torch.nn.Sequential(torch.nn.LayerNorm(64), torch.nn.Linear(64, 64), torch.nn.GELU(), torch.nn.Linear(64, 2)).cuda()
     batches = max(1, len(photos) // 128)
     params = [p for n, p in net.named_parameters() if not n.startswith("action.")]
     opt = torch.optim.AdamW(params, lr=1e-3, weight_decay=1e-2)
@@ -117,12 +121,24 @@ def fit_answer(d, photos, seed, epochs=25):
             u = torch.rand(len(bi), 2, device="cuda", generator=gen) < 0.5
             v = view(b, u[:, 0], u[:, 1])
             z = _random_zoom(v, gen)
-            ok = _right(v, z) & v["mask"]
-            use = ok.any(1) & ~(ok == v["mask"]).all(1)
-            if not use.any():
-                continue
-            logp = torch.log_softmax(net.answer_logits(v, z), 1)
-            loss = -torch.logsumexp(logp.masked_fill(~ok, float("-inf")), 1)[use].mean()
+            if ONE_KM:
+                logp = torch.log_softmax(_options(net, v, z), 1)
+                okm = lambda r: torch.cat([v["km_unzoom"] < r, (v["km_zoom"] < r) & z], 1) & torch.cat([v["mask"], v["mask"] & z], 1)
+                loss = 0.0
+                for r, w in ((25.0, 1.0), (1.0, ONE_KM)):
+                    ok = okm(r)
+                    use = ok.any(1)
+                    if use.any():
+                        loss = loss - w * torch.logsumexp(logp.masked_fill(~ok, float("-inf")), 1)[use].mean()
+                if not torch.is_tensor(loss):
+                    continue
+            else:
+                ok = _right(v, z) & v["mask"]
+                use = ok.any(1) & ~(ok == v["mask"]).all(1)
+                if not use.any():
+                    continue
+                logp = torch.log_softmax(net.answer_logits(v, z), 1)
+                loss = -torch.logsumexp(logp.masked_fill(~ok, float("-inf")), 1)[use].mean()
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -133,10 +149,24 @@ def fit_answer(d, photos, seed, epochs=25):
     return net
 
 
+def _options(net, v, zoomed):
+    """ONE_KM: logits over 2h answers, (area, its unzoomed point) then (area, its zoomed point; zoomed areas only)."""
+
+    import torch
+
+    e = net.encode(v, zoomed)
+    a = net.answer(e).squeeze(-1)
+    pt = net.point(e)
+    return torch.cat([(a + pt[..., 0]).masked_fill(~v["mask"], float("-inf")), (a + pt[..., 1]).masked_fill(~(v["mask"] & zoomed), float("-inf"))], 1)
+
+
 def _km(net, v, zoomed):
     import torch
 
     with torch.no_grad():
+        if ONE_KM:
+            pick = _options(net, v, zoomed).argmax(1)
+            return torch.cat([v["km_unzoom"], v["km_zoom"]], 1).gather(1, pick[:, None]).squeeze(1)
         pick = net.answer_logits(v, zoomed).argmax(1)
     return torch.where(zoomed, v["km_zoom"], v["km_unzoom"]).gather(1, pick[:, None]).squeeze(1)
 
@@ -229,7 +259,8 @@ def fit_policy(net, d, photos, lam, seed, epochs=10, beta=0.01):
             km, cost, logp, ent, _ = rollout(net, pol, b, lam, "sample", gen)
             with torch.no_grad():
                 km_g, cost_g, _, _, _ = rollout(net, pol, b, lam, "greedy")
-                adv = ((km < 25).float() - cost) - ((km_g < 25).float() - cost_g)
+                ret = lambda k: (k < 25).float() + ONE_KM * (k < 1).float()
+                adv = (ret(km) - cost) - (ret(km_g) - cost_g)
             loss = -(adv * logp).mean() - beta * ent.mean()
             opt.zero_grad()
             loss.backward()
@@ -256,12 +287,14 @@ def evaluate(net, pols: dict, d, photos, base_km) -> list[tuple]:
 def report(name, rows, base_km, rt_km):
     from .strategy_search import _bootstrap
 
-    print(f"\n {name}: released Pinpoint {np.mean(base_km < 25):.1%}, retrained top-1 {np.mean(rt_km < 25):.1%} (< 25 km)")
-    print(f"   {'':40s} {'<25 km':>7s} {'vs rel.':>8s} {'<1 km':>6s} {'zooms':>6s} {'read':>5s} {'recog':>6s} {'cost':>5s}")
+    print(f"\n {name}: released Pinpoint {np.mean(base_km < 25):.1%} / {np.mean(base_km < 1):.1%}, retrained top-1 {np.mean(rt_km < 25):.1%} / "
+          f"{np.mean(rt_km < 1):.1%} (< 25 / 1 km)")
+    print(f"   {'':40s} {'<25 km':>7s} {'vs rel.':>8s} {'<1 km':>6s} {'vs rel.':>8s} {'zooms':>6s} {'read':>5s} {'recog':>6s} {'cost':>5s}")
     for label, km, (nz, nr, nc) in rows:
         c = _bootstrap((km < 25).astype(float) - (base_km < 25))
         units = UNITS["zoom"] * nz + UNITS["read"] * nr + UNITS["recognise"] * nc
-        print(f"   {label:40s} {np.mean(km < 25):7.1%} {100 * c[0]:+7.1f} {np.mean(km < 1):6.1%} {nz:6.2f} {nr:5.0%} {nc:6.0%} {units:5.2f}", flush=True)
+        print(f"   {label:40s} {np.mean(km < 25):7.1%} {100 * c[0]:+7.1f} {np.mean(km < 1):6.1%} {100 * (np.mean(km < 1) - np.mean(base_km < 1)):+7.1f} "
+              f"{nz:6.2f} {nr:5.0%} {nc:6.0%} {units:5.2f}", flush=True)
 
 
 def run(lambdas: Sequence[float]) -> None:
@@ -302,16 +335,18 @@ def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
             report(f"{name} / {label} ({len(photos)} photos)", rows, d["base_km"][photos], d["rt_base_km"][photos])
             if label == "all":
                 saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
-    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}.npz", **saved)
+    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{f'_1km{ONE_KM:g}' if ONE_KM else ''}.npz", **saved)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lambdas", type=float, nargs="*", default=(0.0, 0.0025, 0.005, 0.0075, 0.01, 0.015))
     parser.add_argument("--apply", nargs="*", help="tag:ckpt photo sets to apply the train-fitted agent to (e.g. full:setft_a full:setft_aown)")
+    parser.add_argument("--one-km", type=float, default=0.0, help="weight of [answer < 1 km] in the answer loss and the return (lesson 111)")
     parser.add_argument("--ckpt-tag", default=CKPT_TAG, help="train / dev3k photo sets (setft_own: retrained without photographer exclusion, lesson 108)")
     args = parser.parse_args(argv)
     globals()["CKPT_TAG"] = args.ckpt_tag
+    globals()["ONE_KM"] = args.one_km
     if args.apply:
         apply(args.lambdas, args.apply)
     else:

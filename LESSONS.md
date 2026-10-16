@@ -185,3 +185,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     beyond the reranker (re-rank on train: 44.3 -> 44.2-44.4% on dev3k). 1 km: vs the retrained top-1 the pipeline fixes 129 and breaks
     123 (72% of breaks have the photographer's own photo in the pool); best-of(pipeline, top-1) would be 32.6 vs 28.5%; a confidence gate
     on the top-1's share recovers +0.3.
+111. **1 km-aware answer and extra-area ceiling** (dev3k, original protocol, setft_own). `action_agent --one-km W`: the answer picks an area
+    and one of its two points (the global pool's best candidate near the area, often the exact match, or the zoomed kernel peak); the
+    answer loss and the RL return add W x [< 1 km]. dev3k % < 25 / 1 km: lesson 109 lambda 0 47.9 / 28.5, lambda 0.005 47.1 / 29.0;
+    W = 0.5 lambda 0 **47.3 / 30.8** (-0.6 / +2.3), lambda 0.005 47.0 / 30.2; W = 1 lambda 0 46.9 / 30.6, 0.005 46.9 / 30.6 (best-of oracle
+    32.6 at 1 km, lesson 110). Extra areas for C errors (ceiling): seeding 1 / 2 / 3 areas at the top-scored pool candidates outside every
+    area adds a right area on 1.9 / 3.7 / 4.7% of dev3k misses (MegaLoc-ranked seeds 1.4 / 2.0 / 2.6%); with the head converting low-ranked
+    areas rarely, expect ~+0.5-1 pt; not built.
