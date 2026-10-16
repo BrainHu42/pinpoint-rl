@@ -177,3 +177,11 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     22.4 / 52.8 / 66.4 / 78.9 / 90.3 (+4.0 at 25 km); yfcc4k 33.3 / 50.2 / 60.6 / 73.3 / 84.8 (+5.3; lambda 0.005 35.9 at 1 km, +2.4).
     vs lesson 98 (setft_a, same protocol): 25 km 48.2 -> 51.2, 1 km 25.5 -> 29.1-30.9; the yfcc4k 1 km loss is gone. Zooms move answers off
     exact matches (1 km falls with zooms); recognise (MegaLoc) is the action that helps at both distances. dev3k: lambda 0 28.5 / 47.9, 0.005 29.0 / 47.1.
+110. **Error analysis of the lesson 109 system on dev3k** (original protocol, RL lambda 0, 47.9% < 25 km). Misses (52.1%): D nothing within
+    25 km retrieved 25.9% of dev3k (63% of them > 750 km off; by eye mostly people, pets, macros, sky, interiors); A a right area exists but
+    the head picks another 13.8% (the right one 2nd-5th in 81%); C a right candidate in the pool but in none of the <= 5 areas 10.4%
+    (median rank 18); B right candidate inside a wrong-centred area 2.1%. Place names the 4B already reads geocode within 25 km on 0.5% of
+    misses vs 10% of hits. Right own-photographer candidates exist in 43% of A and 35% of C, but author agreement in the pool adds nothing
+    beyond the reranker (re-rank on train: 44.3 -> 44.2-44.4% on dev3k). 1 km: vs the retrained top-1 the pipeline fixes 129 and breaks
+    123 (72% of breaks have the photographer's own photo in the pool); best-of(pipeline, top-1) would be 32.6 vs 28.5%; a confidence gate
+    on the top-1's share recovers +0.3.
