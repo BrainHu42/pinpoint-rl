@@ -232,3 +232,8 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     < 25 km: phrases 20.4% (top result 15.5%), phrases + spans 31.4%, vs text_search 24.3% / 39.4%; OSM finds where text_search (phrases +
     spans) doesn't on 4.0% (place_text 5.0%); either 43.4% (place_text 78.4%). Not in the read chain so far because on MP16 it was
     redundant (lessons 77-79); on fresh Commons photos it adds recall, but the gap remains ranking.
+118. **OSM names near Pinpoint's areas as an area check** (`scripts/commons26_osm_near.py`, `_report.py`; commons26 dev). Fast form: one global FTS lookup
+    per phrase / span (OSM + places.db, <= 2,000 matches each), then keep matches < 25 km of each area: 95 s for dev vs ~55 min for per-area
+    `maps.query(near=)` (box scans for common names). Area 1 right 21.0%, any area 35.8%. A name matching <= 20 places worldwide found near an
+    area ranked 2+: right 12.6% vs 3.4% without (n 269 / 3,463). Rule "most-supported area by names with <= 5 matches, else area 1": +1.4 pts
+    of dev (18% of photos flagged); looser thresholds lose (<= 100: -0.1, <= 4,000: -2.8). Not yet tested beyond the head's clue features.
