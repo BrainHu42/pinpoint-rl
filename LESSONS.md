@@ -237,3 +237,12 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     `maps.query(near=)` (box scans for common names). Area 1 right 21.0%, any area 35.8%. A name matching <= 20 places worldwide found near an
     area ranked 2+: right 12.6% vs 3.4% without (n 269 / 3,463). Rule "most-supported area by names with <= 5 matches, else area 1": +1.4 pts
     of dev (18% of photos flagged); looser thresholds lose (<= 100: -0.1, <= 4,000: -2.8). Not yet tested beyond the head's clue features.
+119. **Learned ranker over four-source text-search candidates** (`candidate_ranker.py`; commons26 dev, grouped 5-fold CV by uploader). Every 4B phrase
+    and 1-3 word span searched separately in GeoNames, Overture, Flickr titles / tags and OSM names (30.9k queries, 9 min), clustered per (query,
+    source), merged per photo within 25 km, top 64 by support kept (some candidate right 35.0%; uncapped ~43-47%). Listwise ranker with a 'none'
+    option over 37 features (query specificity, agreement across queries / sources, Pinpoint areas and mass, 4B country, town population):
+    top candidate right 20.7% linear / 19.1% MLP vs phrase top cluster 19.0% and a support heuristic 15.4%; well calibrated (confidence >= 0.7:
+    86 photos, 84% right). But its right picks are the pipeline's: top right & pipeline wrong 4.8% of dev, pipeline right & top wrong 8.9%.
+    Confidence switch (threshold from other folds): 24.8 -> 25.5% (+0.7, SE 0.7; landmark +3.3, city +3.8, region -1.6). Source ablations:
+    dropping Overture / Flickr / OSM each costs ~1.3-1.5 pts of top-1 and ~1 pt of switch gain; GeoNames is redundant (its names are in Overture / OSM).
+    The candidates that would fix the pipeline (16.5% of dev under the cap) are not the ones a ranker can pick without knowing the pipeline's answer.
