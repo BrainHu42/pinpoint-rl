@@ -392,7 +392,7 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path | None) -> 
     hidden = torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1)
     truth = np.asarray([p["truth"] for p in photos], np.float32)[h["photo"]]
     # the zoomed candidates with their CLS states, for the look-zoom-rerank model (PINPOINT_SET_PLAN.md step 1)
-    zoom_path = OUT / f"zoom_{tag}{''.join('_' + x for x in extra_hyps if x == 'regionhyps' or x.startswith('more'))}.npz"  # a separate variant
+    zoom_path = OUT / f"zoom_{tag}{''.join('_' + x for x in extra_hyps if x.startswith('more'))}.npz"  # a separate variant
     np.savez(zoom_path, photo=h["photo"], source=h["source"], rank=h["rank"], support=h["support"], center=h["center"],
              rows=rows, latlon=h["latlon"].astype(np.float32), scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16))
     if model_path is None:  # zoom states only (retrained rerankers: no offline set model to run inside the hypotheses)

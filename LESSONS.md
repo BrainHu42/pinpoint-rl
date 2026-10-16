@@ -3,7 +3,8 @@
 One entry per numbered lesson: the claim, the deciding numbers, the module. The full text with every number is at git tag
 `lessons-full-2026-10-15` (`git show lessons-full-2026-10-15:LESSONS.md`); the summary is `LEARNINGS.md`. Add new lessons here in the same
 form (2-4 lines). Modules no longer in the tree: lessons 1-51 at tag `pre-cleanup-2026-10-07`, 1-53 (one-step reranker) at commit 57918cb,
-55-67 and 77-79 at tag `pre-tool-consolidation`; plans cited (AGENT_DIRECTION, HYPOTHESIS_PLAN, PINPOINT_SET_PLAN, TEXT_SEARCH_PLAN) at tag
+55-67 and 77-79 at tag `pre-tool-consolidation`, 55-69 and 72 also at `pre-prune-2026-10-13`, the closed lines of 82-121 at
+`pre-merge-cleanup-2026-10-16`; plans cited (AGENT_DIRECTION, HYPOTHESIS_PLAN, PINPOINT_SET_PLAN, TEXT_SEARCH_PLAN) at tag
 `plans-2026-10-15`.
 
 Read with these corrections:

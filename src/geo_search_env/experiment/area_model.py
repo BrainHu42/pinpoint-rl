@@ -50,7 +50,7 @@ def _minimal(f: dict) -> np.ndarray:
 def _paths(tag: str, ckpt_tag: str) -> tuple[Path, Path]:
     if not ckpt_tag:
         return FEATURES[tag], ZOOM / f"zoom_{tag}.npz"
-    if VARIANT:  # extra hypothesis sources (HYP_VARIANT=regionhyps: region_hyps.py)
+    if VARIANT:  # extra hypothesis sources (HYP_VARIANT=more8new, lesson 112)
         return hl.OUT / f"hypothesis_features_{tag}_{ckpt_tag}_e4_{VARIANT}_set.npz", ZOOM / f"zoom_{tag}_{ckpt_tag}_{VARIANT}.npz"
     return hl.OUT / f"hypothesis_features_{tag}_{ckpt_tag}_e4_set.npz", ZOOM / f"zoom_{tag}_{ckpt_tag}.npz"
 

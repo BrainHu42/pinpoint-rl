@@ -27,65 +27,20 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
   fetch reference imagery (`references`: YFCC100M offline, Flickr / Mapillary / Commons live) and map data of each, eliminate, verify,
   stop; an RL policy decides which check on which candidates, with real costs. Earlier plans (agent direction, hypothesis testing,
   look-zoom-rerank, text search, knowledge SFT) were deleted; they are at git tag `plans-2026-10-15`, which lessons citing them refer to.
-- Results of the look-zoom-rerank line (lesson 70):
-  - retrained Pinpoint reranker +3.1 / +3.3 (train CV / dev3k) as one model;
-  - area model over zoomed states +4.4 / +4.9;
-  - RL zoom agent: 2 zooms = the full gain.
-  - Next: run the area pipeline on the retrained reranker.
-
-  Benchmark result (eval halves, lesson 73): merged pipeline (retrained reranker, 2 agent zooms, answer head) 42.1% < 25 km,
-  +4.9 pts over Pinpoint; ties the previous pipeline (+4.6, hypothesis testing). With the gated pick (lesson 74 default): +4.8 at 25 km, +0.8 at 1 km.
-  Lesson 74: gated final pick (default), longer lists and more reranker training don't help (fine-tune saturates at ~+3; photographer
-  exclusion is its key ingredient). Training throughput notes in lesson 74.
-  Lesson 75: cross-fitted labels don't help (photos Pinpoint's encoder trained on are easier than evaluation); only bucket 99 is
-  in-distribution. Next: new evidence (clues, tools) with RL deciding when to use it.
-  Lesson 76 (`read_agent.py`): clue reading as a costly action; a learned read policy keeps +0.5 / +0.8 of the clue gain with 20% of the reads.
-  Lesson 77 (map checks): OSM checks of the features the 4B sees add nothing (retrieval's wrong areas look alike).
-  Lesson 78 (name checks): OSM name search inside areas is redundant with the text-search clue evidence.
-  Lesson 79 (name search): names as a candidate generator (Pinpoint restricted to a name's matches): oracle +1.3, learned switch +0.
-  Lesson 80: a blind test with Claude as the reader beats the 4B on hard photos through recognition / regional knowledge (4 / 40 within 25 km vs 0).
-  Lesson 81: the agent's tools consolidated into `tools/` (pinpoint, maps, web); the modules of lessons 55-63 and 77-79 archived at tag
-  `pre-tool-consolidation`.
-  Lesson 82 (`query_passk.py`): gate for query RL: novel pass@16 9.7% / pass@1 2% on fixable photos (~3 pts ceiling, ~0.4 at pass@1).
-  Lesson 83 (`nested_passk.py`): nested country / region / place proposals: ceiling +6.1 (best of 16), single sample -19.6, simple selector +0.1;
-  verification is the bottleneck.
-  Lesson 84: regions from Pinpoint's 1,000 nearest neighbours: best of 16 +19.0 vs the 4B's +6.1; the 4B is confidently wrong where it disagrees.
-  Lesson 85 (`region_hyps.py`, `region_checks.py`, `HYP_VARIANT=regionhyps`): region candidates + maps / text checks in the head: +0.3 at most;
-  the head gets 38.7% where the best of its own areas is 51.7%.
-  Lesson 86 (`tag_reader.py`): the 4B reading each area's neighbour YFCC titles / tags picks near chance (21.7% vs area A 36.2%).
-  Lesson 87 (`clue_grpo.py`): GRPO on the 4B's clue / region output with a Pinpoint-relative label reward; pilot -0.37 (zero-shot -1.13): learns
-  silence, not precision. Full-train run `clue-grpo-full` stopped at step 950 (reward flat; data/pinpoint/sft/).
-  Lesson 88 (`reader_compare.py`): Qwen3.8-27B-FP8 as the reader finds fewer right place names (3.6 vs 5.1% of top-1 mistakes) and countries than the 4B.
-  Lesson 89 (`crop_look.py`, no LLM): 10 crop views per photo compared with each area's restricted photos, in the answer head: +0.0 / +0.4.
-  Lesson 90 (`round_trip.py`): reverse-rank (round-trip) verification of areas: AUC 0.66 vs 0.655 for forward similarity; gate failed.
-  Lesson 91 (`refine_headroom.py`, `refine_gate.py`): refining to the next bucket: oracle +11-17 pts, local chooser +-0.1 (signal at chance).
-  Lesson 92 (`text_geo.py`): word-location statistics from YFCC for all read text: +0.1 over the existing clue features.
-  Lesson 93 (`megaloc_gate.py`): MegaLoc (visual place recognition) same-place similarity per area in the answer head (`--extra megaloc`):
-  +0.8 to +1.0 train CV, +0.5 to +1.1 dev3k; the largest evidence gain since lesson 70. Weights in `data/hf/hub/models--gberton--MegaLoc`.
-  Lesson 94 (`action_agent.py`): RL action policy over zoom / read / recognise with costs; at or above every fixed combination, best
-  39.7% on dev3k (+6.3 over Pinpoint). The current best pipeline.
-  Lesson 95 (`megaloc_deep.py`): MegaLoc as a proposer (deep same-place search) finds right new places on ~1% of photos; verifier only.
-  Lesson 96 (`query_grpo.py`): GRPO on free-text search queries with the tool result as reward learns silence (precision 26 -> 64%),
-  new right places 0.6 -> 0.3% of dev3k.
-  Lesson 97 (`megaloc_area.py`): MegaLoc over 64 photos per area instead of 12: AUC 0.707 -> 0.737, area pick +0.1; inside an area
-  it is worse than Pinpoint's restricted top-1 at 1 km (15.5 vs 17.0%).
-  Lesson 98 (test set, `action_agent --apply`): 43.5% < 25 km (+6.2) / 19.1% < 1 km (+1.6) photographer excluded; original protocol
-  (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`) 48.2-48.7% (+1.8 to +2.3), 1 km 25.5-28.6% vs 28.9.
-  Lesson 99 (`contrast_gate.py`, EXPERT_PLAN first experiment): the 4B contrasting the head's top two areas with fetched YFCC references is
-  position-biased and below the head (67 vs 83% on decisive, order-consistent pairs); fetched references beat Pinpoint's photos (67 vs 57%).
-  Lesson 100 (`contrast_model.py`): our own comparator over MegaLoc matches to fetched references adds nothing to the head (AUC 0.821 vs 0.819).
-  Lesson 101 (`patch_matcher.py`): a learned patch-level matcher (frozen MegaLoc DINOv2 patches) over the same references: stacked weight ~0, end to end -1.6.
-  Lesson 102: Sonnet (subagent) as the contrast reader, 40 pairs: right 12 / 20 where the head is wrong, 17 / 20 where right; confident answers only on landmarks the head gets.
-  Lesson 103 (`pair_discriminant.py`): a discriminant between the two areas' photos: nothing beyond the head.
-  Lesson 104: Sonnet told the candidates' town names (not photos): 6 fixes / 0 breaks at confidence >= 0.7 on 20 + 20 pairs (~ +1.8 pts if it holds).
-  Lesson 105: the same on dev3k (202 decisive pairs): 8 fixes / 3 breaks at confidence >= 0.7, +0.94 pts at 25 km; the first gain beyond the head since lesson 94.
-  Lesson 106 (`names_judge.py`): local readers on the same pairs (4B 55%, Qwen3.8-27B 60-71%) are uncalibrated; every threshold nets negative. No paid LLMs (user, 2026-10-15).
-  Lesson 107 (`refine_gate megaloc`): MegaLoc in a learned 1 km local chooser around the top-1: +0.6 to +0.8 pts at 1 km on dev3k
-  (SE ~0.3; without MegaLoc +0.1), 25 km unchanged; below the 1-pt bar.
-  Lesson 108: dev3k under the original protocol (`PINPOINT_KEEP_OWN=1` drops only the query photo for MP16 queries): released 27.4 / 42.3,
-  setft_a 25.1 / 41.3 (it skips the photographer's own photos); `setft_own` (no exclusion) 28.3 / 44.3, +0.9 / +2.0: the new base.
-  Lesson 109 (test set, original protocol, `action_agent --ckpt-tag setft_own --apply full:setft_own`): RL lambda 0 29.1 / 51.2 / 62.9 / 75.5 / 86.9
-  vs released 28.9 / 46.4 / 60.7 / 75.5 / 86.7 (+4.8 at 25 km); lambda 0.005 30.9 / 50.5 (+2.0 / +4.1). The current best pipeline.
+- **Current best pipeline (lesson 109; lesson 111 adds `--one-km`)**: `action_agent.py` on the reranker fine-tuned without photographer
+  exclusion (`setft_own`, lesson 108): candidate areas (agreement clusters + clue places) -> an answer head over area tokens, with costly
+  actions (zoom = Pinpoint restricted to an area, read = 4B clues + text search + clue judge, recognise = MegaLoc same-place similarity)
+  chosen by a REINFORCE policy. Test set (eval halves), original protocol, RL lambda 0: 29.1 / 51.2 / 62.9 / 75.5 / 86.9 vs released
+  28.9 / 46.4 / 60.7 / 75.5 / 86.7 (+4.8 at 25 km); lambda 0.005 30.9 / 50.5 (+2.0 / +4.1). commons26 test (lesson 113): 24.2% < 25 km vs
+  released 16.8, the gain mostly from reading. Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
+  What built it (LEARNINGS table): agreement (68), hypotheses (69), reranker fine-tune + area model / answer head (70-74), clue reading as
+  a costly action (76), MegaLoc (93), the RL action policy (94).
+- **Closed lines (lessons 77-121), none above the 1-pt bar beyond the pipeline**: map / name checks and names as candidates (77-79), query
+  and clue RL (82, 87, 96), nested / region proposals (83-85), the 4B reading neighbour tags (86), bigger readers (88, 106, 114), crop views
+  (89), round trips (90), next-bucket and MegaLoc refinement (91, 107, 112), word-location statistics (92), MegaLoc as proposer / over more
+  photos (95, 97), contrast with fetched references (99-103), more areas (112), and the commons26 text-search line (115-121: span search,
+  OSM names, a learned candidate ranker, a confidence override, +0.9 at best). Their code was removed on 2026-10-16 and is at git tag
+  `pre-merge-cleanup-2026-10-16`. Paid-LLM readers (80, 102-105) were diagnostics only.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
@@ -130,54 +85,38 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - OpenRouter key: `OPENROUTER_API_KEY` in `.env` (credits ran out on 2026-09-29).
 
 ## Code map (`src/geo_search_env/`)
-- `data/benchmarks.py`: benchmark loader and metrics. `paths.py`: storage roots.
-- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact.
+- `data/benchmarks.py`: benchmark loader and metrics (im2gps3k, yfcc4k, commons26). `paths.py`: storage roots.
+- `models/pinpoint_reranker.py`: Pinpoint's attention reranker (retrieval over its own index + scoring), batched, exact; loads a
+  retrained checkpoint via `PINPOINT_RERANKER_CKPT`; `PINPOINT_KEEP_OWN=1` is the original protocol. `models/set_head.py`: the set head.
 - `experiment/pinpoint_reference.py`: its pools and top-1 for the benchmarks and MP16 queries (`load_pools`), report.
-- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`).
-- **Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`: a text face the agent reads, structured batch calls for training):**
-  - `tools/pinpoint.py`: `Pinpoint.search(embeddings, constraints, authors)`, constraint none / box / country / region / near points / rows
-    (photographer excluded; wide 32 / 8 / 8 pools as the pipeline; `selftest`). `PinpointReranker.widen` / `rank_subset` underneath.
-  - `tools/maps.py`: Maps name search with `near=`, phone / website -> the businesses listing it, `features_near`, batch `FeatureIndex`;
-    `data/maps_search/osm.db` (`stage` to the NVMe drive after a restart). `tools/osm_extract.py`: OSM planet -> `data/osm/extract`.
-  - `tools/web.py`: Wikipedia / Wikivoyage pages (`experiment/web_search.py`, owned by the osm-search session) + where the words occur in
-    Flickr titles / tags and named places (`text_search`).
-- The read chain behind the pipeline's clue features (lessons 55-65): `agent_targets.py` (dev set, splits, fixable
-  targets), `observe.py` + `scripts/observe.sh` (VLM clues, crops), `text_search.py` (SQLite FTS5 over GeoNames, Overture places / websites /
-  phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart), `region_evidence.py`,
-  `clue_judge.py` + `scripts/clue_judge.sh`, `yfcc_names.py` (YFCC100M extraction -> `data/yfcc100m/geo.npz`), `pinpoint_tool.py` (Pinpoint's
-  pool as areas). Expert clue catalogue: `GEOLOCATION_CLUES.md`; locatability ceiling `scripts/locatability_score.py` (lesson 67).
-  Archived at tag `pre-tool-consolidation`: landmark matching (`landmark_id`, `landmark_match`, `landmark_vote`), `geo_tools`, `poi_query`,
-  `poi_near`, `wiki_backend`, `web_geocode`, `clue_points`, `recall_verify`, `clue_survey`, `chain_footprint`, `vlm_country`, `plates`,
-  `pinpoint_constrained`, `agent_capacity`, `agent_vote`, `map_checks`, `name_checks`, `name_search` and their scripts.
-- **Agreement re-scoring of Pinpoint's pool (lesson 68, +1.0 pts on train): `pool_agreement.py`.**
-- **Hypothesis testing (lesson 69, +2.9 / +3.5 train, +3.8 / +4.6 dev3k):** `hypotheses.py` (Pinpoint areas, restricted search, clue
-  hypotheses), `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator; best:
-  `--e4 --variant vlmhyps --drop vlm --agree --ensemble 5`, saved `artifacts/agent/hyp_final_comparator.pt`), `hypothesis_vlm.py` +
-  `scripts/hypvlm_run.sh` (plausibility judge, zero-shot / fine-tuned; no gain).
-- **Look-zoom-rerank (lesson 70):**
-  - `pinpoint_set.py`: set layer, wide extraction (`extract --ckpt-tag`), zoom pools, `eval-head`.
-  - `area_model.py`: area-then-spot model over zoomed CLS states.
-  - `hypothesis_agent.py`: merged pipeline (answer + action heads over area tokens; lesson 71). Retrained-reranker photo sets: `pinpoint_set photo-set`, `scripts/retrained_pipeline.sh`.
-  - `zoom_agent.py`: RL zoom policy. `read_agent.py`: clue reading as a costly action with a learned read policy (lesson 76).
-  - `hypothesis_agent.fit_answers`: many answer heads at once (vmap); `load(extra=...)` appends column groups (lessons 77-78).
-  - `models/set_head.py`.
-  - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
-    `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
-  - Retrained checkpoints: `artifacts/pinpoint_train/{setft_a,ft_nohead}`. The port loads one via `PINPOINT_RERANKER_CKPT`.
-- `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
-- `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
-  and the benchmark harness for any VLM chooser (`vlm_sampling`).
-- `experiment/sft_train.py`: LoRA SFT, merge. `experiment/grpo_train.py`: TRL GRPO + merge.
-- `experiment/embed_cache.py`: SigLIP2 gallery and benchmark embedding caches.
-- Knowledge SFT: `place_labels.py` (Overture division labels; `pool-labels` labels a photo set's pool), `knowledge_data.py`
-  (training photos), `name_score.py` (candidate name scoring + combiner).
-- Knowledge diagnostics (lessons 52-53): `knowledge_check.py` (answers, report, rule), `knowledge_oracle.py` (perfect-knowledge
-  ceiling per level, fixable photos), `knowledge_coverage.py` (accuracy by training coverage).
-- Earlier lines (comparator, near-miss, stage-1 evidence, map search, the Mapillary environment): removed 2026-10-07; their
-  modules and scripts (named in `LESSONS.md`) are at git tag `pre-cleanup-2026-10-07`. The one-step reranker, our ~17-candidate
-  pool builder and the modules built on them (`verifiers`, `evidence_ranker`, `exemplar_judge`, `multi_exemplar`,
-  `category_evidence`, `stage1_eval`, `evidence_test`, `query_headroom`, `query_evidence`) were removed when Pinpoint's reranker
-  became the reference (lesson 54); they are at commit 57918cb. Kept: `coarse_filter`, `feasibility`.
-- Caches: `artifacts/` (not tracked). Photo sets and pools built before lesson 54 (`artifacts/query_evidence/*/dev.json`,
-  `artifacts/sft/candidates.npz`, `artifacts/place_labels/candidates_*.json`) hold the old reranker's pools; current code doesn't read them.
-  Setup from scratch: `SETUP.md`.
+- `experiment/photo_sets.py`: fixed photo sets with Pinpoint's pool (`load_photos`; in use: `dev3k`, `full`, `commons26`).
+- `experiment/agent_targets.py`: dev set, splits, fixable targets.
+- **The pipeline, in build order** (`scripts/full_pipeline.sh` for a new photo set's clue and hypothesis inputs,
+  `scripts/retrained_pipeline.sh` for a retrained reranker; `docs/pipeline_overview.png`, `scripts/pipeline_figure.py`):
+  - Retrained reranker: `pinpoint_train/` (pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias
+    for training against the shipped index; run with `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and
+    `PYTHONPATH=pinpoint_train/src:src`; launcher `scripts/pinpoint_train.sh`, flags in lesson 70). Checkpoints
+    `artifacts/pinpoint_train/{setft_own,setft_a,ft_nohead}`. `pinpoint_set.py`: set layer, wide extraction (`extract --ckpt-tag`),
+    `photo-set`, zoom pools (`restricted`), `eval-head`.
+  - Read chain (clue features): `observe.py` + `scripts/observe.sh` (4B clues, crops), `text_search.py` (SQLite FTS5 over GeoNames, Overture
+    places / websites / phones, YFCC titles + tags in `data/text_search/`; `stage` copies them to the NVMe drive after a restart),
+    `region_evidence.py`, `clue_judge.py` + `scripts/clue_judge.sh` (fine-tuned judge), `yfcc_names.py` (YFCC100M -> `data/yfcc100m/geo.npz`;
+    `scripts/yfcc_extract*.sh`). Expert clue catalogue `GEOLOCATION_CLUES.md`; locatability `scripts/locatability_*.py` (lesson 67).
+  - Areas and hypotheses: `pinpoint_tool.py`, `pool_agreement.py` (lesson 68), `hypotheses.py` (areas, restricted search, clue hypotheses),
+    `vlm_hypotheses.py` (4B place proposals), `hypothesis_compare.py` (features), `hypothesis_learn.py` (comparator, lesson 69).
+  - Heads and agents: `area_model.py`, `hypothesis_agent.py` (answer + action heads over area tokens, gated pick; `fit_answers`;
+    `load(extra=("megaloc",))`), `zoom_agent.py`, `read_agent.py` (lesson 76), `megaloc_gate.py` (MegaLoc columns, lesson 93),
+    `crop_look.py` (crop views; view 0 is the policy's free glance), `refine_headroom.py` (geometry helpers), `action_agent.py` (the RL action
+    policy, `--apply`, `--one-km`).
+- Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`): `pinpoint.py` (`Pinpoint.search` with constraints), `maps.py` (OSM /
+  GeoNames / Overture name search, `features_near`; `data/maps_search/osm.db`), `osm_extract.py` (`.venvs/osm`), `web.py` (Wikipedia /
+  Wikivoyage via `experiment/web_search.py` + `text_search`).
+- commons26: `commons_bench.py` (scan, selection, download, near-duplicates, tiers, release `data/pinpoint/commons26/release/`),
+  `commons26_score.py` (standalone scorer), `scripts/commons26_score_km.py`.
+- Shared infrastructure: `strategy_search.py` (world loading, neighbour caches, geometry; uses `coarse_filter`, `feasibility`,
+  `candidate_locations`), `embed_cache.py` (SigLIP2 caches), `sft_data.py`, `sft_train.py` (LoRA SFT, merge), `grpo_train.py` (TRL GRPO),
+  `pivot_diagnostics.py` (VLM harness, `vlm_sampling`), `place_labels.py` (`pool-labels`), `knowledge_data.py`, `knowledge_check.py`, `name_score.py`.
+- Removed code, by tag: closed lines of lessons 77-121 `pre-merge-cleanup-2026-10-16`; agent-tool / landmark / text-search checks of
+  lessons 55-69, 72 `pre-prune-2026-10-13` and `pre-tool-consolidation`; comparator / near-miss / stage-1 / map-search / Mapillary
+  `pre-cleanup-2026-10-07`; the one-step reranker and modules on it commit 57918cb. Old plans `plans-2026-10-15`.
+- Caches: `artifacts/` (not tracked). Setup from scratch: `SETUP.md`.

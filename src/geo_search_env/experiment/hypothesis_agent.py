@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 from typing import Sequence
 
@@ -34,10 +33,7 @@ from .area_model import VARIANT, _paths
 from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
-if __import__("os").environ.get("HYP_VARIANT") == "regionhyps":
-    SOURCES = (0, 1, 2)  # + region hypotheses (region_hyps.py, lesson 85)
 BOX_KM = 25.0
-LOCAL_REFINE = os.environ.get("LOCAL_REFINE") == "1"  # lesson 111: answer points moved by local_refine.py
 CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
 
@@ -144,10 +140,10 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
-    # extra columns aligned with these features (cropcheck: crop_look.py, groups global / crop)
-    kinds = ("regioncheck",) if "regionhyps" in str(feat_path) else ("mapcheck", "namecheck", "cropcheck", "names", "megaloc")  # names: names_feature.py; megaloc last (action_agent N_ML)
-    for kind in kinds if extra else ():  # map / name checks (map_checks, name_checks; archived at tag pre-tool-consolidation): column groups appended to the
-        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"  # pre-zoom part; all but density need the clue reader
+    # extra columns aligned with these features (megaloc: megaloc_gate.py, lesson 93), appended to the pre-zoom part; the other evidence
+    # groups tried this way (map / name / crop / region checks, 27B names; lessons 77-78, 85, 89, 114) are at tag pre-merge-cleanup-2026-10-16
+    for kind in ("megaloc",) if extra else ():
+        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"
         if not path.exists():
             continue
         mc = np.load(path)
@@ -167,10 +163,6 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     if zoom_rule in ("soft", "hybrid", "gated"):
         soft_km = _kernel_km(zm, rows, np.asarray([e["truth"] for e in photos], np.float64), in_group=zoom_rule == "hybrid", gate=zoom_rule == "gated")
         zoom_km = np.where(np.isfinite(soft_km), soft_km, zoom_km)
-    if LOCAL_REFINE and zoom_rule == "gated":  # lesson 111: both answer points of every area moved by the MegaLoc local chooser (local_refine.py)
-        ref = np.load(Path("artifacts/agent") / f"local_refine_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz")
-        assert len(ref["km_unzoom"]) == len(f["photo"])
-        un_km, zoom_km = ref["km_unzoom"][rows], np.where(np.isfinite(ref["km_zoom"][rows]), ref["km_zoom"][rows], zoom_km)
     set_km = np.where(f["set_top_in"][rows] > 0, f["set_km"][photo], zoom_km)
     cell = cand[valid]
     if stats is None:  # train: its own statistics; other sets reuse them
@@ -532,7 +524,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--zoom-rule", choices=("agree", "soft", "hybrid", "gated"), default="gated",
                         help="a zoomed area's answer: box agreement, soft kernel, kernel inside the box group, or kernel gated to 5 km of the box founder (default; lesson 74)")
     parser.add_argument("--apply-tag", help="apply the all-of-train models to this photo set (full = test set, only when the user asks)")
-    parser.add_argument("--extra", nargs="*", default=(), help="extra column groups (regioncheck: text, maps; region_checks.py)")
+    parser.add_argument("--extra", nargs="*", default=(), help="extra column groups (megaloc)")
     args = parser.parse_args(argv)
     if args.apply_tag:
         apply(args.ckpt_tag, args.budgets, args.apply_tag, args.zoom_rule)
