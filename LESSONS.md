@@ -228,3 +228,7 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     every 1-3 word span (not only generic words; 29.7k searches for 884 photos): some span's top cluster < 25 km on 24.9% (place_text 55.0 vs
     47.5), any span cluster 39.4% (place_text 73.4 vs 58.2, landmark 62.7 vs 46.7). A hand-made cross-span agreement pick is worse than
     the phrase top (15.9%): the recall is there, the ranking isn't.
+117. **OSM (tools.maps) on commons26 dev** (`scripts/commons26_osm_probe.py global`; OSM names + GeoNames + Overture, top 10, no Flickr). Some result
+    < 25 km: phrases 20.4% (top result 15.5%), phrases + spans 31.4%, vs text_search 24.3% / 39.4%; OSM finds where text_search (phrases +
+    spans) doesn't on 4.0% (place_text 5.0%); either 43.4% (place_text 78.4%). Not in the read chain so far because on MP16 it was
+    redundant (lessons 77-79); on fresh Commons photos it adds recall, but the gap remains ranking.
