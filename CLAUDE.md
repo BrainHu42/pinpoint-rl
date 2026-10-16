@@ -164,6 +164,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   - `pinpoint_train/`: pinpoint-main's training code with a set head, wide pools, author exclusion and a source alias for training against the shipped index. Run it with
     `data/pinpoint-main-src/pinpoint-main/.venv/bin/python` and `PYTHONPATH=pinpoint_train/src:src`. Launcher flags are in lesson 70.
   - Retrained checkpoints: `artifacts/pinpoint_train/{setft_a,ft_nohead}`. The port loads one via `PINPOINT_RERANKER_CKPT`.
+- Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
+  per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
+  pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).
 - `experiment/strategy_search.py`: world loading, neighbour caches, region head, shared geometry helpers.
 - `experiment/sft_data.py`: MP16 query pool, overlay filter, SFT datasets. `experiment/pivot_diagnostics.py`: chooser prompts
   and the benchmark harness for any VLM chooser (`vlm_sampling`).

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinpoint-RL · pipeline viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="viz-root">
+<header class="top">
+  <div class="brand"><span class="logo">◎</span> Pinpoint-RL <span class="muted">pipeline viewer</span></div>
+  <div class="pipeline-sub muted">retrained reranker → areas → read · recognise · zoom → RL answer (lesson 109)</div>
+  <div class="top-actions">
+    <button id="upload-btn" class="btn">Upload a photo</button>
+    <button id="theme-btn" class="btn ghost" title="Toggle dark mode">◐</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="browser">
+    <div class="tabs" id="set-tabs"></div>
+    <input id="search" class="search" type="search" placeholder="Search image id or place…">
+    <div class="chips" id="filters">
+      <button data-f="all" class="chip on">All</button>
+      <button data-f="fixed" class="chip">Agent fixed</button>
+      <button data-f="broke" class="chip">Agent broke</button>
+      <button data-f="right" class="chip">Both right</button>
+      <button data-f="wrong" class="chip">Both wrong</button>
+    </div>
+    <div class="count muted" id="count"></div>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <main id="main">
+    <div class="empty" id="empty">Pick a photo on the left, or upload your own.</div>
+    <div id="view" hidden>
+      <section class="hero">
+        <div class="photo-wrap"><img id="photo" alt="query photo"></div>
+        <div class="summary">
+          <div class="eyebrow" id="photo-id"></div>
+          <h1 id="truth-place"></h1>
+          <div class="muted" id="truth-coord"></div>
+          <div class="tiles" id="tiles"></div>
+          <div class="trail" id="trail"></div>
+        </div>
+      </section>
+
+      <section class="map-card">
+        <div id="map"></div>
+        <div class="legend" id="legend"></div>
+      </section>
+
+      <nav class="stages" id="stages"></nav>
+      <section class="panel" id="panel"></section>
+    </div>
+  </main>
+</div>
+
+<dialog id="upload-dlg">
+  <form method="dialog" id="upload-form">
+    <h2>Run the pipeline on your photo</h2>
+    <p class="muted">The photo goes through every stage live: SigLIP2 retrieval with the retrained reranker, areas, restricted searches,
+      MegaLoc, the 4B clue reader (if its server is up) and the RL agent. Takes about a minute.</p>
+    <label class="file"><input type="file" id="upload-file" accept="image/*" required></label>
+    <div class="row">
+      <label>True latitude (optional)<input id="upload-lat" type="number" step="any" placeholder="e.g. 48.8584"></label>
+      <label>True longitude (optional)<input id="upload-lon" type="number" step="any" placeholder="e.g. 2.2945"></label>
+    </div>
+    <div class="muted small">Without a true location the app still shows every stage; distances are left out.</div>
+    <div class="status" id="upload-status"></div>
+    <div class="row end">
+      <button value="cancel" class="btn ghost" formnovalidate>Close</button>
+      <button id="upload-go" class="btn" value="default">Run</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="tooltip" id="tip" hidden></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
