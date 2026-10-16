@@ -72,7 +72,7 @@ def mp16_dev_mask(queries: Sequence[dict[str, Any]]) -> np.ndarray:
     ])
 
 
-def _rank(world, root: Path, name: str, exclude_own: bool = True) -> None:
+def _rank(world, root: Path, name: str, exclude_own: bool = True, show: bool = True) -> None:
     from ..models.pinpoint_reranker import PinpointReranker
 
     reranker = PinpointReranker(device="cuda")
@@ -87,7 +87,8 @@ def _rank(world, root: Path, name: str, exclude_own: bool = True) -> None:
         features=found.features, truth=world.query_latlon,
     )
     (root / f"{name}_queries.json").write_text(json.dumps(world.queries) + "\n", encoding="utf-8")
-    report(root)
+    if show:
+        report(root)
 
 
 def bench(root: Path) -> None:
@@ -96,6 +97,12 @@ def bench(root: Path) -> None:
 
 def bench_own(root: Path) -> None:
     _rank(load_world(), root, "bench_own", exclude_own=False)
+
+
+def commons26(root: Path) -> None:
+    """commons26 (user, 2026-10-16): Commons uploaders are never MP16 authors, so the own / excluded pools are the same."""
+
+    _rank(load_world(benchmarks=("commons26",)), root, "commons26", show=False)
 
 
 def mp16(root: Path) -> None:
@@ -180,10 +187,10 @@ def report(root: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("bench", "bench-own", "mp16", "extra", "report"))
+    parser.add_argument("command", choices=("bench", "bench-own", "commons26", "mp16", "extra", "report"))
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
-    {"bench": bench, "bench-own": bench_own, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
+    {"bench": bench, "bench-own": bench_own, "commons26": commons26, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
     return 0
 
 

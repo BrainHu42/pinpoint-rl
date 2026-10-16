@@ -55,7 +55,8 @@ def _data(tag: str, stats=None, ckpt: str | None = None):
         from .strategy_search import BENCHMARK_NAMES
 
         photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-        g = np.concatenate([load_benchmark(n).embeddings for n in BENCHMARK_NAMES])[[e["index"] for e in photos]]
+        names = ("commons26",) if photos[0].get("benchmark") == "commons26" else BENCHMARK_NAMES  # the photo set's pools' order ("index")
+        g = np.concatenate([load_benchmark(n).embeddings for n in names])[[e["index"] for e in photos]]
         g /= np.linalg.norm(g, axis=1, keepdims=True)
     d["glance"] = torch.as_tensor(g, device="cuda")
     return d
@@ -70,7 +71,7 @@ def _released_own_km(tag: str, ckpt: str) -> np.ndarray:
     from .refine_headroom import _hav
 
     photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-    z = np.load("artifacts/pinpoint_reference/bench_own.npz")
+    z = np.load(f"artifacts/pinpoint_reference/{'commons26' if photos[0].get('benchmark') == 'commons26' else 'bench_own'}.npz")  # commons26: own = excluded
     idx = np.asarray([e["index"] for e in photos])
     top = np.where(z["rows"][idx] >= 0, z["scores"][idx], -np.inf).argmax(1)
     ll = z["latlon"][idx, top]
@@ -339,7 +340,7 @@ def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
             report(f"{name} / {label} ({len(photos)} photos)", rows, d["base_km"][photos], d["rt_base_km"][photos])
             if label == "all":
                 saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
-    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{f'_1km{ONE_KM:g}' if ONE_KM else ''}{'_refine' if REFINE else ''}.npz", **saved)
+    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{f'_1km{ONE_KM:g}' if ONE_KM else ''}{'_refine' if REFINE else ''}{''.join('_' + t.split(':')[0] for t in targets if not t.startswith('full:'))}.npz", **saved)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -80,6 +80,8 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
 
     if name == "bench":  # both halves of im2gps3k and yfcc4k, in the bench pools' order (photo set full: "index")
         world = load_world()
+    elif name == "commons26":  # commons26 in the pinpoint_reference commons26 pools' order
+        world = load_world(benchmarks=("commons26",))
     else:
         queries = json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))
         if photo_set:  # only this photo set's photos, in its order ("index" into the query file)
@@ -577,7 +579,7 @@ def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
             photos = [{"index": i, "image_id": q["image_id"], "row": q["row"], "truth": z["truth"][i].astype(float).tolist()} for i, q in enumerate(queries)]
         else:
             photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
-            kind = "bench" if "benchmark" in photos[0] else "mp16"
+            kind = ("commons26" if photos[0]["benchmark"] == "commons26" else "bench") if "benchmark" in photos[0] else "mp16"
             z, valid, probs = source(kind)
         for e in photos:
             v = valid[e["index"]]
@@ -664,7 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--extra-hyps", nargs="*", default=("vlmhyps",), help="restricted: hypothesis files merged as in hypothesis_compare")
     parser.add_argument("--model", type=Path, default=OUT / "set_wide.pt", help="restricted: saved set model (train --save)")
     parser.add_argument("--n", type=int, default=100_000, help="more-queries: how many")
-    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench",))
+    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench", "commons26"))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
     parser.add_argument("--limit", type=int, help="first N queries only (plumbing)")
     parser.add_argument("--photo-set", help="extract: only this photo set's photos (e.g. dev3k), in its order")

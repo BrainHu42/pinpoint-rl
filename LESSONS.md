@@ -201,3 +201,11 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
       score / density / MegaLoc columns, fitted on 12k train photos; option level +0.63 at 1 km; `action_agent --refine`): RL lambda 0
       47.2 / 31.1 (-0.1 / +0.3), lambda 0.005 46.9 / 30.9.
     Both below the 1-pt bar; not adopted. Lessons 110-112: the remaining misses are retrieval's (D) and the head's ranking of areas it has (A).
+113. **commons26** (5,023 Commons photos taken in 2026; dev 977 / test 4,046 by uploader; scorer weights the six continents equally,
+    uploader-clustered SEs; `pinpoint_reference commons26`, `photo_sets select --source commons26`, then the test chain with tag `commons26`;
+    `scripts/commons26_score_km.py`). No Overture divisions on this machine, so the clue judge keeps every clue (no truth-region filter).
+    Released Pinpoint, test, continent-balanced % < 1 / 25 / 200 / 750 / 2500 km: 4.6 / 16.8 / 33.7 / 58.4 / 78.1 (dev 6.0 / 21.5 / 38.2 /
+    62.7 / 78.3): no same-place photos in MP16. Lesson 111 pipeline (setft_own, W = 0.5, RL lambda 0), test **6.1 / 24.2 / 39.2 / 60.8 / 78.4**
+    (+1.5 / +7.4 / +5.5 / +2.4 / +0.3; plain mean 5.9 / 23.9 vs 4.7 / 17.5), dev 7.2 / 26.7 / 42.0 / 63.1 / 79.4; retrained top-1 alone
+    18.1 at 25 km. The gain is reading: read alone +4.4 at 25 km, recognise (MegaLoc) +0.0, zooms +0.1-0.5 (all 5,023 photos). By the 27B's
+    tier at 25 km: landmark 25.3 -> 36.6, city 26.0 -> 40.7, region 16.6 -> 19.4, none 6.9 -> 8.3.

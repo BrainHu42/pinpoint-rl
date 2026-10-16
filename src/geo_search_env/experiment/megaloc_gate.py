@@ -179,7 +179,7 @@ def _image_ids(tag: str, need: np.ndarray):
         next(reader)
         csv_ids = [r[0] for r in reader]
     # benchmark queries (photo set full) are read from their files, MP16 photos from the tar shards
-    ids = [str(Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"]) if "benchmark" in e else e["image_id"] for e in photos]
+    ids = [e.get("path") or str(Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"]) if "benchmark" in e else e["image_id"] for e in photos]
     ids += [csv_ids[row_index[cache[r]]] for r in need]
     mean, std = np.asarray([0.485, 0.456, 0.406], np.float32), np.asarray([0.229, 0.224, 0.225], np.float32)
 

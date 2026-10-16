@@ -31,6 +31,8 @@ BENCHMARKS = {
     # Recent Wikimedia Commons photos (all 6,017 rows flagged usable_for_geolocation; test_balanced.csv is a 3,036-row density-balanced subset of it).
     # Photographers are Commons usernames, so no overlap with MP16's Flickr ids is expected. Not part of the default benchmark pair (BENCHMARK_NAMES).
     "wikimedia": BenchmarkSpec("wikimedia", "wikimedia/test.csv", "wikimedia/images", "artist"),
+    # commons26 (5,023 Commons photos taken in 2026, built by commons_bench.py): `group` is a hashed uploader id; its own dev / test split by uploader.
+    "commons26": BenchmarkSpec("commons26", "commons26/release/benchmark.csv", "commons26/release/images", "group"),
 }
 
 
@@ -42,6 +44,7 @@ class BenchmarkQueries:
     latlon: np.ndarray  # [N, 2] degrees
     embeddings: np.ndarray  # [N, D] raw SigLIP2, float32
     image_paths: tuple[Path, ...]
+    splits: tuple[str, ...] = ()  # the CSV's own split column (commons26: dev / test), else empty strings
 
 
 def load_benchmark(name: str, data_root: Path = DATA_ROOT) -> BenchmarkQueries:
@@ -71,6 +74,7 @@ def load_benchmark(name: str, data_root: Path = DATA_ROOT) -> BenchmarkQueries:
         latlon=np.asarray([(float(rows[i]["LAT"]), float(rows[i]["LON"])) for i in kept_ids], dtype=np.float64),
         embeddings=embeddings[keep].astype(np.float32),
         image_paths=tuple(data_root / spec.image_root_relpath / i for i in kept_ids),
+        splits=tuple(rows[i].get("split", "").strip() for i in kept_ids),
     )
 
 

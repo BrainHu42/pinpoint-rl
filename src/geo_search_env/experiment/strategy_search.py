@@ -109,7 +109,7 @@ def load_world(*, with_pinpoint: bool = False, mp16_queries: Sequence[dict[str, 
                 "image_id": image_id,
                 "path": str(bench.image_paths[i]),
                 "author": -1 if KEEP_OWN else vocab["author"].get(bench.authors[i], -1),
-                "split": "tune" if digest % 2 == 0 else "eval",
+                "split": (bench.splits[i] if bench.splits and bench.splits[i] else "tune" if digest % 2 == 0 else "eval"),  # commons26: its dev / test
             })
         embeddings.append(bench.embeddings)
         latlon.append(bench.latlon)

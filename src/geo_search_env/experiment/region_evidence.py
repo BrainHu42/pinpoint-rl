@@ -146,7 +146,9 @@ def _owns(photos: list[dict]) -> dict[str, tuple[int, str]]:
     lookup = []
     for e in bench:
         parts = e["image_id"].rsplit(".", 1)[0].split("_")
-        if len(parts) >= 4:
+        if e["benchmark"] == "commons26":  # Commons photos taken in 2026: not in YFCC100M
+            out[e["image_id"]] = (-1, "")
+        elif len(parts) >= 4:
             out[e["image_id"]] = (int(parts[0]), parts[-1])
         else:
             lookup.append(e["image_id"])
