@@ -15,7 +15,7 @@ name=${NAME:-base}
 mkdir -p artifacts/agent/logs
 
 PATH=$PWD/.venvs/vllm/bin:$PATH vllm serve "$model" --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 \
-  --gpu-memory-utilization 0.9 --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt '{"image":1}' \
+  --gpu-memory-utilization ${GPU_UTIL:-0.9} --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt '{"image":1}' \
   --mm-processor-kwargs "{\"max_pixels\": ${MAX_PIXELS:-786432}}" > artifacts/agent/logs/vllm_observe_$name.log 2>&1 &
 server=$!
 trap '[ -n "${server:-}" ] && kill $server 2>/dev/null' EXIT

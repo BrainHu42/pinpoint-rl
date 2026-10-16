@@ -61,14 +61,14 @@ def photo_world(photos: list[dict]):
     from .strategy_search import load_world
 
     if "benchmark" in photos[0]:
-        return load_world(), np.asarray([e["index"] for e in photos])
+        return load_world(**({"benchmarks": ("commons26",)} if photos[0]["benchmark"] == "commons26" else {})), np.asarray([e["index"] for e in photos])
     return load_world(mp16_queries=_queries(photos)), np.arange(len(photos))
 
 
 def pools_name(photos: list[dict]) -> str:
     """The pinpoint_reference pool set a photo set's indices refer to."""
 
-    return photos[0].get("pools") or ("bench" if "benchmark" in photos[0] else "mp16")
+    return photos[0].get("pools") or ((photos[0]["benchmark"] if photos[0]["benchmark"] == "commons26" else "bench") if "benchmark" in photos[0] else "mp16")
 
 
 def _queries(photos: list[dict]) -> list[dict]:

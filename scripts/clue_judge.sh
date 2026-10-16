@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Serve a VLM and judge every specific text-search clue of a photo set (clue_judge.py judge), then the report. RUN="<module> <command>" runs
+# Serve a VLM and judge every specific text-search clue of a photo set (clue_judge.py judge), then the report. RUN="<module> <args>" runs
 # that module command against the server instead (no report).
-# Usage: [MODEL=<dir>] [PIXELS=786432] [NAME=4b] [TAG=dev3k] [CLUES=9b] [VS=1] [RUN=...] setsid nohup bash scripts/clue_judge.sh > artifacts/agent/logs/clue_judge.log 2>&1 &
+# Usage: [MODEL=<dir>] [PIXELS=786432] [LIMIT_MM=1 (images per prompt)] [NAME=4b] [TAG=dev3k] [CLUES=9b] [VS=1] [RUN=...] setsid nohup bash scripts/clue_judge.sh > artifacts/agent/logs/clue_judge.log 2>&1 &
 set -uo pipefail
 if [ -z "${IN_SCOPE:-}" ]; then  # memory-capped cgroup (30 GB RAM, no swap)
   exec systemd-run --user --scope --quiet -p MemoryMax=24G -p MemorySwapMax=0 env IN_SCOPE=1 bash "$0" "$@"
@@ -16,7 +16,7 @@ tag=${TAG:-dev3k}
 clues=${CLUES:-9b}
 mkdir -p artifacts/agent/logs
 PATH=$PWD/.venvs/vllm/bin:$PATH vllm serve "$model" --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 \
-  --gpu-memory-utilization 0.9 --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt '{"image":1}' \
+  --gpu-memory-utilization ${GPU_UTIL:-0.9} --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt "{\"image\":${LIMIT_MM:-1}}" \
   --mm-processor-kwargs "{\"max_pixels\": ${PIXELS:-786432}}" > artifacts/agent/logs/vllm_clue_judge_$name.log 2>&1 &
 server=$!
 trap '[ -n "${server:-}" ] && kill $server 2>/dev/null' EXIT

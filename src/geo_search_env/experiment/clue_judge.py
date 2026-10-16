@@ -56,6 +56,8 @@ def _items(tag: str, clues: str = "9b") -> list[dict[str, Any]]:
     from .region_evidence import evidence_path
 
     rows = json.loads(evidence_path(tag, clues).read_text(encoding="utf-8"))
+    if not (PHOTO_SETS / tag / "labels.json").exists():  # commons26: no Overture divisions on this machine to label it; keep every clue
+        return [r for r in rows if "region" in r and r["share"] >= MIN_SHARE]
     labels = {p["image_id"]: p for p in json.loads((PHOTO_SETS / tag / "labels.json").read_text(encoding="utf-8"))}
     return [r for r in rows if "region" in r and r["share"] >= MIN_SHARE and labels[r["image_id"]]["truth"].get("region")]
 

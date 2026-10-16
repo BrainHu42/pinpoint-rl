@@ -3,16 +3,19 @@
 # feature (church, river, rail bridge, ...) exist around a point. Data: the OSM planet extract (osm_extract.py) plus the GeoNames / Overture
 # names already in text_search's places.db. Storage: data/maps_search/osm.db (SQLite: FTS5 over every name variant, an R*Tree over boxes);
 # `stage` copies it to the NVMe drive for fast reads (wiped on restart, so redo after each one).
-# Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.experiment.maps_search build       (DuckDB; a few hours)
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search stage
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search query "City Island Avenue" [--near LAT LON KM]
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.maps_search near 41.651 -0.889 2 church river "rail bridge"
+# Usage: PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.tools.maps build       (DuckDB; a few hours)
+#        PYTHONPATH=src .venvs/overture/bin/python -m geo_search_env.tools.maps features-index   (features_near in batch: FeatureIndex)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps stage
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps query "City Island Avenue" [--near LAT LON KM]
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps query "+33 1 42 60 34 56"      (a phone number or website: the business)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.maps near 41.651 -0.889 2 church river "rail bridge"
 
 """build: osm.db: places (one row per OSM object: name, every name variant, a few tag pairs as `kinds`, an address from addr:* tags, box),
        names (FTS5 over the variants, unicode61 without diacritics, as text_search), boxes (R*Tree over the boxes; rows written in a
        coarse spatial order so the tree builds faster).
 query: phrase match on all names in OSM and places.db (GeoNames, Overture); exact-name matches first, then (with near) by distance, then
        by how notable the place is; results sharing a name and kind are merged (within 0.5 km, 3 km for streets). Printed like a Maps result list.
+       A phone number or a website / domain instead finds the Overture businesses listing it (places.db phones / domains tables).
 near:  per requested feature, the matching objects whose box is within KM of the point: count, nearest distance and name. Feature words
        map to OSM tag pairs (FEATURES); a raw 'key=value' works too. Long features (rivers, rail lines) are boxes, so 'within' is generous."""
 
@@ -30,7 +33,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .text_search import PLACES_DB, _db_dir, haversine_km, norm
+from ..experiment.text_search import GENERIC_TLDS, PLACES_DB, _countries, _db_dir, domain_of, haversine_km, norm, phone_digits
 
 ROOT = Path("data/maps_search")
 NVME = Path("/opt/dlami/nvme/maps_search")
@@ -63,7 +66,16 @@ FEATURES: dict[str, list[tuple[str, ...]]] = {  # word -> tag pairs; a tuple of 
     "stadium": [("leisure=stadium",), ("building=stadium",)], "golf course": [("leisure=golf_course",)], "university": [("amenity=university",)],
     "hospital": [("amenity=hospital",)], "town hall": [("amenity=townhall",)], "fountain": [("amenity=fountain",)], "clock": [("amenity=clock",)],
     "market": [("amenity=marketplace",)], "cable car": [("aerialway=cable_car",), ("aerialway=gondola",)], "park": [("leisure=park",)],
+    # the rest of observe.VOCAB (what the 4B clue reader reports), on tag keys osm.db keeps (KIND_KEYS)
+    "railway station": [("railway=station",), ("railway=halt",)], "shrine": [("historic=wayside_shrine",), ("amenity=place_of_worship", "religion=shinto")],
+    "palace": [("historic=palace",), ("building=palace",)], "square": [("place=square",)], "theatre": [("amenity=theatre",)],
+    "cemetery": [("landuse=cemetery",), ("amenity=grave_yard",)], "garden": [("leisure=garden",)], "observatory": [("man_made=observatory",)],
+    "island": [("place=island",), ("place=islet",)], "mountain": [("natural=peak",)], "hill": [("natural=hill",), ("natural=peak",)],
+    "valley": [("natural=valley",)], "desert": [("natural=desert",), ("natural=sand",)], "mountain pass": [("natural=saddle",)],
+    "forest": [("landuse=forest",), ("natural=wood",)], "vineyard": [("landuse=vineyard",)],
 }
+FEATURES_NPZ = ROOT / "features.npz"  # features_near in batch (training): every object matching a FEATURES word, as boxes, plus a density grid
+DENSITY_DEG = 0.01  # density grid cell (~1 km): how well OSM maps a place, to tell 'none nearby' from 'not mapped'
 MAX_MATCHES = 2000  # name matches scored per source; more and the name is too common to rank by anything but distance
 RARE = 50_000  # with near: names matched at most this often are looked up by name first, commoner ones by scanning the box
 TOP = 10
@@ -85,7 +97,7 @@ def _address(tags: dict[str, str]) -> str:
     return ", ".join(x for x in (street, " ".join(x for x in (tags.get("addr:postcode"), town) if x), tags.get("addr:country")) if x)
 
 
-def build(memory: str = "10GB") -> None:
+def build(memory: str = "6GB") -> None:
     import duckdb
 
     con = _connect_new(OSM_DB)
@@ -94,7 +106,8 @@ def build(memory: str = "10GB") -> None:
                              lat REAL, lon REAL, lat_min REAL, lat_max REAL, lon_min REAL, lon_max REAL);
         CREATE VIRTUAL TABLE boxes USING rtree (id, lat_min, lat_max, lon_min, lon_max);""")
     duck = duckdb.connect()
-    duck.execute(f"SET memory_limit = '{memory}'; SET threads = 4; SET temp_directory = '{ROOT / 'duckdb_tmp'}'")
+    spill = NVME.parent / "maps_search_tmp" if NVME.parent.exists() else ROOT / "duckdb_tmp"  # ~14 GB of sort spill; the NVMe drive is faster
+    duck.execute(f"SET memory_limit = '{memory}'; SET threads = 4; SET temp_directory = '{spill}'")
     cursor = duck.execute(f"""
         SELECT osm_type, osm_id, name, tags, lat, lon, lat_min, lat_max, lon_min, lon_max FROM read_parquet('{EXTRACT}/*.parquet')
         ORDER BY floor(lat) * 1000 + floor(lon), floor(lat * 8) * 10000 + floor(lon * 8)""")
@@ -121,7 +134,132 @@ def build(memory: str = "10GB") -> None:
         INSERT INTO names (names) VALUES ('optimize');""")
     con.commit()
     con.close()
+    shutil.rmtree(spill, ignore_errors=True)
     print(f"-> {OSM_DB} ({OSM_DB.stat().st_size / 1e9:.1f} GB)", flush=True)
+
+
+def features_index(memory: str = "3GB") -> None:
+    """features.npz: one row per (object, FEATURES word it matches) with the object's box, and the number of OSM objects (any kind) per
+    DENSITY_DEG cell; one extract part at a time (DuckDB parses the tag keys the rules use once, the rules run on the numpy columns)."""
+
+    import duckdb
+
+    keys = sorted({t.split("=")[0] for rules in FEATURES.values() for rule in rules for t in rule})
+    words = list(FEATURES)
+    duck = duckdb.connect()
+    duck.execute(f"SET memory_limit = '{memory}'; SET threads = 3")
+    paths = ", ".join(f"'$.\"{k}\"'" for k in keys)
+    ncol = round(360 / DENSITY_DEG)
+    feat, box, cells = [], [], [(np.empty(0, np.int64), np.empty(0, np.int64))]
+    parts = sorted(EXTRACT.glob("*.parquet"))
+    for n, part in enumerate(parts):
+        t = duck.execute(f"""SELECT {", ".join(f"v[{i + 1}] AS k{i}" for i in range(len(keys)))}, lat_min, lat_max, lon_min, lon_max FROM (
+                             SELECT json_extract_string(tags, [{paths}]) AS v, * FROM read_parquet('{part}'))""").fetchnumpy()
+        col = {k: np.asarray(t[f"k{i}"], dtype=object) for i, k in enumerate(keys)}
+        b = np.stack([np.asarray(t[k]) for k in ("lat_min", "lat_max", "lon_min", "lon_max")], 1).astype(np.float32)
+        for w, word in enumerate(words):
+            hit = np.zeros(len(b), bool)
+            for rule in FEATURES[word]:
+                m = np.ones(len(b), bool)
+                for pair in rule:
+                    k, v = pair.split("=", 1)
+                    m &= np.not_equal(col[k], None) if v == "*" else np.equal(col[k], v)
+                hit |= m
+            feat.append(np.full(hit.sum(), w, np.int16))
+            box.append(b[hit])
+        c = duck.execute(f"""SELECT floor((lat + 90) / {DENSITY_DEG})::BIGINT * {ncol} + floor((lon + 180) / {DENSITY_DEG})::BIGINT AS c, count(*) AS n
+                             FROM read_parquet('{part}') GROUP BY c""").fetchnumpy()
+        cells.append((c["c"].astype(np.int64), c["n"].astype(np.int64)))
+        if len(cells) > 10 or n == len(parts) - 1:  # merge cells shared by parts
+            cell, inv = np.unique(np.concatenate([x[0] for x in cells]), return_inverse=True)
+            cells = [(cell, np.bincount(inv, np.concatenate([x[1] for x in cells])).astype(np.int64))]
+        print(f"  part {n + 1}/{len(parts)}: {sum(map(len, feat)):,} feature rows", flush=True)
+    feat, box = np.concatenate(feat), np.concatenate(box)
+    cell, cell_n = cells[0]
+    np.savez(FEATURES_NPZ, words=json.dumps(words), feat=feat, box=box, cell=cell, cell_n=cell_n.astype(np.int32))
+    for w, word in enumerate(words):
+        print(f"  {word}: {np.sum(feat == w):,}")
+    print(f"-> {FEATURES_NPZ} ({len(feat):,} rows, {len(cell):,} density cells)", flush=True)
+
+
+def _xyz(lat, lon) -> np.ndarray:
+    la, lo = np.radians(np.asarray(lat, np.float64)), np.radians(np.asarray(lon, np.float64))
+    return np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], -1)
+
+
+class FeatureIndex:
+    """features_near for many points at once (training the agent): the same FEATURES words and box distances as MapsSearch.near, from
+    features.npz. Objects are split by box size so each KD-tree (over box centres) is searched with radius km + its largest half-diagonal,
+    then filtered by the exact point-to-box distance."""
+
+    TIERS_KM = (0.25, 1.0, 4.0, 16.0, 64.0, math.inf)  # box half-diagonal tiers
+
+    def __init__(self, path: Path = FEATURES_NPZ) -> None:
+        z = np.load(path)
+        self.words = json.loads(str(z["words"]))
+        self._feat, self._box = z["feat"], z["box"]  # float32; hit rows are upcast
+        self._cell, self._cell_n = z["cell"], z["cell_n"]
+        self._trees: dict[int, list] = {}
+
+    def _tiers(self, w: int) -> list:
+        from scipy.spatial import cKDTree
+
+        if w not in self._trees:
+            box = self._box[self._feat == w]
+            clat, clon = box[:, :2].astype(np.float64).mean(1), box[:, 2:].astype(np.float64).mean(1)
+            half = 0.5 * np.hypot((box[:, 1] - box[:, 0]) * 111.2, (box[:, 3] - box[:, 2]) * 111.2 * np.cos(np.radians(clat)))
+            tier = np.searchsorted(self.TIERS_KM, half)
+            self._trees[w] = [(cKDTree(_xyz(clat[m], clon[m])), box[m], float(half[m].max())) for t in range(len(self.TIERS_KM))
+                              if (m := tier == t).any()]
+        return self._trees[w]
+
+    def near(self, lat: np.ndarray, lon: np.ndarray, km: float, words: Sequence[str], chunk: int = 20_000) -> tuple[np.ndarray, np.ndarray]:
+        """count [points, words] of matching objects within km, nearest km [points, words] (inf if none); points in chunks (hit lists)."""
+
+        lat, lon = np.asarray(lat, np.float64), np.asarray(lon, np.float64)
+        parts = [self._near(lat[i:i + chunk], lon[i:i + chunk], km, words) for i in range(0, len(lat), chunk)]
+        if not parts:
+            return np.zeros((0, len(words)), np.int32), np.zeros((0, len(words)), np.float32)
+        return np.concatenate([c for c, _ in parts]), np.concatenate([d for _, d in parts])
+
+    def _near(self, lat: np.ndarray, lon: np.ndarray, km: float, words: Sequence[str]) -> tuple[np.ndarray, np.ndarray]:
+        q = _xyz(lat, lon)
+        count = np.zeros((len(lat), len(words)), np.int32)
+        nearest = np.full((len(lat), len(words)), np.inf, np.float32)
+        for j, word in enumerate(words):
+            for tree, box, half in self._tiers(self.words.index(word)):
+                reach = (km + half) * 1.01 + 0.01
+                hits = tree.query_ball_point(q, 2 * math.sin(min(reach / 6371.0, math.pi) / 2), workers=-1)
+                lens = np.fromiter(map(len, hits), np.int64, len(hits))
+                if not lens.sum():
+                    continue
+                pt, obj = np.repeat(np.arange(len(lat)), lens), np.concatenate([np.asarray(h, np.int64) for h in hits if h])
+                b = box[obj].astype(np.float64)
+                p1, p2 = np.radians(lat[pt]), np.radians(np.clip(lat[pt], b[:, 0], b[:, 1]))
+                dlon = np.radians(np.clip(lon[pt], b[:, 2], b[:, 3]) - lon[pt])
+                a = np.sin((p2 - p1) / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dlon / 2) ** 2
+                d = 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+                keep = d <= km
+                np.add.at(count[:, j], pt[keep], 1)
+                np.minimum.at(nearest[:, j], pt[keep], d[keep].astype(np.float32))
+        return count, nearest
+
+    def density(self, lat: np.ndarray, lon: np.ndarray, km: float) -> np.ndarray:
+        """Number of OSM objects (any kind) in the DENSITY_DEG cells within about km of each point."""
+
+        lat, lon = np.asarray(lat, np.float64), np.asarray(lon, np.float64)
+        ncol = round(360 / DENSITY_DEG)
+        row, col = np.floor((lat + 90) / DENSITY_DEG).astype(np.int64), np.floor((lon + 180) / DENSITY_DEG).astype(np.int64)
+        ky = math.ceil(km / (111.2 * DENSITY_DEG))
+        kx = np.ceil(km / (111.2 * DENSITY_DEG * np.maximum(np.cos(np.radians(lat)), 0.05))).astype(np.int64)
+        out = np.zeros(len(lat), np.int64)
+        for dy in range(-ky, ky + 1):
+            for dx in range(-int(kx.max()), int(kx.max()) + 1):
+                m = np.abs(dx) <= kx
+                c = (row[m] + dy) * ncol + (col[m] + dx) % ncol
+                i = np.clip(np.searchsorted(self._cell, c), 0, len(self._cell) - 1)
+                out[m] += np.where(self._cell[i] == c, self._cell_n[i], 0)
+        return out
 
 
 def stage() -> None:
@@ -190,7 +328,40 @@ class MapsSearch:
         km = haversine_km(lat, lon, coords[near, 0], coords[near, 1])
         return names[near[int(np.argmin(km))]]
 
+    def _listed(self, query: str) -> list[Place] | None:
+        """Businesses listing a phone number or website read in the photo; None if the query is neither."""
+
+        if self.places is None:
+            return None
+        if not hasattr(self, "_tlds"):
+            self._tlds = GENERIC_TLDS | set(_countries()[0])  # country TLDs too ('St.Mary' is not a domain)
+        digits, domain = phone_digits(query), domain_of(query, self._tlds)
+        if digits:
+            intl, d = digits.startswith("+"), digits.lstrip("+")
+            if not intl:
+                d = d.lstrip("0")  # national number: drop the trunk prefix, match the end of the international one
+            ids = [p for p, full in self.places.execute("SELECT place, digits FROM phones WHERE tail = ? LIMIT ?", (d[-7:], MAX_MATCHES))
+                   if full.endswith(d) or (intl and d.endswith(full))]
+        elif domain:
+            ids = [r[0] for r in self.places.execute("SELECT place FROM domains WHERE domain = ? LIMIT ?", (domain, MAX_MATCHES))]
+        else:
+            return None
+        rows = []
+        for i in range(0, len(ids), 900):
+            chunk = ids[i: i + 900]
+            rows += self.places.execute(f"SELECT name, kind, lat, lon, src FROM places WHERE rowid IN ({','.join('?' * len(chunk))})", chunk).fetchall()
+        return [Place(name, kind, "", lat, lon, "overture" if src == 1 else "geonames", True, 0) for name, kind, lat, lon, src in rows]
+
     def query(self, query: str, near: tuple[float, float, float] | None = None, top: int = TOP) -> list[Place]:
+        listed = self._listed(query)
+        if listed is not None:
+            if near is not None:
+                for p in listed:
+                    p.km = float(haversine_km(near[0], near[1], np.asarray([p.lat]), np.asarray([p.lon]))[0])
+                listed = sorted((p for p in listed if p.km <= near[2]), key=lambda p: p.km)
+            for p in listed[:top]:
+                p.label = self._label(p.lat, p.lon)
+            return listed[:top]
         phrase, key = _phrase(query), norm(query)
         if phrase is None:
             return []
@@ -299,6 +470,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("build")
+    sub.add_parser("features-index")
     sub.add_parser("stage")
     q = sub.add_parser("query")
     q.add_argument("text")
@@ -311,6 +483,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "build":
         build()
+    elif args.cmd == "features-index":
+        features_index()
     elif args.cmd == "stage":
         stage()
     elif args.cmd == "query":

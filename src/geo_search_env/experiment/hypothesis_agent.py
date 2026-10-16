@@ -29,7 +29,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .area_model import _paths
+from .area_model import VARIANT, _paths
 from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
@@ -38,7 +38,7 @@ CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CL
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
 
 
-def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, gate: bool = False) -> np.ndarray:
+def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, gate: bool = False, return_pick: bool = False):
     """km to the truth of each zoomed area's soft-kernel pick: argmax over its restricted candidates of sum_j softmax(s / T)_j exp(-d_ij / KERNEL_KM).
     in_group (hybrid rule): only among the box rule's winning group (the founder with the most softmax(s / 0.2) mass within BOX_KM, and its
     members), so the 25 km decision stays the box rule's and the kernel only places the point.
@@ -48,6 +48,7 @@ def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, 
     from .pinpoint_set import _haversine_matrix
 
     out = np.full(len(rows), np.inf)
+    picks = np.full(len(rows), -1)
     for c in range(0, len(rows), 8192):
         r = rows[c:c + 8192]
         valid = zm["rows"][r] >= 0
@@ -69,7 +70,17 @@ def _kernel_km(zm, rows: np.ndarray, truth: np.ndarray, in_group: bool = False, 
         both = np.stack([truth[zm["photo"][r]], lat[np.arange(len(r)), pick]], 1)
         km = _haversine_matrix(both)[:, 0, 1]
         out[c:c + 8192] = np.where(valid.any(1), km, np.inf)
-    return out
+        picks[c:c + 8192] = np.where(valid.any(1), pick, -1)
+    return (out, picks) if return_pick else out
+
+
+def area_points(tag: str, ckpt_tag: str = "setft_a") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """photo, source, restricted top-1 (centre if the search came back empty) of every area row (the zoom file)."""
+
+    zm = np.load(_paths(tag, ckpt_tag)[1])
+    s = np.where(zm["rows"] >= 0, zm["scores"], -np.inf)
+    point = zm["latlon"][np.arange(len(s)), s.argmax(1)].astype(np.float64)
+    return zm["photo"], zm["source"], np.where(np.isfinite(s.max(1))[:, None], point, zm["center"])
 
 
 def _post(f: dict) -> np.ndarray:
@@ -82,22 +93,25 @@ def _post(f: dict) -> np.ndarray:
     return np.nan_to_num(np.stack(cols, 1)).astype(np.float32)
 
 
-def _unzoomed_km(f: dict, photos: list[dict]) -> np.ndarray:
-    """Answer km of an area that was not zoomed: the global pool's best-scored candidate within BOX_KM of its centre (the centre if none)."""
+def _unzoomed_km(f: dict, photos: list[dict], return_pick: bool = False):
+    """Answer km of an area that was not zoomed: the global pool's best-scored candidate within BOX_KM of its centre (the centre if none).
+    return_pick: also that candidate's pool position (-1: the centre)."""
 
     from .strategy_search import _haversine_km
 
     out = np.zeros(len(f["photo"]))
+    pick = np.full(len(f["photo"]), -1)
     for i, (ph, c) in enumerate(zip(f["photo"], f["center"])):
         e = photos[ph]
         pool = np.asarray(e["pool"], np.float64)  # sorted by score
         inside = np.flatnonzero(_haversine_km(c[0], c[1], pool) < BOX_KM)
         point = pool[inside[0]] if len(inside) else np.asarray(c, np.float64)
+        pick[i] = inside[0] if len(inside) else -1
         out[i] = _haversine_km(*e["truth"], point[None])[0]
-    return out
+    return (out, pick) if return_pick else out
 
 
-def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated") -> dict:
+def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = None, zoom_rule: str = "gated", extra: tuple[str, ...] = ()) -> dict:
     import torch
 
     feat_path, zoom_path = _paths(tag, ckpt_tag)
@@ -126,6 +140,18 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre, post = _pre_zoom(f)[rows], _post(f)[rows]
     pre_noclue = pre.copy()
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
+    # extra columns aligned with these features (megaloc: megaloc_gate.py, lesson 93), appended to the pre-zoom part; the other evidence
+    # groups tried this way (map / name / crop / region checks, 27B names; lessons 77-78, 85, 89, 114) are at tag pre-merge-cleanup-2026-10-16
+    for kind in ("megaloc",) if extra else ():
+        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"
+        if not path.exists():
+            continue
+        mc = np.load(path)
+        assert np.array_equal(mc["photo"], f["photo"]) and np.array_equal(mc["source"], f["source"])
+        cols = np.isin(mc["groups"], extra)
+        x = mc["x"][rows][:, cols]
+        pre = np.concatenate([pre, x], 1)
+        pre_noclue = np.concatenate([pre_noclue, np.where(mc["groups"][cols] != "density", 0.0, x)], 1)
     valid = zm["rows"][rows] >= 0
     s = np.where(valid, zm["scores"][rows], -np.inf)
     best = np.where(np.isfinite(s.max(1, keepdims=True)), s.max(1, keepdims=True), 0.0)
@@ -154,6 +180,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
         "km_zoom": pad(zoom_km, np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
         "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
+        "center": pad(np.asarray(f["center"][rows], np.float32)),
     }
     d["cvalid"][..., 0] |= d["mask"]  # an empty search keeps one zero slot so pooling is defined
     t = {k: torch.as_tensor(v, device=device) for k, v in d.items()}
@@ -180,13 +207,17 @@ def _net(n_pre: int, n_post: int, n_c: int, dim: int = 64):
             self.layers = nn.ModuleList(nn.TransformerEncoderLayer(dim, 4, 4 * dim, 0.1, "gelu", batch_first=True, norm_first=True) for _ in range(2))
             self.answer = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 1))
             self.action = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, 1))
+            self.register_buffer("pre_mask", torch.ones(n_pre), persistent=False)  # pre-zoom columns this model sees (fit_answers variants)
+
+        def forward(self, b, zoomed):
+            return self.answer_logits(b, zoomed)
 
         def encode(self, b, zoomed):
             t = self.h(b["hidden"].float()) + self.c(b["cand"])
             att = (t @ self.query / t.shape[-1] ** 0.5).masked_fill(~b["cvalid"], -1e4)
             pooled = (torch.softmax(att, -1).unsqueeze(-1) * t).sum(-2)
             z = zoomed.float().unsqueeze(-1)
-            e = self.pre(b["pre"]) + self.post(torch.cat([b["post"] * z, pooled * z, z], -1))
+            e = self.pre(b["pre"] * self.pre_mask) + self.post(torch.cat([b["post"] * z, pooled * z, z], -1))
             for layer in self.layers:
                 e = layer(e, src_key_padding_mask=~b["mask"])
             return e
@@ -272,6 +303,63 @@ def fit_answer(d, photos, seed, epochs=25, read_mode: str | None = None):
             sched.step()
     net.eval()
     return net
+
+
+def fit_answers(d, photos, seeds, pre_masks, epochs=25):
+    """Several answer heads trained at once as one batched model (torch.func.vmap over stacked weights), so the GPU isn't idle on one small
+    head: model k starts from seed seeds[k] and sees the pre-zoom columns where pre_masks[k] is 1 (the others are zeroed, a constant input).
+    Same recipe as fit_answer; all models see the same batches and random zooms. Returns one ordinary net per model (pre_mask set)."""
+
+    import copy
+
+    import torch
+    from torch.func import functional_call, vmap
+
+    nets = []
+    for seed, m in zip(seeds, pre_masks):
+        torch.manual_seed(seed)
+        net = _net(d["pre"].shape[-1], d["post"].shape[-1], d["cand"].shape[-1]).cuda()
+        net.pre_mask.copy_(torch.as_tensor(np.asarray(m, np.float32)))
+        nets.append(net)
+    # stacked by hand: each _net call defines its own class, which stack_module_state rejects
+    params = {n: torch.stack([dict(m.named_parameters())[n].detach() for m in nets]).requires_grad_() for n, _ in nets[0].named_parameters()}
+    buffers = {n: torch.stack([dict(m.named_buffers())[n] for m in nets]) for n, _ in nets[0].named_buffers()}
+    base = copy.deepcopy(nets[0]).to("meta")
+    gen = torch.Generator(device="cuda").manual_seed(int(seeds[0]))
+    batches = max(1, len(photos) // 128)
+    train = [v for k, v in params.items() if not k.startswith("action.")]
+    opt = torch.optim.AdamW(train, lr=1e-3, weight_decay=1e-2)  # elementwise: the same as one optimiser per model
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=epochs * batches, pct_start=0.1)
+    rng = np.random.default_rng(int(seeds[0]))
+    base.train()
+
+    def one(p, buf, b, z):
+        return functional_call(base, (p, buf), (b, z))
+
+    batched = vmap(one, in_dims=(0, 0, None, None), randomness="different")
+    with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.MATH):  # fused kernels reject the vmapped mask strides
+        for _ in range(epochs):
+            for bi in np.array_split(rng.permutation(photos), batches):
+                b = _sub(d, torch.as_tensor(bi, device="cuda"))
+                z = _random_zoom(b, gen)
+                ok = _right(b, z) & b["mask"]
+                use = ok.any(1) & ~(ok == b["mask"]).all(1)
+                if not use.any():
+                    continue
+                logp = torch.log_softmax(batched(params, buffers, b, z), -1)  # [models, photos, areas]
+                loss = -torch.logsumexp(logp.masked_fill(~ok, float("-inf")), -1)[:, use].mean(1).sum()
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                sched.step()
+    out = []
+    for k, net in enumerate(nets):
+        with torch.no_grad():
+            for name, prm in net.named_parameters():
+                prm.copy_(params[name][k])
+        net.eval()
+        out.append(net)
+    return out
 
 
 def _rollout(net, b, budget, policy: str, gen=None):
@@ -393,11 +481,11 @@ def apply(ckpt_tag: str, budgets: Sequence[int], apply_tag: str, zoom_rule: str 
              **{k.replace(" ", "_").replace(",", "").replace("(", "").replace(")", ""): v for k, v in answers.items()}, benchmark=te["benchmark"])
 
 
-def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1, zoom_rule: str = "gated") -> None:
+def run(ckpt_tag: str, budgets: Sequence[int], ensemble: int = 1, zoom_rule: str = "gated", extra: tuple[str, ...] = ()) -> None:
     from .strategy_search import _bootstrap
 
-    tr = load("train", ckpt_tag, zoom_rule=zoom_rule)
-    dv = load("dev3k", ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule)
+    tr = load("train", ckpt_tag, zoom_rule=zoom_rule, extra=extra)
+    dv = load("dev3k", ckpt_tag, stats=tr["stats"], zoom_rule=zoom_rule, extra=extra)
     n = tr["n"]
     print(f"agent ({ckpt_tag or 'released Pinpoint'}, zoom rule {zoom_rule}): {n} train photos, up to {tr['mask'].shape[1]} areas, "
           f"{tr['mask'].sum().item() / n:.2f} per photo", flush=True)
@@ -436,11 +524,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--zoom-rule", choices=("agree", "soft", "hybrid", "gated"), default="gated",
                         help="a zoomed area's answer: box agreement, soft kernel, kernel inside the box group, or kernel gated to 5 km of the box founder (default; lesson 74)")
     parser.add_argument("--apply-tag", help="apply the all-of-train models to this photo set (full = test set, only when the user asks)")
+    parser.add_argument("--extra", nargs="*", default=(), help="extra column groups (megaloc)")
     args = parser.parse_args(argv)
     if args.apply_tag:
         apply(args.ckpt_tag, args.budgets, args.apply_tag, args.zoom_rule)
     else:
-        run(args.ckpt_tag, args.budgets, zoom_rule=args.zoom_rule)
+        run(args.ckpt_tag, args.budgets, zoom_rule=args.zoom_rule, extra=tuple(args.extra))
     return 0
 
 

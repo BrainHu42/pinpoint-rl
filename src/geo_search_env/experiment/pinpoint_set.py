@@ -29,7 +29,8 @@ import numpy as np
 OUT = Path("artifacts/pinpoint_set")
 SFT_ROOT = Path("artifacts/sft")
 NVME_INDEX = Path("/opt/dlami/nvme/pinpoint/attention_retrieval_index")  # staged copy of the index (hypotheses.NVME_INDEX), if present
-QUERY_FILES = {"mp16": SFT_ROOT / "queries.json", "mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json",
+QUERY_FILES = {"mp16": SFT_ROOT / "queries.json" if (SFT_ROOT / "queries.json").exists() else Path("artifacts/pinpoint_reference/mp16_queries.json"),  # same list
+"mp16_extra": SFT_ROOT / "queries_extra.json", "mp16_more": OUT / "queries_more.json",
                "xfit0": OUT / "queries_xfit0.json", "xfit1": OUT / "queries_xfit1.json"}  # cross-fitting halves (scripts/xfit_halves.py)
 
 
@@ -74,46 +75,20 @@ def extract(name: str, targets: Sequence[int], limit: int | None = None, tag: st
             photo_set: str | None = None) -> None:
     import torch
 
-    from ..models.pinpoint_reranker import MODALITIES, PinpointReranker
+    from ..models.pinpoint_reranker import PinpointReranker
     from .strategy_search import load_world
-
-    class _Wide(PinpointReranker):
-        def _union(self, found):
-            """The pool over the wide lists; rank / shortlist features as the original computes them for its 8 / 2 / 2 lists (a hit
-            beyond the original list size gets rank 1 and flag 0, as a candidate that list did not find)."""
-
-            capacity = sum(len(found[m][0][0]) for m in MODALITIES)
-            queries = len(found["image"][0])
-            rows = np.full((queries, capacity), -1, dtype=np.int64)
-            ranks = np.ones((queries, capacity, 3), dtype=np.float32)
-            flags = np.zeros((queries, capacity, 3), dtype=np.float32)
-            for q in range(queries):
-                slots: dict[int, int] = {}
-                for m, name_ in enumerate(MODALITIES):
-                    indices, values = found[name_]
-                    keep = self.original[name_]
-                    for position, (row, value) in enumerate(zip(indices[q], values[q])):
-                        if not np.isfinite(value):
-                            continue
-                        slot = slots.setdefault(int(row), len(slots))
-                        rows[q, slot] = row
-                        if position < keep:
-                            ranks[q, slot, m] = min(ranks[q, slot, m], position / max(keep - 1, 1))
-                            flags[q, slot, m] = 1.0
-            return rows, ranks, flags
 
     if name == "bench":  # both halves of im2gps3k and yfcc4k, in the bench pools' order (photo set full: "index")
         world = load_world()
+    elif name == "commons26":  # commons26 in the pinpoint_reference commons26 pools' order
+        world = load_world(benchmarks=("commons26",))
     else:
         queries = json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))
         if photo_set:  # only this photo set's photos, in its order ("index" into the query file)
             queries = [queries[e["index"]] for e in json.loads((Path("artifacts/photo_sets") / photo_set / "photos.json").read_text(encoding="utf-8"))]
         world = load_world(mp16_queries=queries[:limit])
-    model = _Wide(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
-    model.original = dict(model.targets)
-    # the released extraction searched 2x pools (tie order among equal fp16 scores depends on it); keep it for retrained rerankers
-    model.multiplier = max(model.multiplier, 2)
-    model.targets = dict(zip(MODALITIES, (int(t) for t in targets)))
+    model = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    model.widen(targets)
     captured: list[torch.Tensor] = []
     head = model.head.score_head
 
@@ -417,10 +392,11 @@ def restricted(tag: str, extra_hyps: Sequence[str], model_path: Path | None) -> 
     hidden = torch.cat(captured).numpy().reshape(rows.shape[0], rows.shape[1], -1)
     truth = np.asarray([p["truth"] for p in photos], np.float32)[h["photo"]]
     # the zoomed candidates with their CLS states, for the look-zoom-rerank model (PINPOINT_SET_PLAN.md step 1)
-    np.savez(OUT / f"zoom_{tag}.npz", photo=h["photo"], source=h["source"], rank=h["rank"], support=h["support"], center=h["center"],
+    zoom_path = OUT / f"zoom_{tag}{''.join('_' + x for x in extra_hyps if x.startswith('more'))}.npz"  # a separate variant
+    np.savez(zoom_path, photo=h["photo"], source=h["source"], rank=h["rank"], support=h["support"], center=h["center"],
              rows=rows, latlon=h["latlon"].astype(np.float32), scores=scores.astype(np.float32), hidden=hidden, features=features.astype(np.float16))
     if model_path is None:  # zoom states only (retrained rerankers: no offline set model to run inside the hypotheses)
-        print(f"  zoomed candidates -> {OUT / f'zoom_{tag}.npz'}", flush=True)
+        print(f"  zoomed candidates -> {zoom_path}", flush=True)
         return
     z = _load({"rows": rows, "latlon": h["latlon"].astype(np.float32), "scores": scores.astype(np.float32), "hidden": hidden,
                "features": features, "truth": truth}, "wide")
@@ -603,7 +579,7 @@ def photo_set(ckpt_tag: str, tags: Sequence[str] = ("train", "dev3k")) -> None:
             photos = [{"index": i, "image_id": q["image_id"], "row": q["row"], "truth": z["truth"][i].astype(float).tolist()} for i, q in enumerate(queries)]
         else:
             photos = json.loads((src / "photos.json").read_text(encoding="utf-8"))
-            kind = "bench" if "benchmark" in photos[0] else "mp16"
+            kind = ("commons26" if photos[0]["benchmark"] == "commons26" else "bench") if "benchmark" in photos[0] else "mp16"
             z, valid, probs = source(kind)
         for e in photos:
             v = valid[e["index"]]
@@ -690,7 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--extra-hyps", nargs="*", default=("vlmhyps",), help="restricted: hypothesis files merged as in hypothesis_compare")
     parser.add_argument("--model", type=Path, default=OUT / "set_wide.pt", help="restricted: saved set model (train --save)")
     parser.add_argument("--n", type=int, default=100_000, help="more-queries: how many")
-    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench",))
+    parser.add_argument("--name", default="mp16", choices=tuple(QUERY_FILES) + ("bench", "commons26"))
     parser.add_argument("--targets", type=int, nargs=3, default=(32, 8, 8), help="hits per modality (image, raw image, GPS); Pinpoint uses 8 2 2")
     parser.add_argument("--limit", type=int, help="first N queries only (plumbing)")
     parser.add_argument("--photo-set", help="extract: only this photo set's photos (e.g. dev3k), in its order")
