@@ -84,6 +84,8 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
   (SE ~0.3; without MegaLoc +0.1), 25 km unchanged; below the 1-pt bar.
   Lesson 108: dev3k under the original protocol (`PINPOINT_KEEP_OWN=1` drops only the query photo for MP16 queries): released 27.4 / 42.3,
   setft_a 25.1 / 41.3 (it skips the photographer's own photos); `setft_own` (no exclusion) 28.3 / 44.3, +0.9 / +2.0: the new base.
+  Lesson 109 (test set, original protocol, `action_agent --ckpt-tag setft_own --apply full:setft_own`): RL lambda 0 29.1 / 51.2 / 62.9 / 75.5 / 86.9
+  vs released 28.9 / 46.4 / 60.7 / 75.5 / 86.7 (+4.8 at 25 km); lambda 0.005 30.9 / 50.5 (+2.0 / +4.1). The current best pipeline.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 

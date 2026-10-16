@@ -33,7 +33,9 @@ Under the primary protocol we lose at 1 km on yfcc4k (-6.2): every model was tra
 moves answers off them. Retraining the chain without the exclusion is pending (~4-5 h machine time; must drop the query photo itself, since
 MP16 queries are in the index; lesson 74 found the exclusion was the fine-tune's key ingredient, so re-test that first).
 Lesson 108 did: under the original protocol setft_a is below released on dev3k (-2.3 / -1.0 at 1 / 25 km; it skips the photographer's own
-near-identical photos), and the same fine-tune without exclusion (`setft_own`) is +0.9 / +2.0 over released. Pipeline retrain in progress.
+near-identical photos), and the same fine-tune without exclusion (`setft_own`) is +0.9 / +2.0 over released. The retrained pipeline on the
+test set (lesson 109), original protocol, both halves: RL lambda 0 29.1 / 51.2 / 62.9 / 75.5 / 86.9 (+0.2 / +4.8 [+3.9, +5.8] at 1 / 25 km);
+lambda 0.005 30.9 / 50.5 / 62.9 / 76.0 / 87.0 (+2.0 / +4.1); im2gps3k +4.0, yfcc4k +5.3 at 25 km. This is the current best system.
 
 ## What moved the number (all retrieval-side)
 | Change | Gain at 25 km (train CV / dev3k) | Lesson |

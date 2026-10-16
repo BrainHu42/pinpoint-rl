@@ -170,3 +170,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     Pipeline stages on setft_own (original protocol, no MegaLoc / RL yet; `hypothesis_agent --ckpt-tag setft_own`): dev3k top-1 44.3 / 28.3,
     area oracle (K = 5) 60.3%; answer head with all zooms 46.1 / 29.0 (set pick) or 46.7 / 27.6 (agree pick) = +3.8 / +1.6 or +4.4 / +0.2
     over released under the same protocol (42.3 / 27.4). The script's "released Pinpoint" line is the photographer-excluded baseline.
+109. **Test set, original protocol, pipeline retrained without photographer exclusion** (`action_agent --ckpt-tag setft_own --apply
+    full:setft_own`, the user asked 2026-10-16; trained on all of train). Both halves, % within 1 / 25 / 200 / 750 / 2500 km: released
+    28.9 / 46.4 / 60.7 / 75.5 / 86.7; setft_own top-1 29.6 / 47.2 / 61.3 / 75.2 / 86.9; RL lambda 0 29.1 / 51.2 / 62.9 / 75.5 / 86.9
+    (+0.2 / +4.8 [+3.9, +5.8]); RL lambda 0.005 30.9 / 50.5 / 62.9 / 76.0 / 87.0 (+2.0 [+1.2, +2.8] / +4.1). im2gps3k lambda 0
+    22.4 / 52.8 / 66.4 / 78.9 / 90.3 (+4.0 at 25 km); yfcc4k 33.3 / 50.2 / 60.6 / 73.3 / 84.8 (+5.3; lambda 0.005 35.9 at 1 km, +2.4).
+    vs lesson 98 (setft_a, same protocol): 25 km 48.2 -> 51.2, 1 km 25.5 -> 29.1-30.9; the yfcc4k 1 km loss is gone. Zooms move answers off
+    exact matches (1 km falls with zooms); recognise (MegaLoc) is the action that helps at both distances. dev3k: lambda 0 28.5 / 47.9, 0.005 29.0 / 47.1.

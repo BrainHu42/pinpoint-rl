@@ -28,13 +28,16 @@ UNITS = {"zoom": 1.0, "read": 2.0, "recognise": 1.0}
 MAX_STEPS = 8
 
 
-def _data(tag: str, stats=None, ckpt: str = CKPT_TAG):
+def _data(tag: str, stats=None, ckpt: str | None = None):
     import json
     from pathlib import Path
 
     import torch
 
+    ckpt = ckpt or CKPT_TAG
     d = load(tag, ckpt, stats=stats, extra=("megaloc",))
+    if tag == "dev3k" and ckpt.endswith("own"):  # original protocol: compare with the released Pinpoint under it (lesson 108)
+        d["base_km"] = _released_own_dev3k_km()
     assert d["pre"].shape[-1] == d["pre_noclue"].shape[-1]
     # the free glance: the photo's own SigLIP2 embedding (crop_look view 0 = the full image, unit norm), as read_agent found it decides
     # whether reading pays; benchmark photos (no crop file): their cached SigLIP2 embedding, the same full view
@@ -67,6 +70,18 @@ def _released_own_km(tag: str, ckpt: str) -> np.ndarray:
     ll = z["latlon"][idx, top]
     truth = np.asarray([e["truth"] for e in photos], np.float64)
     return _hav(truth[:, 0], truth[:, 1], ll[:, 0], ll[:, 1])
+
+
+def _released_own_dev3k_km() -> np.ndarray:
+    """The released Pinpoint's top-1 km on dev3k with only the query photo excluded (lesson 108's extraction, dev3k photo set order)."""
+
+    from .refine_headroom import _hav
+
+    z = np.load("artifacts/pinpoint_set/mp16_32_8_8_dev3k_released_own.npz")
+    ok = (z["rows"] >= 0) & (z["features"][..., 6:9] > 0).any(-1)
+    top = np.where(ok, z["scores"], -np.inf).argmax(1)
+    ll = z["latlon"][np.arange(len(top)), top]
+    return _hav(z["truth"][:, 0], z["truth"][:, 1], ll[:, 0], ll[:, 1])
 
 
 def view(b, read, rec):
@@ -287,14 +302,16 @@ def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
             report(f"{name} / {label} ({len(photos)} photos)", rows, d["base_km"][photos], d["rt_base_km"][photos])
             if label == "all":
                 saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
-    np.savez("artifacts/agent/action_agent_apply_km.npz", **saved)
+    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}.npz", **saved)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lambdas", type=float, nargs="*", default=(0.0, 0.0025, 0.005, 0.0075, 0.01, 0.015))
     parser.add_argument("--apply", nargs="*", help="tag:ckpt photo sets to apply the train-fitted agent to (e.g. full:setft_a full:setft_aown)")
+    parser.add_argument("--ckpt-tag", default=CKPT_TAG, help="train / dev3k photo sets (setft_own: retrained without photographer exclusion, lesson 108)")
     args = parser.parse_args(argv)
+    globals()["CKPT_TAG"] = args.ckpt_tag
     if args.apply:
         apply(args.lambdas, args.apply)
     else:
