@@ -222,3 +222,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     read place names 33%, queries / text ~5%. The 4B's country guess is right on 53% (place_text 76%). Offline Wikipedia (25 languages,
     top-3 hits with coordinates, same names + queries) is redundant: a hit < 25 km on 56.5% of photos the read chain already finds, 0.9% of
     the rest; tier "none" 0.4% findable by any search. The limit is the queries (misreads, ambiguous common names), not the search backend.
+116. **Search recall is limited by literal phrase matching** (`read_constrain.py`, `scripts/commons26_span_rules.py`; commons26 dev). text_search needs
+    every word of a phrase, so the 4B's descriptive queries ("Karel Hynek Mácha monument Prague") return nothing. Choosing among all 8
+    clusters of each phrase: oracle 24.3% vs top 19.0%; by the 4B's country 19.3, Pinpoint area countries 19.9, near an area 20.1. Searching
+    every 1-3 word span (not only generic words; 29.7k searches for 884 photos): some span's top cluster < 25 km on 24.9% (place_text 55.0 vs
+    47.5), any span cluster 39.4% (place_text 73.4 vs 58.2, landmark 62.7 vs 46.7). A hand-made cross-span agreement pick is worse than
+    the phrase top (15.9%): the recall is there, the ranking isn't.
