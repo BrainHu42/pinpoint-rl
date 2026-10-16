@@ -256,3 +256,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     (dates, single Flickr titles, generic descriptions). (4) Not mostly geometry: the wrong top is 25-100 km off on 19%, 100-300 km on 35%.
     The fixable photos are ones where text evidence is thin and contradicts retrieval; a better ranker can't find them, better reading or
     evidence that the pipeline is wrong (its own confidence) might.
+121. **Text override with the pipeline's own confidence: below the bar; offline text-search path closed** (`candidate_ranker.py override`;
+    `action_agent --apply` now also saves each answer's probability and area centre, results unchanged). commons26 dev: the ranker's top
+    candidate disagrees with the pipeline's area on 56.7% of photos; there it is right 7.6% vs the pipeline 14.1%; a perfect switch reaches
+    24.8 -> 29.0% (+4.2, 41 photos). The pipeline's confidence doesn't locate the fixes (where it is < 0.3, 549 photos, the pipeline is right
+    9.1% and a disagreeing ranker top 6.1%). Switches, thresholds from the other folds: ranker conf > a and pipeline conf < b +0.9 (SE 0.6; 23
+    fixes / 14 breaks), logistic over (ranker conf, pipeline conf, text support of the pipeline's area, distance, Pinpoint mass) +0.5, ranker
+    conf alone +0.9. Below the agreed +1 stop rule; not tested on dev3k. The λ0 policy reads 73% of commons26 photos (lesson 113's +4.4 comes from those).

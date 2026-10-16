@@ -188,6 +188,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
         "km_zoom": pad(zoom_km, np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
         "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
+        "center": pad(np.asarray(f["center"][rows], np.float32)),
     }
     d["cvalid"][..., 0] |= d["mask"]  # an empty search keeps one zero slot so pooling is defined
     t = {k: torch.as_tensor(v, device=device) for k, v in d.items()}

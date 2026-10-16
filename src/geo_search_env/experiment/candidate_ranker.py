@@ -8,7 +8,8 @@
 
 """gather: per photo, every 4B phrase (text, place names, queries) and its spans searched in each source -> per (query, source) its top clusters
           (artifacts/agent/cands_{tag}_{split}.jsonl, appended per photo, resumable).
-cv:       candidates, features, the ranker under grouped 5-fold CV; top-1 accuracy, a confidence switch against the pipeline's answer, source ablations."""
+cv:       candidates, features, the ranker under grouped 5-fold CV; top-1 accuracy, a confidence switch against the pipeline's answer, source ablations.
+override: the ranker's top candidate replaces the pipeline's answer when a switch rule (ranker and pipeline confidence) says so (lesson 121)."""
 
 from __future__ import annotations
 
@@ -405,17 +406,121 @@ def cv(tag: str, split: str) -> None:
     np.savez(OUT / f"cand_ranker_{tag}_{split}.npz", ids=np.asarray(ids), conf=conf, top_right=top_right, oracle=oracle, fin_right=fin_right, switched=new)
 
 
+def _logistic(X: np.ndarray, y: np.ndarray, w: np.ndarray, l2: float = 1.0, iters: int = 50) -> np.ndarray:
+    """Weighted L2 logistic regression by Newton steps (bias in the last column of X, unpenalised)."""
+
+    beta = np.zeros(X.shape[1])
+    reg = np.full(X.shape[1], l2)
+    reg[-1] = 0.0
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-X @ beta))
+        g = X.T @ (w * (p - y)) + reg * beta
+        H = (X * (w * p * (1 - p))[:, None]).T @ X + np.diag(reg) + 1e-6 * np.eye(X.shape[1])
+        beta -= np.linalg.solve(H, g)
+    return beta
+
+
+def override(tag: str, split: str, ckpt: str = "setft_own") -> None:
+    """Text override (lesson 121): answer the ranker's top candidate instead of the pipeline's answer when a switch rule says so. The switch sees
+    the ranker's confidence and the pipeline's own (answer probability), whether text supports the pipeline's area, and their distance. Ranker and
+    switch both out of fold (grouped by uploader); the switch is fit on the other folds' out-of-fold predictions."""
+
+    ctx = _context(tag, split, ckpt)
+    recs = [json.loads(line) for line in (OUT / f"cands_{tag}_{split}.jsonl").read_text().splitlines()]
+    ids = [r["image_id"] for r in recs]
+    n = len(ids)
+    pi = np.asarray([ctx["pidx"][i] for i in ids])
+    truth = np.asarray([ctx["photos"][k]["truth"] for k in pi], np.float64)
+    z = np.load(OUT / f"action_agent_apply_km_{ckpt}_1km0.5_{tag}.npz")
+    key = f"{tag}:{ckpt}|RL policy, lambda 0"
+    fin_km, conf_p, centre = z[key][pi], z[key + "|conf"][pi], z[key + "|center"][pi].astype(np.float64)
+    fin = fin_km < CLUSTER_KM
+    fold = _folds([ctx["bench"][i]["group"] or i for i in ids])
+    tiers = np.asarray([ctx["bench"][i]["tier"] for i in ids])
+    cs = [_candidates(r, ctx) for r in recs]
+    Ys = [_hav(t[0], t[1], C[:, 0], C[:, 1]) < CLUSTER_KM if len(C) else np.zeros(0, bool) for (C, _), t in zip(cs, truth)]
+    X, M, Y = _pad([x for _, x in cs], Ys)
+    P = np.zeros(M.shape, np.float32)
+    for k in range(5):
+        tr, te = fold != k, fold == k
+        P[te] = _fit_predict(X[tr], M[tr], Y[tr], X[te], M[te], 0)
+    P = np.where(M, P, 0.0)
+    top = P.argmax(1)
+    has = M.any(1)
+    top_right = Y[np.arange(n), top] & has
+    p_top = P.max(1)
+    d = np.asarray([float(_hav(c[0], c[1], cs[i][0][top[i]][0], cs[i][0][top[i]][1])) if has[i] else 2e4 for i, c in enumerate(centre)])
+    p_pipe = np.asarray([float(P[i][:len(cs[i][0])][_hav(centre[i][0], centre[i][1], cs[i][0][:, 0], cs[i][0][:, 1]) < CLUSTER_KM].sum()) if has[i] else 0.0
+                         for i in range(n)])
+    mass = X[np.arange(n), top, FEATURES.index("Pinpoint mass")]
+    print(f"{tag} {split}: {n} photos; pipeline {fin.mean():.1%} (answer-area centre < 25 km of truth {np.mean(_hav(truth[:, 0], truth[:, 1], centre[:, 0], centre[:, 1]) < CLUSTER_KM):.1%}); "
+          f"ranker top right {top_right.mean():.1%}")
+    dis = has & (d >= CLUSTER_KM)
+    print(f"  ranker top disagrees with the pipeline's area on {dis.mean():.1%}: there top right {top_right[dis].mean():.1%}, pipeline right {fin[dis].mean():.1%}; "
+          f"fixes available {np.sum(dis & top_right & ~fin)} ({np.mean(dis & top_right & ~fin):.1%}), oracle switch {fin.mean():.1%} -> {np.mean(fin | (dis & top_right)):.1%}")
+    print("  pipeline confidence bins (answer probability): photos, pipeline right, ranker top right where it disagrees")
+    for lo, hi in ((0, .3), (.3, .5), (.5, .7), (.7, .9), (.9, 1.01)):
+        s = (conf_p >= lo) & (conf_p < hi)
+        print(f"    [{lo:.1f}, {hi:.1f}): {s.sum():4d}  {fin[s].mean():5.1%}  {top_right[s & dis].mean() if (s & dis).any() else 0:5.1%} (n {np.sum(s & dis)})")
+    feats = np.stack([p_top, conf_p, p_pipe, np.log1p(d), mass, np.ones(n)], 1)
+
+    def evaluate(decide):
+        new = fin.astype(float).copy()
+        sw = np.zeros(n, bool)
+        for k in range(5):
+            other, te = fold != k, fold == k
+            s = decide(other, te)
+            sw[te] = s & dis[te]
+            new[te] = np.where(sw[te], top_right[te], fin[te])
+        diff = new - fin
+        return diff, sw
+
+    grid_a, grid_b = np.linspace(0.05, 0.9, 18), np.linspace(0.3, 1.01, 15)
+
+    def rule(other, te):  # switch if ranker confidence > a and pipeline confidence < b; (a, b) best on the other folds
+        best, ab = -1e9, (1, 0)
+        for a in grid_a:
+            for b in grid_b:
+                s = dis[other] & (p_top[other] > a) & (conf_p[other] < b)
+                g = (top_right[other][s].astype(float) - fin[other][s]).sum()
+                if g > best:
+                    best, ab = g, (a, b)
+        return (p_top[te] > ab[0]) & (conf_p[te] < ab[1])
+
+    def learned(other, te):  # logistic on disagreeing photos where switching changes the outcome: fix (1) vs break (0); switch if p > t
+        s = other & dis & (top_right != fin)
+        mu, sd = feats[other, :-1].mean(0), feats[other, :-1].std(0) + 1e-6
+        std = lambda F: np.concatenate([(F[:, :-1] - mu) / sd, F[:, -1:]], 1)
+        beta = _logistic(std(feats[s]), top_right[s].astype(float), np.ones(s.sum()))
+        p_o = 1 / (1 + np.exp(-std(feats[other]) @ beta))
+        ts = np.linspace(0.3, 0.9, 13)
+        gains = [((dis[other] & (p_o > t)) * (top_right[other].astype(float) - fin[other])).sum() for t in ts]
+        return 1 / (1 + np.exp(-std(feats[te]) @ beta)) > ts[int(np.argmax(gains))]
+
+    for name, decide in (("ranker conf > a and pipeline conf < b", rule), ("learned switch (logistic)", learned),
+                         ("lesson 119 rule: ranker conf only", lambda o, t: p_top[t] > np.linspace(.05, .95, 37)[int(np.argmax([
+                             (dis[o] & (p_top[o] > a)) @ (top_right[o].astype(float) - fin[o]) for a in np.linspace(.05, .95, 37)]))])):
+        diff, sw = evaluate(decide)
+        print(f"\n  {name}: {fin.mean():.1%} -> {(fin + diff).mean():.1%} ({100 * diff.mean():+.1f} pts, SE {100 * diff.std() / math.sqrt(n):.1f}); "
+              f"switched {sw.mean():.1%}, fixes {(diff > 0).sum()}, breaks {(diff < 0).sum()}")
+        for g in ("landmark", "city", "region", "none"):
+            s = tiers == g
+            print(f"     {g:8s} ({s.sum()}): {fin[s].mean():.1%} -> {(fin[s] + diff[s]).mean():.1%}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["gather", "cv"])
+    ap.add_argument("cmd", choices=["gather", "cv", "override"])
     ap.add_argument("--tag", default="commons26")
     ap.add_argument("--split", default="dev")
     ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args()
     if a.cmd == "gather":
         gather(a.tag, a.split or None, a.workers)
-    else:
+    elif a.cmd == "cv":
         cv(a.tag, a.split)
+    else:
+        override(a.tag, a.split)
 
 
 if __name__ == "__main__":

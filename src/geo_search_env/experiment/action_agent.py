@@ -165,15 +165,26 @@ def _options(net, v, zoomed):
     return torch.cat([(a + pt[..., 0]).masked_fill(~v["mask"], float("-inf")), (a + pt[..., 1]).masked_fill(~(v["mask"] & zoomed), float("-inf"))], 1)
 
 
+DETAILS: list | None = None  # evaluate: each answer's probability and its area's centre, appended here (text override test, lesson 121)
+
+
 def _km(net, v, zoomed):
     import torch
 
     with torch.no_grad():
         if ONE_KM:
-            pick = _options(net, v, zoomed).argmax(1)
-            return torch.cat([v["km_unzoom"], v["km_zoom"]], 1).gather(1, pick[:, None]).squeeze(1)
-        pick = net.answer_logits(v, zoomed).argmax(1)
-    return torch.where(zoomed, v["km_zoom"], v["km_unzoom"]).gather(1, pick[:, None]).squeeze(1)
+            logits = _options(net, v, zoomed)
+            pick = logits.argmax(1)
+            km = torch.cat([v["km_unzoom"], v["km_zoom"]], 1).gather(1, pick[:, None]).squeeze(1)
+            area = pick % v["mask"].shape[1]
+        else:
+            logits = net.answer_logits(v, zoomed)
+            pick = area = logits.argmax(1)
+            km = torch.where(zoomed, v["km_zoom"], v["km_unzoom"]).gather(1, pick[:, None]).squeeze(1)
+        if DETAILS is not None:
+            DETAILS.append({"conf": logits.softmax(1).max(1).values.cpu().numpy(),
+                            "center": v["center"][torch.arange(len(area), device=area.device), area].cpu().numpy()})
+    return km
 
 
 def _policy(dim: int = 64):
@@ -284,8 +295,10 @@ def evaluate(net, pols: dict, d, photos, base_km) -> list[tuple]:
             km, _, _, _, cnt = rollout(net, None, b, 0.0, "fixed", fixed=cfg)
             rows.append((f"fixed: read {cfg[0]}, recognise {cfg[1]}, zoom {cfg[2]}", km.cpu().numpy(), [c.mean().item() for c in cnt]))
         for lam, pol in pols.items():
+            globals()["DETAILS"] = []
             km, _, _, _, cnt = rollout(net, pol, b, lam, "greedy")
-            rows.append((f"RL policy, lambda {lam:g}", km.cpu().numpy(), [c.mean().item() for c in cnt]))
+            last, globals()["DETAILS"] = DETAILS[-1], None
+            rows.append((f"RL policy, lambda {lam:g}", km.cpu().numpy(), [c.mean().item() for c in cnt], last))
     return rows
 
 
@@ -295,7 +308,7 @@ def report(name, rows, base_km, rt_km):
     print(f"\n {name}: released Pinpoint {np.mean(base_km < 25):.1%} / {np.mean(base_km < 1):.1%}, retrained top-1 {np.mean(rt_km < 25):.1%} / "
           f"{np.mean(rt_km < 1):.1%} (< 25 / 1 km)")
     print(f"   {'':40s} {'<25 km':>7s} {'vs rel.':>8s} {'<1 km':>6s} {'vs rel.':>8s} {'zooms':>6s} {'read':>5s} {'recog':>6s} {'cost':>5s}")
-    for label, km, (nz, nr, nc) in rows:
+    for label, km, (nz, nr, nc), *_ in rows:
         c = _bootstrap((km < 25).astype(float) - (base_km < 25))
         units = UNITS["zoom"] * nz + UNITS["read"] * nr + UNITS["recognise"] * nc
         print(f"   {label:40s} {np.mean(km < 25):7.1%} {100 * c[0]:+7.1f} {np.mean(km < 1):6.1%} {100 * (np.mean(km < 1) - np.mean(base_km < 1)):+7.1f} "
@@ -340,6 +353,7 @@ def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
             report(f"{name} / {label} ({len(photos)} photos)", rows, d["base_km"][photos], d["rt_base_km"][photos])
             if label == "all":
                 saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
+                saved |= {f"{name}|{r[0]}|{k}": v for r in rows if len(r) > 3 for k, v in r[3].items()}
     np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{f'_1km{ONE_KM:g}' if ONE_KM else ''}{'_refine' if REFINE else ''}{''.join('_' + t.split(':')[0] for t in targets if not t.startswith('full:'))}.npz", **saved)
 
 
