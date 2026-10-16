@@ -178,6 +178,39 @@ def index(chunk: int) -> None:
     print(f"wrote {OUT / 'index.npz'} ({time.time() - t0:.0f}s)")
 
 
+def ranks(chunk: int) -> None:
+    """Second pass: the global rank (0 = top-1) of the best index photo within each radius, photographer excluded."""
+    import torch
+
+    q = _load_queries()
+    ix = dict(np.load(OUT / "index.npz"))
+    rows = _index_rows()
+    mp16_pid = _mp16_photo_ids()
+    g = _geo(["photo_id", "uid"])
+    order = np.argsort(g["photo_id"])
+    row_uid = _uid_of(mp16_pid[rows], g["photo_id"][order], order, g["uid"])
+    mp16 = np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)
+    dev = torch.device("cuda")
+    qe = torch.nn.functional.normalize(torch.as_tensor(q["emb"].astype(np.float32), device=dev), dim=1).half()
+    quid = torch.as_tensor(q["uid"], device=dev)[:, None]
+    qpid = torch.as_tensor(q["photo_id"], device=dev)[:, None]
+    thr = {r: torch.as_tensor(ix[f"sim_{r}"], device=dev, dtype=torch.float32)[:, None] for r in RADII}
+    above = {r: torch.zeros(len(q["lat"]), dtype=torch.int64, device=dev) for r in RADII}
+    for start in range(0, len(rows), chunk):
+        r = rows[start : start + chunk]
+        e = torch.nn.functional.normalize(torch.as_tensor(np.asarray(mp16[r[0] : r[-1] + 1][r - r[0]], dtype=np.float32), device=dev), dim=1).half()
+        sim = (qe @ e.T).float()
+        bad = (quid == torch.as_tensor(row_uid[start : start + len(r)], device=dev)[None]) & (quid >= 0)
+        bad |= qpid == torch.as_tensor(mp16_pid[r], device=dev)[None]
+        sim.masked_fill_(bad, -2.0)
+        for rad in RADII:
+            above[rad] += (sim > thr[rad]).sum(dim=1)
+        del sim, bad
+    out = {f"rank_{r}": np.where(ix[f"n_{r}"] > 0, above[r].cpu().numpy(), -1) for r in RADII}
+    np.savez(OUT / "ranks.npz", **out)
+    print(f"wrote {OUT / 'ranks.npz'}")
+
+
 def _near(la, lo, o, cell_s, size):
     ci, cj = int(np.floor(la / size)), int(np.floor(lo / size))
     parts = []
@@ -383,6 +416,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("queries")
     p = sub.add_parser("index"); p.add_argument("--chunk", type=int, default=40_000)
+    p = sub.add_parser("ranks"); p.add_argument("--chunk", type=int, default=40_000)
     p = sub.add_parser("shortlist"); p.add_argument("--k", type=int, default=50); p.add_argument("--radius", type=float, default=1.0)
     p.add_argument("--limit", type=int, default=0, help="first N queries per set (pilot)")
     p = sub.add_parser("fetch"); p.add_argument("--workers", type=int, default=32); p.add_argument("--batch", type=int, default=128)
@@ -392,6 +426,8 @@ def main(argv=None) -> int:
         queries()
     elif a.cmd == "index":
         index(a.chunk)
+    elif a.cmd == "ranks":
+        ranks(a.chunk)
     elif a.cmd == "shortlist":
         shortlist(a.k, a.radius, a.limit)
     elif a.cmd == "fetch":
