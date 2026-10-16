@@ -20,7 +20,12 @@ Result (commons26 dev, 2026-10-16; 6,693 places, 51k photos, 42k fetched): negat
 AUC 0.60 (targeted 0.60, nearby 0.51) vs text-search weight 0.68; within a photo the visual top is right on 27% vs weight order 59%
 (weight + MegaLoc at most 63%, in-sample). Scores are low throughout (right places median 0.07, p90 0.16; >= 0.3 on 2.2%; random pairs
 0.03, fetched photos of the same place and phrase match each other at median 0.20): 2004-14 Flickr photos rarely show the same view as
-the 2026 query. Switch rule (grouped CV): 24.8 -> 24.6-24.7%, ceiling 31.0%.
+the 2026 query. Switch rule (grouped CV): 24.8 -> 24.2-24.7% (thresholds from 0.05), ceiling 31.0%.
+By tier: on landmarks MegaLoc >= 0.2 marks 11.1% of right places vs 1.0% of wrong (precise, low recall); city / region / none ~nothing.
+Keypoints (`keypoints`, DISK + LightGlue + MAGSAC, landmark tier, 7 targeted + 3 nearby per place): AUC 0.535 (MegaLoc 0.640, weight
+0.698); >= 40 inliers right 4.6% vs wrong 0.7%; switch 42.0 -> 41.3% (0 fixes). The limit is the photos, not the matcher: on the 32
+fixable landmark photos (pipeline wrong, a right text place exists) the right place's photos match on 1 (keypoints) / 4 (MegaLoc), and
+37.5% have no targeted photo; contact sheets show the same city, other subjects.
 """
 
 from __future__ import annotations
@@ -202,6 +207,72 @@ def fetch(tag: str, split: str, workers: int, batch: int) -> None:
     print(f"embedded {np.isfinite(emb[:, 0]).sum():,}/{len(ids):,} ({time.time() - t0:.0f}s)")
 
 
+def keypoints(tag: str, split: str, tier: str, k_text: int, k_near: int, workers: int) -> None:
+    """Geometric verification instead of MegaLoc: DISK keypoints + LightGlue + MAGSAC fundamental-matrix inliers between the query and each
+    place's photos (first k_text targeted, k_near nearby; re-downloaded). Needs kornia on PYTHONPATH. -> <tag>_<split>_kp_<tier>.json"""
+    import cv2
+    import kornia.feature as KF
+    import torch
+    from PIL import Image
+
+    s = json.loads((OUT / f"{tag}_{split}_shortlist.json").read_text(encoding="utf-8"))
+    tiers = {}
+    with Path(f"data/pinpoint/{tag}/release/benchmark.csv").open(encoding="utf-8", newline="") as f:
+        tiers = {r["IMG_ID"]: r.get("tier", "") for r in csv.DictReader(f)}
+    rows = [r for r in s["photos"] if tier == "all" or tiers.get(r["image_id"]) == tier]
+    dev = torch.device("cuda")
+    disk = KF.DISK.from_pretrained("depth").to(dev).eval()
+    lg = KF.LightGlueMatcher("disk").to(dev).eval()
+    side = 640
+
+    def load(data):
+        try:
+            im = Image.open(io.BytesIO(data)).convert("RGB")
+        except Exception:
+            return None
+        im.thumbnail((side, side))
+        return torch.from_numpy(np.asarray(im, np.float32) / 255.0).permute(2, 0, 1)[None].to(dev)
+
+    @torch.inference_mode()
+    def feats(x):
+        f = disk(x, 2048, pad_if_not_divisible=True)[0]
+        laf = KF.laf_from_center_scale_ori(f.keypoints[None], torch.ones(1, len(f.keypoints), 1, 1, device=dev))
+        return f.keypoints, f.descriptors, laf, torch.tensor(x.shape[-2:], device=dev)
+
+    @torch.inference_mode()
+    def inliers(a, b):
+        if len(a[0]) < 8 or len(b[0]) < 8:
+            return 0
+        _, idx = lg(a[1], b[1], a[2], b[2], hw1=a[3], hw2=b[3])
+        if len(idx) < 8:
+            return 0
+        p1, p2 = a[0][idx[:, 0]].cpu().numpy(), b[0][idx[:, 1]].cpu().numpy()
+        try:
+            _, mask = cv2.findFundamentalMat(p1, p2, cv2.USAC_MAGSAC, 1.0, 0.999, 10000)
+        except cv2.error:  # degenerate point sets
+            return 0
+        return int(mask.sum()) if mask is not None else 0
+
+    pool, t0 = ThreadPoolExecutor(workers), time.time()
+    for n, r in enumerate(rows):
+        q = load(Path(f"data/pinpoint/{tag}/release/images/{r['image_id']}").read_bytes())
+        qf = feats(q)
+        for p in r["places"]:
+            p["kp_ids"] = p["text_ids"][:k_text] + [i for i in p["near_ids"][:k_near] if i not in p["text_ids"][:k_text]]
+        need = sorted({i for p in r["places"] for i in p["kp_ids"]})
+        blob = dict(zip(need, pool.map(_download, [(i, *s["urls"][str(i)]) for i in need])))
+        score = {}
+        for i, b in blob.items():
+            x = load(b) if b else None
+            score[i] = inliers(qf, feats(x)) if x is not None else -1
+        for p in r["places"]:
+            p["kp"] = [score[i] for i in p["kp_ids"]]
+        if n % 20 == 0:
+            print(f"  {n}/{len(rows)} photos, {time.time() - t0:.0f}s", flush=True)
+    (OUT / f"{tag}_{split}_kp_{tier}.json").write_text(json.dumps(rows), encoding="utf-8")
+    print(f"wrote {OUT / f'{tag}_{split}_kp_{tier}.json'} ({time.time() - t0:.0f}s)")
+
+
 def _scores(tag: str, split: str):
     """Per place: best MegaLoc cosine over its targeted photos, over its nearby photos, and over both (-1 when none)."""
     s = json.loads((OUT / f"{tag}_{split}_shortlist.json").read_text(encoding="utf-8"))
@@ -315,7 +386,8 @@ def report(tag: str, split: str) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("shortlist", "fetch", "report"))
+    ap.add_argument("cmd", choices=("shortlist", "fetch", "keypoints", "report"))
+    ap.add_argument("--tier", default="landmark", help="keypoints: commons26 tier to run (landmark / city / region / none / all)")
     ap.add_argument("--tag", default="commons26")
     ap.add_argument("--split", default="dev")
     ap.add_argument("--max-text", type=int, default=8)
@@ -328,6 +400,8 @@ def main(argv=None) -> int:
         shortlist(a.tag, a.split, a.max_text, a.k_text, a.k_near)
     elif a.cmd == "fetch":
         fetch(a.tag, a.split, a.workers, a.batch)
+    elif a.cmd == "keypoints":
+        keypoints(a.tag, a.split, a.tier, a.k_text, a.k_near, a.workers)
     else:
         report(a.tag, a.split)
     return 0
