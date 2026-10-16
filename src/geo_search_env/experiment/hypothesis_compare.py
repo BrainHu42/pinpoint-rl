@@ -17,6 +17,7 @@ report:   % < 25 km (and < 1 km) per comparator vs Pinpoint's top-1 and the hypo
 from __future__ import annotations
 
 import argparse
+import os
 import csv
 import itertools
 import json
@@ -70,6 +71,9 @@ def _merge_clue_hyps(tag: str) -> dict:
         path = OUT / f"hypotheses_{tag}_{name}.npz"
         if path.exists():
             b = dict(np.load(path))
+            if name == "regionhyps":  # region hypotheses (region_hyps.py): the first REGION_K by neighbour share
+                k = int(os.environ.get("REGION_K", "16"))
+                b = {key: v[b["rank"] < k] for key, v in b.items() if key != "region"}
             vlm = OUT / f"hypvlm_{tag}_{name}{VLM_NAME and '_' + VLM_NAME}.npy"
             b["vlm_p"] = np.load(vlm) if vlm.exists() else np.full(len(b["photo"]), np.nan)
             a = {k: np.concatenate([a[k], b[k]]) for k in a}

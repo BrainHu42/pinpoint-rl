@@ -144,6 +144,9 @@ def pool_labels(tag: str) -> None:
     if not BENCH_TRUTH.exists():  # label-all before 2026-10-07 wrote the truths inside its per-set file; they don't depend on the pool
         BENCH_TRUTH.write_text(json.dumps({p["image_id"]: p["truth"] for p in json.loads((OUT / "candidates_full.json").read_text(encoding="utf-8"))}) + "\n", encoding="utf-8")
     bench = json.loads(BENCH_TRUTH.read_text(encoding="utf-8"))
+    missing = [e for e in photos if "row" not in e and e["image_id"] not in bench]  # benchmarks outside the full set (commons26)
+    if missing:
+        bench |= dict(zip((e["image_id"] for e in missing), Labeller().canonical(np.asarray([e["truth"] for e in missing], dtype=np.float64))))
     out = [{"image_id": e["image_id"], "pool": [mp16[r] for r in e["pool_rows"]], "truth": mp16[e["row"]] if "row" in e else bench[e["image_id"]]} for e in photos]
     (PHOTO_SETS / tag / "labels.json").write_text(json.dumps(out, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{tag}: {len(photos)} photos, {sum(len(e['pool_rows']) for e in photos)} candidates labelled -> {PHOTO_SETS / tag / 'labels.json'}")

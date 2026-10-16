@@ -1,7 +1,7 @@
 # Clues expert geolocators use (2026-10-08)
 
 A catalogue of what professional geolocators (OSINT analysts, top GeoGuessr players such as Rainbolt) read from an image, for designing
-the agent's observe step and tools (`AGENT_DIRECTION.md`). Each clue lists what it narrows down to and an example. Examples are
+the agent's observe step and tools (`EXPERT_PLAN.md`). Each clue lists what it narrows down to and an example. Examples are
 typical, not rules: conventions have exceptions, change over time and vary inside countries.
 
 Resolution: **W** world half / hemisphere, **C** country (or a group of countries), **R** region / province, **L** city / locality, **P** point (street, building).
