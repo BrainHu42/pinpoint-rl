@@ -290,3 +290,8 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     vs 50.3 / 5.4 at 14-15 and 44.7 / 5.4 at 16 (exact GPS; partly photo type). Not yet a head feature. Hubness (mean SigLIP2 cosine to the 10
     nearest gallery photos by other photographers) is higher for right candidates (0.860 vs 0.852) and top-1 is best in the top quintile
     (50.9%); a CSLS-style penalty only hurts (train-chosen beta 0). It measures how densely a place is photographed, not genericness.
+125. **Near-misses are not a training-signal problem** (`scripts/nearmiss_precheck.py`; setft_own, MegaLoc on, clues read, all areas zoomed).
+    A right area and a near-miss wrong area (answer 25-100 km off) co-occur on 21.5% of train photos (13.6k pairs) and 21.6% of dev3k. Answer
+    head pairwise accuracy on dev3k: near 83.7%, far (> 100 km) 86.5%; a pairwise model on the same token features trained on train near pairs
+    only 85.0% (linear) vs all pairs 84.2% (about +0.2 pts of photo accuracy). On the 649 photos with such a pair the head is right 78.0%, picks
+    the near-miss 11.9%, a far area 10.2%. Hard near-miss augmentation not built: the choosing gap needs new per-area evidence, not more training.
