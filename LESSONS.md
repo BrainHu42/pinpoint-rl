@@ -284,3 +284,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     --per-photo 6`, count only): 215 / 206 extra areas, right 1.9 / 6.3%, photos with a right one 0.13 / 1.33%; not built (ceiling below the bar).
     The limit is upstream: on uncovered photos the 4B's phrases rarely search to a right place (lesson 115). commons26 dev-only caches:
     `scripts/subset_photo_set.py --src commons26_setft_own --dst commons26dev_setft_own --split dev`.
+124. **Index geotag accuracy carries non-visual signal; hubness doesn't mark the look-alikes** (`scripts/geotag_accuracy_probe.py`,
+    `scripts/hubness_probe.py`; dev3k, setft_own pools). Flickr geotag accuracy (YFCC100M, all 4.12M MP16 rows found; level <= 13 on 30%):
+    the reranker's top-1 is right 37.8% / near-miss (25-100 km) 9.3% when its geotag is level 11-13 (23% of photos), 39.8 / 11.4 at <= 10,
+    vs 50.3 / 5.4 at 14-15 and 44.7 / 5.4 at 16 (exact GPS; partly photo type). Not yet a head feature. Hubness (mean SigLIP2 cosine to the 10
+    nearest gallery photos by other photographers) is higher for right candidates (0.860 vs 0.852) and top-1 is best in the top quintile
+    (50.9%); a CSLS-style penalty only hurts (train-chosen beta 0). It measures how densely a place is photographed, not genericness.
