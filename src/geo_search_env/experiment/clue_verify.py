@@ -34,6 +34,9 @@ MegaLoc on the OSV images themselves (`osv-megaloc`: 5 nearest within 1 km per p
 request, `osv_remote.py`): AUC text 0.57, areas 0.55; within-photo top pick text 22%, areas 26%; switches -0.3 to 0.0. OSV-5M is too
 sparse for same-place evidence: an OSV image within 50 / 100 / 250 m of the truth for 5.7 / 13.1 / 31.0% of commons26 dev photos;
 best-of-5 MegaLoc p99 0.12. Same-place street-level verification needs dense coverage at the candidate point (full Mapillary).
+All OSV images within 1 km (`--k-osv 40`, 86k images; places have median 9 / mean 15 within 1 km): AUC text 0.577, areas 0.590;
+within-photo top pick 29 / 30%; switches -0.2 to +0.2 (logistic with all features 24.8 -> 25.0%, 2 fixes). Scores stay near noise
+(p90 at places with 21+ images: right 0.12, wrong 0.09): images hundreds of metres away show other streets.
 """
 
 from __future__ import annotations
@@ -522,6 +525,7 @@ def main(argv=None) -> int:
     ap.add_argument("--max-text", type=int, default=8)
     ap.add_argument("--k-text", type=int, default=10)
     ap.add_argument("--k-near", type=int, default=5)
+    ap.add_argument("--k-osv", type=int, default=5, help="osv-megaloc: OSV images per place (nearest within 1 km)")
     ap.add_argument("--workers", type=int, default=64)
     ap.add_argument("--batch", type=int, default=128)
     a = ap.parse_args(argv)
@@ -532,7 +536,7 @@ def main(argv=None) -> int:
     elif a.cmd == "osv":
         osv(a.tag, a.split)
     elif a.cmd == "osv-megaloc":
-        osv_megaloc(a.tag, a.split, 5, 1.0, a.workers, a.batch)
+        osv_megaloc(a.tag, a.split, a.k_osv, 1.0, a.workers, a.batch)
     elif a.cmd == "keypoints":
         keypoints(a.tag, a.split, a.tier, a.k_text, a.k_near, a.workers)
     else:
