@@ -30,7 +30,10 @@ OSV-5M street level (`osv`; only SigLIP2 embeddings on this machine, no images):
 places; AUC right vs wrong text places 0.68 (= text weight), areas 0.61; within-photo top pick text 46% (weight 59%), areas 38% (rank
 56%); switches -0.6 to +0.2. Grouped-CV logistic over all candidates: AUC 0.760 -> 0.785 with OSV, but top candidate 25.5 -> 24.1% and
 switch 24.8 -> 24.2%: SigLIP similarity to street images near a place is regional look, which Pinpoint's SigLIP retrieval already has.
-A same-place test needs MegaLoc on the OSV images (Mapillary ids; Mapillary API or the HF zips).
+MegaLoc on the OSV images themselves (`osv-megaloc`: 5 nearest within 1 km per place, 25.6k images read from the HF zips by range
+request, `osv_remote.py`): AUC text 0.57, areas 0.55; within-photo top pick text 22%, areas 26%; switches -0.3 to 0.0. OSV-5M is too
+sparse for same-place evidence: an OSV image within 50 / 100 / 250 m of the truth for 5.7 / 13.1 / 31.0% of commons26 dev photos;
+best-of-5 MegaLoc p99 0.12. Same-place street-level verification needs dense coverage at the candidate point (full Mapillary).
 """
 
 from __future__ import annotations
@@ -340,6 +343,65 @@ def osv(tag: str, split: str) -> None:
     print(f"wrote {OUT / f'{tag}_{split}_osv.json'} ({time.time() - t0:.0f}s)")
 
 
+def osv_megaloc(tag: str, split: str, k: int, km: float, workers: int, batch: int) -> None:
+    """MegaLoc on the actual OSV-5M images: per place in <tag>_<split>_osv.json, the k nearest OSV images within km, read from the Hugging
+    Face zips (osv_remote), MegaLoc-embedded; adds 'ml' (best cosine to the query, -1 when none) and 'ml_n' per place."""
+    import torch
+
+    from .megaloc_gate import _model
+    from .osv_remote import INDEX, read
+
+    rows = json.loads((OUT / f"{tag}_{split}_osv.json").read_text(encoding="utf-8"))
+    n = int(json.loads((OSV_EMBED / "manifest.json").read_text())["num_samples"])
+    ll = np.fromfile(OSV_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(n, 2)
+    ids = (OSV_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    zindex = json.loads(INDEX.read_text())
+    size = 0.05
+    cell = (np.floor(ll[:, 0] / size).astype(np.int64) + 10000) * 100000 + (np.floor(ll[:, 1] / size).astype(np.int64) + 10000)
+    o = np.argsort(cell, kind="stable"); cell_s = cell[o]
+
+    def nearest(la, lo):
+        ci, cj = int(math.floor(la / size)), int(math.floor(lo / size))
+        span = int(math.ceil(km / (111 * size * max(math.cos(math.radians(la)), 0.05)))) + 1
+        idx = np.concatenate([o[np.searchsorted(cell_s, (ci + di + 10000) * 100000 + cj + dj + 10000):
+                                np.searchsorted(cell_s, (ci + di + 10000) * 100000 + cj + dj + 10000, "right")]
+                              for di in (-1, 0, 1) for dj in range(-span, span + 1)])
+        d = _haversine(la, lo, ll[idx, 0], ll[idx, 1])
+        keep = np.argsort(d)[:k]
+        return [ids[i] for i in idx[keep][d[keep] < km] if ids[i] in zindex]
+
+    for r in rows:
+        for p in r["places"]:
+            p["ml_ids"] = nearest(p["lat"], p["lon"])
+    need = sorted({i for r in rows for p in r["places"] for i in p["ml_ids"]})
+    print(f"{len(need):,} OSV images to read for {sum(len(r['places']) for r in rows):,} places", flush=True)
+    model, tf = _model(), _megaloc_tf()
+    photos, _ = _photos(tag, split)
+    root = Path(f"data/pinpoint/{tag}/release/images")
+    with torch.inference_mode():
+        q = {r["photo"]: model(tf((root / r["image_id"]).read_bytes())[None].cuda())[0].float().cpu().numpy() for r in rows}
+    emb, t0 = {}, time.time()
+    with ThreadPoolExecutor(workers) as pool:
+        for a in range(0, len(need), batch):
+            chunk = need[a:a + batch]
+            xs = [(i, tf(b)) for i, b in zip(chunk, pool.map(lambda i: read(zindex[i]), chunk))]
+            xs = [(i, x) for i, x in xs if x is not None]
+            if xs:
+                with torch.inference_mode():
+                    e = model(torch.stack([x for _, x in xs]).cuda()).float().cpu().numpy()
+                emb.update({i: v for (i, _), v in zip(xs, e)})
+            if a // batch % 10 == 0:
+                print(f"  {a + len(chunk):,}/{len(need):,} images, {(a + len(chunk)) / (time.time() - t0):.0f}/s", flush=True)
+    for r in rows:
+        qe = q[r["photo"]] / np.linalg.norm(q[r["photo"]])
+        for p in r["places"]:
+            v = [emb[i] for i in p["ml_ids"] if i in emb]
+            p["ml_n"] = len(v)
+            p["ml"] = float(max(float(x @ qe / np.linalg.norm(x)) for x in v)) if v else -1.0
+    (OUT / f"{tag}_{split}_osv.json").write_text(json.dumps(rows), encoding="utf-8")
+    print(f"embedded {len(emb):,}/{len(need):,}; updated {OUT / f'{tag}_{split}_osv.json'} ({time.time() - t0:.0f}s)")
+
+
 def _scores(tag: str, split: str):
     """Per place: best MegaLoc cosine over its targeted photos, over its nearby photos, and over both (-1 when none)."""
     s = json.loads((OUT / f"{tag}_{split}_shortlist.json").read_text(encoding="utf-8"))
@@ -453,7 +515,7 @@ def report(tag: str, split: str) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("shortlist", "fetch", "keypoints", "osv", "report"))
+    ap.add_argument("cmd", choices=("shortlist", "fetch", "keypoints", "osv", "osv-megaloc", "report"))
     ap.add_argument("--tier", default="landmark", help="keypoints: commons26 tier to run (landmark / city / region / none / all)")
     ap.add_argument("--tag", default="commons26")
     ap.add_argument("--split", default="dev")
@@ -469,6 +531,8 @@ def main(argv=None) -> int:
         fetch(a.tag, a.split, a.workers, a.batch)
     elif a.cmd == "osv":
         osv(a.tag, a.split)
+    elif a.cmd == "osv-megaloc":
+        osv_megaloc(a.tag, a.split, 5, 1.0, a.workers, a.batch)
     elif a.cmd == "keypoints":
         keypoints(a.tag, a.split, a.tier, a.k_text, a.k_near, a.workers)
     else:
