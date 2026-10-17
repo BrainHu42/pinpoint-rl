@@ -22,6 +22,16 @@ Results (2026-10-17; dev3k 3,000 / commons26 dev 977; pipeline < 25 km 47.3 / 24
   best cluster is right 23.2% vs the pipeline's 39.1% (OSV right where the pipeline is wrong 6.0%, the reverse 21.9%); the same holds by
   OSV agreement and by pipeline confidence. A 5-fold CV switch (street-likeness, agreement, pipeline confidence) gains -0.03 / -0.10 pts
   (contrastive) and +0.03 / +0.10 (raw) at 25 km on dev3k / commons26 dev. OSV retrieval never beats the pipeline on any subset.
+- Street-search action end to end (osv-search / hyps, scripts/osv_street_pipeline.sh, HYP_VARIANT=moreosv action_agent --ckpt-tag setft_own
+  --one-km 0.5 --apply commons26dev:setft_own; trained on all of train): up to 3 OSV clusters per photo outside the existing areas become
+  area tokens (source 2) with restricted search, zoom states and MegaLoc, revealed by a street action (cost 1). Ceiling: an OSV area right
+  where the baseline agent is wrong and no existing area is right on 1.7% of dev3k / 2.9% of commons26 dev. % < 25 / 1 km, baseline (same
+  run settings; commons26 dev MegaLoc recomputed, the earlier queries were blank) -> variant: dev3k RL lambda 0 47.3 / 30.8 -> 47.3 / 30.3,
+  lambda 0.005 47.0 / 30.2 -> 47.3 / 30.2; commons26 dev lambda 0 25.2 / 7.7 -> 24.9 / 7.5, lambda 0.005 24.9 / 7.9 -> 24.3 / 7.6; fixed
+  "everything" with vs without street +0.2 / +0.1. The head answers from an OSV area on 0.5% / 1.0% of photos (right 2 of 15 / 0 of 10;
+  scripts/clue_verify/osv_street_picks.py). Why (osv_street_auc.py, train): 2.4% of OSV areas are right (Pinpoint's areas 13.9%); MP16
+  evidence inside them ranks them (restricted top-1 AUC 0.85) but OSV's own vote is anti-informative (cluster support AUC 0.42: heavy OSV
+  clusters away from Pinpoint's areas are confidently wrong). Not adopted; the action stays off unless HYP_VARIANT names OSV areas.
 """
 
 from __future__ import annotations
