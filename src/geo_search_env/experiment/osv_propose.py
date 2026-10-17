@@ -140,6 +140,78 @@ def _clusters(ll, sims, radius=25.0):
     return sorted(out, key=lambda c: -c[2])
 
 
+def osv_search(tag: str, batch: int = 2048) -> None:
+    """Top-K OSV images per photo of a photo set (e.g. train_setft_own) in Pinpoint's contrastive space, the query embedding as the reranker
+    sees it (hypotheses.photo_world) -> OUT/osv_{tag}.npz (sim, latlon), photo-set order. All OSV embeddings sit on the GPU (2.5 GB)."""
+    import torch
+
+    from ..models.pinpoint_reranker import CONTRASTIVE_CHECKPOINT, _discover_index, _load_image_tower
+    from .hypotheses import PHOTO_SETS, photo_world
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    world, qrows = photo_world(photos)
+    q = np.asarray(world.query_embeddings[qrows], np.float32)
+    root = _discover_index() / "osv_support_cache"
+    man = json.loads((root / "manifest.json").read_text())
+    emb = torch.as_tensor(np.fromfile(root / man["files"]["embeddings"], dtype=np.float16).reshape(man["shapes"]["embeddings"]), device="cuda")
+    ll = np.fromfile(root / man["files"]["latlon_deg"], dtype=np.float32).reshape(man["shapes"]["latlon_deg"])
+    tower = _load_image_tower(CONTRASTIVE_CHECKPOINT)[0].cuda().eval()
+    sims, idx = [], []
+    t0 = time.time()
+    with torch.inference_mode():
+        for a in range(0, len(q), batch):
+            with torch.autocast("cuda", dtype=torch.float16):
+                x = tower(torch.nn.functional.normalize(torch.as_tensor(q[a:a + batch], device="cuda"), dim=-1), "mp16")
+            x = torch.nn.functional.normalize(x.float(), dim=-1).half()
+            best_s, best_i = [], []
+            for c in range(0, len(emb), 1_000_000):
+                s, i = (x @ emb[c:c + 1_000_000].T).float().topk(K, dim=1)
+                best_s.append(s)
+                best_i.append(i + c)
+            s, j = torch.cat(best_s, 1).topk(K, dim=1)
+            sims.append(s.cpu().numpy())
+            idx.append(torch.cat(best_i, 1).gather(1, j).cpu().numpy())
+            print(f"  {a + len(x)} / {len(q)} ({time.time() - t0:.0f}s)", flush=True)
+    idx = np.concatenate(idx)
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez(OUT / f"osv_{tag}.npz", sim=np.concatenate(sims), latlon=ll[idx])
+    print(f"-> {OUT / f'osv_{tag}.npz'}", flush=True)
+
+
+def hypotheses(tag: str, k: int = 3) -> None:
+    """The street-search action's areas: per photo, the heaviest agreement clusters of its OSV top K not within BOX_KM of a Pinpoint area
+    (rank < 5) or a clue place, up to k, as hypotheses (source 2, support = the cluster's share of the list's weight) with Pinpoint's
+    restricted search around each -> artifacts/agent/hypotheses_{tag}_moreosv.npz (merged by hypothesis_compare / pinpoint_set
+    --extra-hyps moreosv; HYP_VARIANT=moreosv downstream)."""
+    from .hypotheses import BOX_KM, OUT as AGENT, PHOTO_SETS, restricted_search
+
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    d = np.load(OUT / f"osv_{tag}.npz")
+    taken: dict[int, list] = {}
+    for name in ("", "_cluehyps"):
+        z = np.load(AGENT / f"hypotheses_{tag}{name}.npz")
+        for p, src, r, c in zip(z["photo"], z["source"], z["rank"], z["center"]):
+            if src == 1 or r < 5:
+                taken.setdefault(int(p), []).append(c)
+    hyps = []
+    for p in range(len(photos)):
+        cs = _clusters(d["latlon"][p], d["sim"][p], BOX_KM)
+        total = sum(c[2] for c in cs)
+        kept = []
+        for c in cs:
+            if all(_haversine(c[0], c[1], t[0], t[1]) >= BOX_KM for t in taken.get(p, []) + kept):
+                kept.append(c)
+                if len(kept) == k:
+                    break
+        hyps += [{"photo": p, "source": 2, "rank": r, "support": c[2] / total, "center": c[:2]} for r, c in enumerate(kept)]
+    truth = np.asarray([e["truth"] for e in photos])
+    right = np.zeros(len(photos), bool)
+    for h in hyps:
+        right[h["photo"]] |= _haversine(*truth[h["photo"]], *h["center"]) < BOX_KM
+    print(f"{tag}: {len(hyps)} OSV hypotheses on {len({h['photo'] for h in hyps})} photos; a centre < {BOX_KM:g} km on {right.mean():.1%}", flush=True)
+    restricted_search(photos, hyps, AGENT / f"hypotheses_{tag}_moreosv.npz")
+
+
 def report(space: str = "raw") -> None:
     d = np.load(OUT / ("search.npz" if space == "raw" else f"search_{space}.npz"))
     ans = np.load(f"artifacts/agent/action_agent_apply_km_{CKPT_TAG}_1km0.5_commons26.npz")
@@ -182,11 +254,20 @@ def report(space: str = "raw") -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("search", "report"))
+    ap.add_argument("cmd", choices=("search", "report", "osv-search", "hyps"))
     ap.add_argument("--chunk", type=int, default=100_000)
     ap.add_argument("--space", choices=("raw", "contrastive"), default="raw")
+    ap.add_argument("--tag", help="osv-search / hyps: photo set (train_setft_own, dev3k_setft_own, commons26dev_setft_own)")
+    ap.add_argument("--k", type=int, default=3, help="hyps: OSV areas per photo")
     a = ap.parse_args(argv)
-    search(a.chunk, a.space) if a.cmd == "search" else report(a.space)
+    if a.cmd == "search":
+        search(a.chunk, a.space)
+    elif a.cmd == "report":
+        report(a.space)
+    elif a.cmd == "osv-search":
+        osv_search(a.tag)
+    else:
+        hypotheses(a.tag, a.k)
     return 0
 
 

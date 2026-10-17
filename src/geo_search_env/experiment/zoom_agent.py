@@ -28,11 +28,14 @@ def _pre_zoom(f: dict) -> np.ndarray:
     lg = lambda x: np.log(np.maximum(x, 1e-12))
     photo = f["photo"]
     cols = []
+    seen = f["source"] != 2  # street-search areas (source 2) stay out of the other rows' reference: nothing about them shows before the action
     for k in ("support", "density"):  # global-pool support and gallery density: known before the restricted search runs
         x = lg(f[k])
         mx = np.full(photo.max() + 1, -np.inf)
-        np.maximum.at(mx, photo, x)
-        cols += [x, x - mx[photo]]
+        np.maximum.at(mx, photo[seen], x[seen])
+        mx_all = mx.copy()
+        np.maximum.at(mx_all, photo, x)
+        cols += [x, x - np.where(seen, mx[photo], mx_all[photo])]
     cols += [(f["rank"] == r).astype(float) for r in range(5)]
     cols += [(f["source"] == s).astype(float) for s in (0, 1, 2)]
     cols += [np.log1p(f[k]) if k.endswith("_n") else f[k] for k in hl.CLUE_KEYS]
