@@ -268,3 +268,19 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     9.1% and a disagreeing ranker top 6.1%). Switches, thresholds from the other folds: ranker conf > a and pipeline conf < b +0.9 (SE 0.6; 23
     fixes / 14 breaks), logistic over (ranker conf, pipeline conf, text support of the pipeline's area, distance, Pinpoint mass) +0.5, ranker
     conf alone +0.9. Below the agreed +1 stop rule; not tested on dev3k. The λ0 policy reads 73% of commons26 photos (lesson 113's +4.4 comes from those).
+122. **Area formation is not the lever** (`scripts/area_cluster_screen.py`; setft_own pools, ~46 candidates; chosen on 12k train, dev3k shown).
+    Proxy "some area's founder < 25 km" with 5 areas: current rule (R 25 km, T 0.2) 61.1% (real restricted-search oracle 60.3; pool oracle 73.1).
+    No family beats it by 1 pt: radius 5-100 km (25 best), pool width 12-46 (all best), index-density radius -0.7, pool-spread radius -1.7,
+    same-place merge on reranker states -5.4, admin areas (MP16-Pro city) -1.7, best-member / medoid centres -0.5 / -0.1. Only T 0.05: coverage
+    +0.6 [-0.1, +1.3], area 1 +2.1 (area 1 under T 0.2 is 1.2 below the reranker's top-1, 43.1 vs 44.3). Bigger areas hold the right candidate more
+    often (memb up to 72%) but their one point lands farther; the loss is choosing among areas (60.3 vs ~47.9), not forming them.
+123. **Clue reading splits evenly between proposing and evidence; clue areas are recall-limited at the search** (`scripts/clue_ablation.py`,
+    `scripts/clue_funnel.py`, `scripts/clue_lost_right.py`; dev3k, setft_own, MegaLoc on, all areas zoomed, 3-seed ensembles). Answer head
+    without reading 47.2 / 28.1, clue areas only 47.6, clue evidence only 47.4, both 47.9 / 28.5 (+0.7 [+0.2, +1.2]); clue areas +20.5 pts on
+    the 1.3% of photos that get one, evidence +1.7 on the 22% with a clue in some Pinpoint area. Funnel (% of photos; "uncovered" = no Pinpoint
+    area right): a search result < 25 km on 17.5 / 19.0% (dev3k / commons26 dev) but on uncovered photos only 1.3 / 7.0%, of which the current
+    rule already proposes 0.4 / 3.8. Uncovered photos with a right result not yet proposed: 0.9 / 3.2% in all (judge < 0.2, share < 0.3, near a
+    wrong Pinpoint area, or loose-judge proposable 0.1 / 1.2%). More clue areas (`hypotheses clue-hyps --name moreclue --queries --min-p 0.2
+    --per-photo 6`, count only): 215 / 206 extra areas, right 1.9 / 6.3%, photos with a right one 0.13 / 1.33%; not built (ceiling below the bar).
+    The limit is upstream: on uncovered photos the 4B's phrases rarely search to a right place (lesson 115). commons26 dev-only caches:
+    `scripts/subset_photo_set.py --src commons26_setft_own --dst commons26dev_setft_own --split dev`.
