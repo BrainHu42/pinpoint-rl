@@ -18,6 +18,10 @@ Results (2026-10-17; dev3k 3,000 / commons26 dev 977; pipeline < 25 km 47.3 / 24
 - As extra areas (agreement clusters of the OSV top 50 not covered by a pipeline area): a right new area with the top 1 / 3 / 5 added
   on dev3k 0.7 / 1.5 / 2.6%, commons26 1.0 / 2.7 / 3.9% (raw similar). Given how rarely the head picks added areas (lessons 111-112),
   expect ~+0.3 on dev3k and ~+0.5 on commons26; an end-to-end test needs the areas through restricted search, zoom, MegaLoc and a refit.
+- Gating by photo type (scripts/clue_verify/osv_gate.py): even on the most street-like 5% of dev3k (OSV top-1 sim above MP16's), OSV's
+  best cluster is right 23.2% vs the pipeline's 39.1% (OSV right where the pipeline is wrong 6.0%, the reverse 21.9%); the same holds by
+  OSV agreement and by pipeline confidence. A 5-fold CV switch (street-likeness, agreement, pipeline confidence) gains -0.03 / -0.10 pts
+  (contrastive) and +0.03 / +0.10 (raw) at 25 km on dev3k / commons26 dev. OSV retrieval never beats the pipeline on any subset.
 """
 
 from __future__ import annotations
