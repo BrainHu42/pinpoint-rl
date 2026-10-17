@@ -26,6 +26,11 @@ Keypoints (`keypoints`, DISK + LightGlue + MAGSAC, landmark tier, 7 targeted + 3
 0.698); >= 40 inliers right 4.6% vs wrong 0.7%; switch 42.0 -> 41.3% (0 fixes). The limit is the photos, not the matcher: on the 32
 fixable landmark photos (pipeline wrong, a right text place exists) the right place's photos match on 1 (keypoints) / 4 (MegaLoc), and
 37.5% have no targeted photo; contact sheets show the same city, other subjects.
+OSV-5M street level (`osv`; only SigLIP2 embeddings on this machine, no images): an OSV image within 1 / 5 km of 72 / 88% of text
+places; AUC right vs wrong text places 0.68 (= text weight), areas 0.61; within-photo top pick text 46% (weight 59%), areas 38% (rank
+56%); switches -0.6 to +0.2. Grouped-CV logistic over all candidates: AUC 0.760 -> 0.785 with OSV, but top candidate 25.5 -> 24.1% and
+switch 24.8 -> 24.2%: SigLIP similarity to street images near a place is regional look, which Pinpoint's SigLIP retrieval already has.
+A same-place test needs MegaLoc on the OSV images (Mapillary ids; Mapillary API or the HF zips).
 """
 
 from __future__ import annotations
@@ -273,6 +278,68 @@ def keypoints(tag: str, split: str, tier: str, k_text: int, k_near: int, workers
     print(f"wrote {OUT / f'{tag}_{split}_kp_{tier}.json'} ({time.time() - t0:.0f}s)")
 
 
+OSV_EMBED = Path("data/pinpoint/osv5m-embed/siglip2-giant-opt-patch16-384")
+
+
+def osv(tag: str, split: str) -> None:
+    """Street-level source: OSV-5M (4.89M Mapillary images; only SigLIP2 embeddings + lat/lon are on this machine). Per place (text places,
+    every Pinpoint / clue area, the pipeline's answer): OSV images within 1 / 5 km and the best SigLIP2 cosine to the query.
+    -> <tag>_<split>_osv.json"""
+    from ..data.benchmarks import DATA_ROOT, EMBEDDING_KEY
+
+    s = json.loads((OUT / f"{tag}_{split}_shortlist.json").read_text(encoding="utf-8"))
+    photos, _ = _photos(tag, split)
+    _, center, _ = _answers(tag)
+    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{CKPT_TAG}.npz")
+    areas: dict[int, list] = {}
+    for p, src, rk, c in zip(zm["photo"], zm["source"], zm["rank"], zm["center"]):
+        areas.setdefault(int(p), []).append((int(src), int(rk), float(c[0]), float(c[1])))
+    qroot = DATA_ROOT / tag / "release" / "image_embeddings" / EMBEDDING_KEY
+    qids = (qroot / "image_ids.txt").read_text(encoding="utf-8").splitlines()
+    qemb = np.fromfile(qroot / "embeddings.f16.bin", dtype=np.float16).reshape(len(qids), -1)
+    qrow = {i: k for k, i in enumerate(qids)}
+    n = int(json.loads((OSV_EMBED / "manifest.json").read_text())["num_samples"])
+    ll = np.fromfile(OSV_EMBED / "latlon_deg.f32.bin", dtype=np.float32).reshape(n, 2)
+    emb = np.memmap(OSV_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(n, -1)
+    size = 0.1
+    cell = (np.floor(ll[:, 0] / size).astype(np.int64) + 10000) * 100000 + (np.floor(ll[:, 1] / size).astype(np.int64) + 10000)
+    o = np.argsort(cell, kind="stable"); cell_s = cell[o]
+
+    def near(la, lo, km):
+        ci, cj = int(math.floor(la / size)), int(math.floor(lo / size))
+        span = int(math.ceil(km / (111 * size * max(math.cos(math.radians(la)), 0.05)))) + 1
+        idx = np.concatenate([o[np.searchsorted(cell_s, (ci + di + 10000) * 100000 + cj + dj + 10000):
+                                np.searchsorted(cell_s, (ci + di + 10000) * 100000 + cj + dj + 10000, "right")]
+                              for di in (-1, 0, 1) for dj in range(-span, span + 1)])
+        d = _haversine(la, lo, ll[idx, 0], ll[idx, 1])
+        return idx[d < km], d[d < km]
+
+    out, t0 = [], time.time()
+    for n_done, r in enumerate(s["photos"]):
+        i = r["photo"]
+        q = qemb[qrow[r["image_id"]]].astype(np.float32); q /= np.linalg.norm(q)
+        places = [dict(kind="text", lat=p["lat"], lon=p["lon"], weight=p["weight"]) for p in r["places"] if p["kind"] == "text"]
+        places += [dict(kind=f"area{src}_{rk}", lat=la, lon=lo, weight=0.0) for src, rk, la, lo in sorted(areas.get(i, []))]
+        if np.all(np.isfinite(center[i])):
+            places.append(dict(kind="answer", lat=float(center[i][0]), lon=float(center[i][1]), weight=0.0))
+        for p in places:
+            idx, d = near(p["lat"], p["lon"], 5.0)
+            if len(idx) > 2000:  # dense cities: the 2000 nearest
+                keep = np.argsort(d)[:2000]; idx, d = idx[keep], d[keep]
+            sims = (np.asarray(emb[np.sort(idx)], np.float32) @ q) / np.maximum(np.linalg.norm(np.asarray(emb[np.sort(idx)], np.float32), axis=1), 1e-8) if len(idx) else np.zeros(0)
+            d = d[np.argsort(idx)]
+            for km in (1.0, 5.0):
+                m = d < km
+                p[f"n_{km:g}"] = int(m.sum())
+                p[f"osv_{km:g}"] = float(sims[m].max()) if m.any() else -1.0
+            p["right"] = bool(_haversine(p["lat"], p["lon"], *photos[i]["truth"]) < RIGHT_KM)
+        out.append(dict(photo=i, image_id=r["image_id"], places=places))
+        if n_done % 100 == 0:
+            print(f"  {n_done}/{len(s['photos'])} photos, {time.time() - t0:.0f}s", flush=True)
+    (OUT / f"{tag}_{split}_osv.json").write_text(json.dumps(out), encoding="utf-8")
+    print(f"wrote {OUT / f'{tag}_{split}_osv.json'} ({time.time() - t0:.0f}s)")
+
+
 def _scores(tag: str, split: str):
     """Per place: best MegaLoc cosine over its targeted photos, over its nearby photos, and over both (-1 when none)."""
     s = json.loads((OUT / f"{tag}_{split}_shortlist.json").read_text(encoding="utf-8"))
@@ -386,7 +453,7 @@ def report(tag: str, split: str) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("shortlist", "fetch", "keypoints", "report"))
+    ap.add_argument("cmd", choices=("shortlist", "fetch", "keypoints", "osv", "report"))
     ap.add_argument("--tier", default="landmark", help="keypoints: commons26 tier to run (landmark / city / region / none / all)")
     ap.add_argument("--tag", default="commons26")
     ap.add_argument("--split", default="dev")
@@ -400,6 +467,8 @@ def main(argv=None) -> int:
         shortlist(a.tag, a.split, a.max_text, a.k_text, a.k_near)
     elif a.cmd == "fetch":
         fetch(a.tag, a.split, a.workers, a.batch)
+    elif a.cmd == "osv":
+        osv(a.tag, a.split)
     elif a.cmd == "keypoints":
         keypoints(a.tag, a.split, a.tier, a.k_text, a.k_near, a.workers)
     else:
