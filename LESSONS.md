@@ -295,3 +295,8 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     head pairwise accuracy on dev3k: near 83.7%, far (> 100 km) 86.5%; a pairwise model on the same token features trained on train near pairs
     only 85.0% (linear) vs all pairs 84.2% (about +0.2 pts of photo accuracy). On the 649 photos with such a pair the head is right 78.0%, picks
     the near-miss 11.9%, a far area 10.2%. Hard near-miss augmentation not built: the choosing gap needs new per-area evidence, not more training.
+126. **Area location, the query glance and geotag reliability add nothing to the answer head** (`scripts/head_context_probe.py`; setft_own,
+    MegaLoc on, clues read, all areas zoomed, 3-seed ensembles, dev3k). Base 47.9 / 28.5; + area centre (xyz + lat / lon Fourier) 47.3
+    (-0.6 [-1.2, -0.1], overfits); + query SigLIP2 glance (PCA 32) 47.9 (+0.0); + restricted candidates' Flickr geotag accuracy 48.0 (+0.1
+    [-0.4, +0.6]; lesson 124's top-1 correlation is already implicit); all three 47.4. Metadata and reweighting signals are redundant with
+    the head's inputs; only new computation (diffusion over the index) or more training data remain on this axis.
