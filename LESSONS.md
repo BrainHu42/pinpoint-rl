@@ -307,3 +307,9 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     order); mass peak < 25 km 32.5 vs 36.9 seeds only. Answer head (3 seeds, dev3k): base 47.9, + seeds 48.2, + diffused 47.8 (-0.1), + both 48.3
     (+0.4 [-0.2, +1.0]). Spreading mass along visual edges reaches other look-alike places. With lessons 122-126: every addition to the head built
     from the same embeddings or index metadata lands within +-0.5 of 47.9.
+128. **Gemma 3 27B can't do the named A/B choice either** (`names_judge.py` restored from `pre-merge-cleanup-2026-10-16` with a think-first mode;
+    `scripts/names_judge_gemma.sh`; unsloth/gemma-3-27b-it-FP8-Dynamic on vLLM 0.30; lesson 106's 202 decisive dev3k pairs, both orders).
+    Plain first-token A/B: P(first-shown) 0.12, almost pure position bias; averaged over orders it defers to the head (>= 0.7: 2 fixes / 4 breaks).
+    Evidence first + stated confidence: right on 68.7% of decisive pairs (head 84.4%), >= 0.7: 10 fixes / 29 breaks (-3.6 pts) vs Qwen3.8-27B
+    8 / 28 and Sonnet 8 / 3; 23 / 404 answers cut off at 160 tokens. Step-by-step reasoning first (Gemma 3 has no thinking mode; <= 1,200
+    tokens): worse, 59.6% right, >= 0.7: 4 fixes / 30 breaks; 39 cut off. Open 27B-class models of two families lack the calibrated recognition.
