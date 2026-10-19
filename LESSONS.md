@@ -300,3 +300,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     (-0.6 [-1.2, -0.1], overfits); + query SigLIP2 glance (PCA 32) 47.9 (+0.0); + restricted candidates' Flickr geotag accuracy 48.0 (+0.1
     [-0.4, +0.6]; lesson 124's top-1 correlation is already implicit); all three 47.4. Metadata and reweighting signals are redundant with
     the head's inputs; only new computation (diffusion over the index) or more training data remain on this axis.
+127. **Graph diffusion over the gallery adds nothing** (`graph_diffusion.py`: knn graph of all 4.12M MP16 photos, 32 neighbours by other
+    photographers, 12 min on the L40S, `artifacts/diffusion/`; `scripts/diffusion_probe.py`; setft_own). Personalized PageRank from a photo's 64
+    nearest gallery photos (itself excluded), mass summed within 25 km of each area. Within-photo AUC right vs wrong area on dev3k: diffused
+    (3 steps, alpha 0.7) 0.761, 1 step alpha 0.3 0.784, edges only within 50 km 0.791, seeds only 0.792, Pinpoint support 0.815 (train the same
+    order); mass peak < 25 km 32.5 vs 36.9 seeds only. Answer head (3 seeds, dev3k): base 47.9, + seeds 48.2, + diffused 47.8 (-0.1), + both 48.3
+    (+0.4 [-0.2, +1.0]). Spreading mass along visual edges reaches other look-alike places. With lessons 122-126: every addition to the head built
+    from the same embeddings or index metadata lands within +-0.5 of 47.9.
