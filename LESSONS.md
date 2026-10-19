@@ -313,3 +313,13 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     Evidence first + stated confidence: right on 68.7% of decisive pairs (head 84.4%), >= 0.7: 10 fixes / 29 breaks (-3.6 pts) vs Qwen3.8-27B
     8 / 28 and Sonnet 8 / 3; 23 / 404 answers cut off at 160 tokens. Step-by-step reasoning first (Gemma 3 has no thinking mode; <= 1,200
     tokens): worse, 59.6% right, >= 0.7: 4 fixes / 30 breaks; 39 cut off. Open 27B-class models of two families lack the calibrated recognition.
+129. **Where the pipeline loses (diagnostic)** (`scripts/pipeline_diagnostics.py`; cached `action_agent --apply --one-km 0.5` outputs on
+    setft_own, RL lambda 0; dev3k and commons26 dev only). Each photo is assigned to the first stage that loses it. dev3k (47.3 < 25 km):
+    retrieval miss (no pool candidate or area < 25 km) 26.5 pts, right candidate in the pool but never made an area 11.8, right area offered
+    but wrong one chosen 14.4; 16.5% are right at 25 km but > 1 km off; vs the retrained top-1, 158 fixes / 67 breaks. Retrieval misses
+    are photos without the photographer's own photo in the pool: 24.6 of the 26.5 pts. Those photos are 58.7% of dev3k: pipeline 33.7,
+    pool oracle 57.6, vs 66.6 / 95.2 with an own photo. Weak slices: indoor 40.1, natural 40.2, urban 57.4; < 100 gallery photos within
+    25 km 21.5; no read text 38.9 vs 59.0. Countries are flat (40-53). Confidence ranks well (quintiles 12 / 20 / 44 / 76 / 84% right);
+    the choice loss (area oracle minus pipeline) sits in the lower three quintiles (23 / 21 / 18 pts vs 7 / 4). commons26 dev (25.2):
+    retrieval miss 49.1, never an area 11.4, wrong area 14.3. 22.3 of the 49.1 pts are photos with < 100 gallery photos within 25 km (28%
+    of photos, pool oracle 16.4). Tiers none / region reach 7.4 / 16.0. With place text: 43.3 vs area oracle 59.6.
