@@ -341,3 +341,14 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     its right pairs, so following it never pays: margin > 0 / 2 / 4 nats gives 22 / 72, 8 / 25, 4 / 7 fixes / breaks. Country level ("taken in
     <country>.", 55 pairs with different countries): 61.8%, > 0 nats 6 / 20. Qwen3.8-27B and Gemma 27B PMI not run yet (GPU busy;
     `scripts/names_judge_pmi.sh`).
+132. **Knowledge in the prompt and cue tables don't separate the confused areas either** (lesson 106's 202 dev3k pairs, the 4B beside a GRPO
+    job). (1) `profile_judge.py`: each area gets a profile from offline English Wikipedia / Wikivoyage (`area_profiles_names202.json`; the
+    town's lead 79%, a Wikivoyage lead matched only when the same-titled Wikipedia page is within 30 km 30%, the 10 best-known geotagged
+    pages within 10 km 99%). The 4B judges each area alone, P(yes) for "taken within about 25 km of <town, country>?". Name only: 52.5% right
+    on decisive pairs (chance). With the profile: 59.0%, but 53.3% on the head's 30 mistakes. Confident switches are all breaks (margin > 3
+    logits: 0 fixes / 10). Worse than the plain name PMI (lesson 131: 60.0%, 73.3% on mistakes). (2) `cue_check.py`: the 4B reports languages /
+    scripts of visible text, driving side and web domains (JSON). GeoNames countryInfo (languages, tld) plus a left-driving list say which
+    area's country each cue fits; English, Latin script and generic domains decide nothing. Cues are rare on these photos: non-English
+    text 7%, non-Latin script 3%, driving side 9%, a country domain 2%. The two areas are in different countries on 55 pairs, have
+    different language sets on 52 and driving sides on 12. The cues decide 2 pairs, both for the head's area: 0 fixes / 0 breaks. As in
+    lessons 21 and 79, the decisive cues sit on photos the head already gets right.

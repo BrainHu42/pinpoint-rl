@@ -175,19 +175,25 @@ def report_pmi(name: str) -> None:
                 s = {side: res[ex, True][f"{level}_{side}"] - (res[ex, False][f"{level}_{side}"] if score == "pmi" else 0) for side in "AB"}
                 other = "B" if k["head"] == "A" else "A"
                 rows.append((s[k["head"]] - s[other], k["km_head"], k["km_other"]))  # margin for the head's area, nats
-            rows = np.asarray(rows)
-            print(f"=== {name} {level}, {score}: {len(rows)} pairs")
-            for thr in (25, 1):
-                head_ok, other_ok = rows[:, 1] < thr, rows[:, 2] < thr
-                dec = head_ok != other_ok
-                acc = np.mean(np.where(rows[dec, 0] >= 0, head_ok[dec], other_ok[dec]))
-                print(f"--- {thr} km: {dec.sum()} decisive, model right {acc:.1%} (head {head_ok[dec].mean():.1%}); "
-                      f"head-wrong {np.mean(rows[dec & ~head_ok, 0] < 0):.1%} right, head-right {np.mean(rows[dec & head_ok, 0] >= 0):.1%} right")
-                for t in (0, 1, 2, 3, 4, 6):
-                    sw = rows[:, 0] < -t
-                    fx, br = int((sw & other_ok & ~head_ok).sum()), int((sw & head_ok & ~other_ok).sum())
-                    print(f"  follow when margin for the other area > {t} nats: switches {sw.sum()}, fixes {fx}, breaks {br}, "
-                          f"net {100 * (fx - br) / 500 * 0.944:+.2f} pts of dev3k")
+            margin_report(np.asarray(rows), f"{name} {level}, {score}", "nats")
+
+
+def margin_report(rows: np.ndarray, label: str, unit: str) -> None:
+    """rows: (score margin for the head's area over the other, km of the head's area, km of the other) per pair; switches when the
+    margin for the other area exceeds a threshold, fixes / breaks / net pts of dev3k (202 pairs drawn from ~500 decisive, lesson 105)."""
+
+    print(f"=== {label}: {len(rows)} pairs")
+    for thr in (25, 1):
+        head_ok, other_ok = rows[:, 1] < thr, rows[:, 2] < thr
+        dec = head_ok != other_ok
+        acc = np.mean(np.where(rows[dec, 0] >= 0, head_ok[dec], other_ok[dec]))
+        print(f"--- {thr} km: {dec.sum()} decisive, model right {acc:.1%} (head {head_ok[dec].mean():.1%}); "
+              f"head-wrong {np.mean(rows[dec & ~head_ok, 0] < 0):.1%} right, head-right {np.mean(rows[dec & head_ok, 0] >= 0):.1%} right")
+        for t in (0, 1, 2, 3, 4, 6):
+            sw = rows[:, 0] < -t
+            fx, br = int((sw & other_ok & ~head_ok).sum()), int((sw & head_ok & ~other_ok).sum())
+            print(f"  follow when margin for the other area > {t} {unit}: switches {sw.sum()}, fixes {fx}, breaks {br}, "
+                  f"net {100 * (fx - br) / 500 * 0.944:+.2f} pts of dev3k")
 
 
 def report(name: str = "4b") -> None:
