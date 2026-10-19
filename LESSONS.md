@@ -352,3 +352,12 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     text 7%, non-Latin script 3%, driving side 9%, a country domain 2%. The two areas are in different countries on 55 pairs, have
     different language sets on 52 and driving sides on 12. The cues decide 2 pairs, both for the head's area: 0 fixes / 0 breaks. As in
     lessons 21 and 79, the decisive cues sit on photos the head already gets right.
+133. **Cue tables at scale: still nothing** (`cue_check.py`, run name `4b_cues_grpo`; the answer head's top two areas from
+    `names_grpo_pairs.jsonl` on 2,817 dev3k + 4,692 held-out train photos; currency and phone codes added). The 4B reports non-English
+    text on 8.1 / 7.2% of photos (dev / held), non-Latin script 3.1 / 2.2%, driving side 5.5 / 6.4%, a country domain 0.6 / 0.8%, currency
+    0.2%, phone code 0.1-0.2%. The two areas are in different countries on 1,050 / 1,763 pairs, 434 / 722 of them decisive at 25 km (head
+    85.6 / 85.1% right). Cues decide 20 / 35 decisive pairs. Language picks the right area on 67 / 90%, script 5 / 5, driving side 1 / 3 and
+    5 / 9. Where cues favour the head's area, it is right on 9 / 9 and 24 / 25 decisive pairs. Where they favour the other area, that area is
+    right on 2 / 9 and 2 / 7. Following the cues: 2 fixes / 7 breaks (dev3k, -0.18 pts), 2 / 5 (held); language + script only 1 / 5 and 2 / 2.
+    Readable cues sit on photos the head already gets right. When one contradicts the head it is usually misread or non-local (tourist
+    or foreign-language text), so it confirms the head rather than correcting it.
