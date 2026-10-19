@@ -18,6 +18,15 @@ train-exact: the exact expected reward P(right letter) instead of sampling, both
         weighted equally, best adapter on held; then writes names_grpo_{run}.jsonl and names_grpo_base2.jsonl (base, same prompt) for report.
 report: accuracy on decisive pairs (head-right / head-wrong), and following the judge when P(head's second) >= t, t chosen on held,
         fixes / breaks / net pts of dev3k at 25 km.
+
+Results (2026-10-19, closed; dev3k 1,370 decisive pairs, head right 85.6%):
+- GRPO (train) collapsed onto "A" twice: with the old prompt only 42% of first-token mass was on A / B; with the bare-letter prompt
+  the drift came back (all-same groups give no gradient, nothing restores the bias).
+- train-exact (names-exact-a, lr 5e-5, 2 epochs, best adapter step 900): held balanced P(right) 0.530 -> 0.577, orders agree 63 -> 92%,
+  but the dev AUC of the head being right is 0.593 vs the base 0.600; the trained judge is confident and wrong (P >= 0.95 on 282 pairs,
+  53 fixes / 229 breaks, -5.87 pts; base -0.30). Logistic of head margin + judge logit, fit and thresholded on held: dev +0.33 pts
+  (26 fixes / 16 breaks) vs head margin alone -0.23; judge weight -0.06 vs head -0.88. Below the 1-pt bar: the 4B's knowledge of named
+  places adds little beyond retrieval on the pairs the head gets wrong (as lessons 52-53, 106).
 """
 
 from __future__ import annotations
