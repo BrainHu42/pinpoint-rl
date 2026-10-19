@@ -40,7 +40,14 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
   (89), round trips (90), next-bucket and MegaLoc refinement (91, 107, 112), word-location statistics (92), MegaLoc as proposer / over more
   photos (95, 97), contrast with fetched references (99-103), more areas (112), and the commons26 text-search line (115-121: span search,
   OSM names, a learned candidate ranker, a confidence override, +0.9 at best). Their code was removed on 2026-10-16 and is at git tag
-  `pre-merge-cleanup-2026-10-16`. Paid-LLM readers (80, 102-105) were diagnostics only.
+  `pre-merge-cleanup-2026-10-16`. Paid-LLM readers (80, 102-105) were diagnostics only. Since then, also closed (122-133): clustering
+  variants (122), clue-area recall (123), geotag accuracy / hubness (124), near-miss training (125), head context columns (126), graph
+  diffusion over the gallery (127), and local judges of the head's top two areas: Gemma 3 27B in three formats, name PMI, Wikipedia /
+  Wikivoyage profiles in the prompt, photo cues vs country tables (128, 131-133).
+- **Where the pipeline loses (lessons 129-130, dev3k, 47.3 < 25 km)**: retrieval miss 26.5 pts (24.6 of them photos without the
+  photographer's own photo in the pool), right candidate never an area 11.8 (noise-level reranker weight, out of reach), wrong area picked
+  14.4 (wrong picks a median 381 km from the truth). The reachable ceiling with today's retrieval is the area oracle (61.7), not the pool
+  oracle (73.1). commons26 dev: retrieval miss 49.1, concentrated where the gallery is sparse.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
   and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
@@ -108,6 +115,10 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
     `load(extra=("megaloc",))`), `zoom_agent.py`, `read_agent.py` (lesson 76), `megaloc_gate.py` (MegaLoc columns, lesson 93),
     `crop_look.py` (crop views; view 0 is the policy's free glance), `refine_headroom.py` (geometry helpers), `action_agent.py` (the RL action
     policy, `--apply`, `--one-km`).
+- Diagnostics and screens (lessons 122-133): `scripts/pipeline_diagnostics.py` and `scripts/candidate_drill.py` (where photos are lost),
+  `graph_diffusion.py` (MP16 kNN graph, `artifacts/diffusion/`), `names_judge.py` (named A/B and name PMI with a local VLM), `profile_judge.py`
+  (Wikipedia / Wikivoyage area profiles), `cue_check.py` (photo cues vs GeoNames country tables), `scripts/subset_photo_set.py` (a split-only
+  photo set with its caches, e.g. `commons26dev_setft_own`).
 - Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
   per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
   pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).

@@ -66,7 +66,9 @@ lambda 0.005 30.9 / 50.5 / 62.9 / 76.0 / 87.0 (+2.0 / +4.1); im2gps3k +4.0, yfcc
 Sonnet told the two candidate areas' town names (not shown photos) and following it only when it is confident: +0.94 pts at 25 km on dev3k
 (8 fixes / 3 breaks; lessons 104-105). Its fixes are recognitions of events, venues, signs and landmarks retrieval can't use, and its
 confidence is calibrated. Paid LLMs are ruled out, and the local 4B and Qwen3.8-27B are at chance with uncalibrated confidence on the same
-pairs (lesson 106). Open: whether a local model can be trained (ground-truth reward on decisive pairs) to that calibration.
+pairs (lesson 106). Gemma 3 27B in three formats (128), the 4B scoring each area by name PMI (131) and with Wikipedia / Wikivoyage profiles
+in the prompt (132) don't separate them either, and photo cues (language, script, driving side, domains) decide ~1.5% of pairs, confirming
+the head (133). Open: whether a local model can be trained (ground-truth reward on decisive pairs) to that calibration (`names_grpo`).
 
 ## Method rules learned the hard way
 - Choose scorers, thresholds and combiners on dev / train, never by looking at the test set (41, 66). Pre-declare the threshold (105 used 104's).
@@ -119,3 +121,6 @@ pairs (lesson 106). Open: whether a local model can be trained (ground-truth rew
 - RL on open-model text outputs (clues, queries) with label rewards: learns silence (87, 96).
 - Visual verification of candidates beyond MegaLoc's 12 photos per area: more photos, crops, round trips, fetched references, patches,
   pair discriminants (89-90, 97, 99-101, 103). Local LLM readers for A/B choice (99, 106).
+- Area clustering variants (122); hubness penalties, geotag accuracy, area location and glance columns in the head (124, 126); graph
+  diffusion over the gallery (127); local judges of the head's top two areas in any format: choice, evidence first, reasoning first, name
+  PMI, Wikipedia profiles, photo-cue tables (128, 131-133). Where the loss sits, and why the pool oracle overstates it: 129-130.
