@@ -115,6 +115,81 @@ def ask(name: str = "4b", server: str = "http://127.0.0.1:8765", workers: int = 
     print(f"-> {path}: {len(res)} answers, {sum('error' in r for r in res)} errors")
 
 
+def pmi(name: str, server: str = "http://127.0.0.1:8765", workers: int = 16) -> None:
+    """Score each named area instead of asking for a choice: log P(name | photo) - log P(name | no photo) of the place in "This photo was
+    taken near <town>, <country>." (prompt logprobs, the assistant turn continued), and the same for "taken in <country>."."""
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .name_score import _post
+
+    set_ = json.loads(SET.read_text(encoding="utf-8"))
+    cands = {m.group(1): (m.group(2), m.group(3)) for m in re.finditer(r"(ex\d+): A = (.*?); B = (.*)", set_["candidates"])}
+    imgs = _images(set_)
+
+    def lp(ex, image, text):  # summed prompt logprob of the assistant text, and its token count
+        user = [{"type": "text", "text": "Where was this photo taken?"}]
+        if image:
+            user = [{"type": "image_url", "image_url": {"url": imgs[ex]}}] + user
+        body = {"model": "vlm", "max_tokens": 1, "prompt_logprobs": 0, "add_generation_prompt": False, "continue_final_message": True,
+                "chat_template_kwargs": {"enable_thinking": False},
+                "messages": [{"role": "user", "content": user}, {"role": "assistant", "content": text}]}
+        out = [next(iter(d.values()))["logprob"] for d in _post(server, "/v1/chat/completions", body)["prompt_logprobs"] if d]
+        return out
+
+    def run(job):
+        ex, image = job
+        res = {"ex": ex, "image": image}
+        try:
+            for level, prefix in (("place", "This photo was taken near"), ("country", "This photo was taken in")):
+                n0 = len(lp(ex, image, prefix))
+                for side, c in zip("AB", cands[ex]):
+                    m = re.match(r"near (.*) \(.*?\), (.*)", c)
+                    text = f"{prefix} {m.group(1)}, {m.group(2)}." if level == "place" else f"{prefix} {m.group(2)}."
+                    res[f"{level}_{side}"] = float(sum(lp(ex, image, text)[n0:]))
+        except Exception as e:  # noqa: BLE001
+            res["error"] = str(e)[:200]
+        return res
+
+    jobs = [(ex, im) for ex in cands for im in (True, False)]
+    with ThreadPoolExecutor(workers) as pool:
+        res = list(pool.map(run, jobs))
+    path = OUT / f"names_judge_dev3k_{name}.json"
+    path.write_text(json.dumps(res), encoding="utf-8")
+    print(f"-> {path}: {len(res)} rows, {sum('error' in r for r in res)} errors")
+
+
+def report_pmi(name: str) -> None:
+    set_ = json.loads(SET.read_text(encoding="utf-8"))
+    cands = {m.group(1): (m.group(2), m.group(3)) for m in re.finditer(r"(ex\d+): A = (.*?); B = (.*)", set_["candidates"])}
+    res = {(r["ex"], r["image"]): r for r in json.loads((OUT / f"names_judge_dev3k_{name}.json").read_text(encoding="utf-8")) if "error" not in r}
+    for level in ("place", "country"):
+        for score in ("pmi", "photo only"):
+            rows = []
+            for k in set_["key"]:
+                ex = k["ex"]
+                if (ex, True) not in res or (ex, False) not in res:
+                    continue
+                if level == "country" and cands[ex][0].rsplit(", ", 1)[1] == cands[ex][1].rsplit(", ", 1)[1]:
+                    continue
+                s = {side: res[ex, True][f"{level}_{side}"] - (res[ex, False][f"{level}_{side}"] if score == "pmi" else 0) for side in "AB"}
+                other = "B" if k["head"] == "A" else "A"
+                rows.append((s[k["head"]] - s[other], k["km_head"], k["km_other"]))  # margin for the head's area, nats
+            rows = np.asarray(rows)
+            print(f"=== {name} {level}, {score}: {len(rows)} pairs")
+            for thr in (25, 1):
+                head_ok, other_ok = rows[:, 1] < thr, rows[:, 2] < thr
+                dec = head_ok != other_ok
+                acc = np.mean(np.where(rows[dec, 0] >= 0, head_ok[dec], other_ok[dec]))
+                print(f"--- {thr} km: {dec.sum()} decisive, model right {acc:.1%} (head {head_ok[dec].mean():.1%}); "
+                      f"head-wrong {np.mean(rows[dec & ~head_ok, 0] < 0):.1%} right, head-right {np.mean(rows[dec & head_ok, 0] >= 0):.1%} right")
+                for t in (0, 1, 2, 3, 4, 6):
+                    sw = rows[:, 0] < -t
+                    fx, br = int((sw & other_ok & ~head_ok).sum()), int((sw & head_ok & ~other_ok).sum())
+                    print(f"  follow when margin for the other area > {t} nats: switches {sw.sum()}, fixes {fx}, breaks {br}, "
+                          f"net {100 * (fx - br) / 500 * 0.944:+.2f} pts of dev3k")
+
+
 def report(name: str = "4b") -> None:
     set_ = json.loads(SET.read_text(encoding="utf-8"))
     res = json.loads((OUT / f"names_judge_dev3k_{name}.json").read_text(encoding="utf-8"))
@@ -152,7 +227,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     reason = args.name.endswith("_reason")  # NAME=27b_reason: evidence first, stated confidence
     think = args.name.endswith("_think")  # NAME=gemma27b_think: step-by-step reasoning first, stated confidence
-    ask(args.name, reason=reason, think=think) if args.cmd == "ask" else report(args.name)
+    if args.name.endswith("_pmi"):  # NAME=27b_pmi: per-area name likelihood with vs without the photo, no choice asked
+        pmi(args.name) if args.cmd == "ask" else report_pmi(args.name)
+    else:
+        ask(args.name, reason=reason, think=think) if args.cmd == "ask" else report(args.name)
     return 0
 
 
