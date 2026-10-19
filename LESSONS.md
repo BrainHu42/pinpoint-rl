@@ -323,3 +323,14 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     the choice loss (area oracle minus pipeline) sits in the lower three quintiles (23 / 21 / 18 pts vs 7 / 4). commons26 dev (25.2):
     retrieval miss 49.1, never an area 11.4, wrong area 14.3. 22.3 of the 49.1 pts are photos with < 100 gallery photos within 25 km (28%
     of photos, pool oracle 16.4). Tiers none / region reach 7.4 / 16.0. With place text: 43.3 vs area oracle 59.6.
+130. **The areas the pipeline loses although retrieval found the place** (`scripts/candidate_drill.py`; same cached outputs as lesson 129;
+    dev3k / commons26 dev). "Never an area" (11.8 / 11.4 pts): every such photo already had 5 agreement areas. None was folded into a
+    cluster centred elsewhere. The best right candidate ranks 9 / 17 / 29 (quartiles) of ~46 by reranker score, and 73% rank >= 10. The right
+    candidates hold 2.4% of softmax(score / 0.2) (median), vs 55% on photos with a right area. That is noise-level weight: no clustering or
+    area count reaches it (lessons 112, 122), so the reachable ceiling is the area oracle (61.7), not the pool oracle (73.1). "Wrong area
+    chosen" (14.4 / 14.3 pts): the right area is the top-support one on 23% (3.3 pts the head overrides wrongly) and rank 1 / 2 / 3+ on
+    27 / 21 / 29%. Clue areas are 1% / 7%. Pick success by the right area's rank: 92 / 52 / 35 / 26% (rank 0 / 1 / 2 / 3+). The head picks a
+    rank-1 right area on 64% of photos with the photographer's own photo in the pool, 37% without. Even reaching the own-photo rate
+    everywhere is worth ~1.4 pts. Wrong picks are far apart: answer error 118 / 381 / 1,100 km (quartiles), only 22% within 100 km
+    (commons26 98 / 214 / 675 km, 26%). With an own photo in the pool, retrieval returns it right 89% of the time (pipeline 72.4%), and
+    20.4% when that own photo is wrong.
