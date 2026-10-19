@@ -334,3 +334,10 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     everywhere is worth ~1.4 pts. Wrong picks are far apart: answer error 118 / 381 / 1,100 km (quartiles), only 22% within 100 km
     (commons26 98 / 214 / 675 km, 26%). With an own photo in the pool, retrieval returns it right 89% of the time (pipeline 72.4%), and
     20.4% when that own photo is wrong.
+131. **Scoring instead of choosing: the 4B's name PMI is unbiased but weak** (`names_judge.py` `_pmi` mode; lesson 106's 202 dev3k pairs;
+    run beside a GRPO job at 30% GPU). Per area: log P("This photo was taken near <town>, <country>." | photo) minus the same without the
+    photo, from prompt logprobs. 25 km: right on 60.0% of decisive pairs (head 85.0%), vs 55% and position-biased when the 4B chooses.
+    The photo-only likelihood is at chance (50.5%), so the photo adds real signal. Right on 73.3% of the head's 30 mistakes but 57.6% of
+    its right pairs, so following it never pays: margin > 0 / 2 / 4 nats gives 22 / 72, 8 / 25, 4 / 7 fixes / breaks. Country level ("taken in
+    <country>.", 55 pairs with different countries): 61.8%, > 0 nats 6 / 20. Qwen3.8-27B and Gemma 27B PMI not run yet (GPU busy;
+    `scripts/names_judge_pmi.sh`).
