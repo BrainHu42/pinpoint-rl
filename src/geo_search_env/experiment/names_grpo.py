@@ -12,7 +12,10 @@
         <country>" -> artifacts/agent/names_grpo_pairs.jsonl. Splits: grpo (train used for GRPO), held (5,000 train photos kept out of GRPO,
         for choosing the switch threshold), dev (dev3k). A pair is decisive when exactly one area is < 25 km.
 ask:    P(A) from the first-token logprobs, both orders, on the held and dev decisive pairs -> artifacts/agent/names_grpo_{name}.jsonl.
-train:  GRPO on grpo decisive pairs, balanced between the head's top area being right and its second, A / B order random.
+train:  GRPO on grpo decisive pairs, balanced between the head's top area being right and its second, both orders. Collapsed onto one
+        letter twice (a 2-way 1-token answer gives all-same groups, which carry no gradient).
+train-exact: the exact expected reward P(right letter) instead of sampling, both orders in one batch, a position-bias penalty, classes
+        weighted equally, best adapter on held; then writes names_grpo_{run}.jsonl and names_grpo_base2.jsonl (base, same prompt) for report.
 report: accuracy on decisive pairs (head-right / head-wrong), and following the judge when P(head's second) >= t, t chosen on held,
         fixes / breaks / net pts of dev3k at 25 km.
 """
@@ -338,6 +341,184 @@ def train(run: str, hours: float, lr: float, beta: float, batch: int, accumulati
     trainer.save_model(str(out / "adapter"))
 
 
+def _judge_image(r: dict, images):
+    from PIL import Image
+
+    url = _image_url(r, images)  # the served image: thumbnail 768, JPEG q90
+    return Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).convert("RGB")
+
+
+class _PairBatches:
+    """Torch dataset of pair batches, both orders of each pair: processor inputs, P(A) is right per sequence, pair weights."""
+
+    def __init__(self, processor, rows: list[dict], weights: list[float], size: int) -> None:
+        self.processor, self.rows, self.weights, self.size = processor, rows, weights, size
+        self.images = None
+
+    def __len__(self) -> int:
+        return math.ceil(len(self.rows) / self.size)
+
+    def __getitem__(self, i: int):
+        import torch
+
+        from .sft_data import MP16Images
+
+        self.images = self.images or MP16Images()
+        texts, ims, a_right, w = [], [], [], []
+        for j in range(i * self.size, min((i + 1) * self.size, len(self.rows))):
+            r = self.rows[j]
+            im = _judge_image(r, self.images)
+            for order in (0, 1):
+                a, b = r["names"] if order == 0 else r["names"][::-1]
+                msgs = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": PROMPT.format(a=a, b=b)}]}]
+                texts.append(self.processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False, enable_thinking=False))
+                ims.append(im)
+                a_right.append((r["km"][0] < 25) == (order == 0))
+                w.append(self.weights[j])
+        batch = dict(self.processor(text=texts, images=ims, return_tensors="pt", padding=True))  # right padding
+        return batch, torch.tensor(a_right), torch.tensor(w, dtype=torch.float32)
+
+
+def _logit_a(model, batch: dict, ids: tuple[int, int]):
+    """logit(A) - logit(B) of the first answer token, read at each sequence's last real position (right padding)."""
+    import torch
+
+    last = batch["attention_mask"].sum(1) - 1
+    keep, where = torch.unique(last, return_inverse=True)
+    logits = model(**batch, logits_to_keep=keep).logits  # (n, len(keep), vocab)
+    ab = logits[torch.arange(len(last), device=logits.device), where][:, list(ids)].float()
+    return ab[:, 0] - ab[:, 1]
+
+
+def _predict(model, processor, rows: list[dict], ids: tuple[int, int], size: int = 8) -> np.ndarray:
+    """P(the head's top area) per pair and order, (n, 2)."""
+    import torch
+
+    loader = torch.utils.data.DataLoader(_PairBatches(processor, rows, [1.0] * len(rows), size), batch_size=None, num_workers=4)
+    out = []
+    with torch.no_grad():
+        for batch, _, _ in loader:
+            pa = torch.sigmoid(_logit_a(model, {k: v.cuda() for k, v in batch.items()}, ids)).view(-1, 2).cpu().numpy()
+            out.append(np.stack([pa[:, 0], 1 - pa[:, 1]], 1))
+    return np.concatenate(out)
+
+
+def _balanced(p_top: np.ndarray, rows: list[dict]) -> tuple[float, float]:
+    """Class-balanced mean P(right) and accuracy (orders averaged) over head-right and head-wrong pairs."""
+    top_ok = np.array([r["km"][0] < 25 for r in rows])
+    p = np.where(top_ok, p_top.mean(1), 1 - p_top.mean(1))
+    return (p[top_ok].mean() + p[~top_ok].mean()) / 2, ((p > 0.5)[top_ok].mean() + (p > 0.5)[~top_ok].mean()) / 2
+
+
+def train_exact(run: str, hours: float, lr: float, epochs: float, pairs_per_batch: int = 4, accumulation: int = 4, rank: int = 32,
+                eval_every: int = 100, limit: int = 0, bias_penalty: float = 0.1) -> None:
+    """Maximise the judge's exact expected reward, P(right letter) over {A, B}, both orders of each pair in one batch (a position shift
+    cancels), plus bias_penalty x the squared order-averaged logit(A) - logit(B) of each pair (the objective is flat in that direction
+    when the judge knows nothing, so position bias would drift). Head-right and head-wrong pairs weighted equally. The adapter with the best balanced expected reward on held pairs is kept."""
+    import torch
+    from peft import LoraConfig, get_peft_model
+    from transformers import AutoModelForImageTextToText, AutoProcessor
+
+    from .sft_train import LORA_TARGETS, MAX_PIXELS, RUNS
+
+    torch.manual_seed(0)
+    rng = np.random.default_rng(0)
+    rows = _decisive("grpo")
+    rows = [rows[i] for i in rng.permutation(len(rows))][:limit or None]
+    top_ok = np.array([r["km"][0] < 25 for r in rows])
+    weights = np.where(top_ok, len(rows) / (2 * top_ok.sum()), len(rows) / (2 * (~top_ok).sum())).tolist()
+    held = _decisive("held")
+    wrong = [r for r in held if r["km"][1] < 25]
+    right = [r for r in held if r["km"][0] < 25]
+    n = limit // 2 or len(wrong)
+    held_eval = wrong[:n] + [right[i] for i in rng.permutation(len(right))[:n]]
+    print(f"{len(rows)} training pairs ({(~top_ok).sum()} head-wrong, weighted to half); {len(held_eval)} held pairs for checkpoint choice",
+          flush=True)
+    out = RUNS / run
+    processor = AutoProcessor.from_pretrained(BASE, max_pixels=MAX_PIXELS)
+    ids = tuple(processor.tokenizer.convert_tokens_to_ids(x) for x in ("A", "B"))
+    model = AutoModelForImageTextToText.from_pretrained(BASE, dtype=torch.bfloat16).cuda()
+    model = get_peft_model(model, LoraConfig(r=rank, lora_alpha=2 * rank, lora_dropout=0.0,
+                                             target_modules=r".*language_model.*\.(" + "|".join(LORA_TARGETS) + ")$"))
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    model.enable_input_require_grads()
+    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr, weight_decay=0.0)
+
+    def evaluate(tag: str) -> float:
+        model.eval()
+        m, acc = _balanced(_predict(model, processor, held_eval, ids), held_eval)
+        model.train()
+        print(f"  [{tag}] held balanced P(right) {m:.4f}, accuracy {acc:.3f}", flush=True)
+        return float(m)
+
+    best = evaluate("step 0")
+    started, step, history, stop = time.time(), 0, [], False
+    total_steps = max(1, int(epochs * len(rows) / (pairs_per_batch * accumulation)))
+    model.train()
+    for epoch in range(math.ceil(epochs)):
+        order = np.random.default_rng(epoch).permutation(len(rows))
+        ds = _PairBatches(processor, [rows[i] for i in order], [weights[i] for i in order], pairs_per_batch)
+        loader = torch.utils.data.DataLoader(ds, batch_size=None, num_workers=4, prefetch_factor=4)
+        acc_loss, acc_pa, n_micro = 0.0, 0.0, 0
+        for batch, a_right, w in loader:
+            d = _logit_a(model, {k: v.cuda() for k, v in batch.items()}, ids)
+            pa = torch.sigmoid(d)
+            p_right = torch.where(a_right.cuda(), pa, 1 - pa)
+            loss = -(w.cuda() * p_right).mean() / accumulation
+            (loss + bias_penalty * d.view(-1, 2).mean(1).pow(2).mean() / accumulation).backward()
+            acc_loss += loss.item()
+            acc_pa += pa.mean().item() / accumulation
+            n_micro += 1
+            if n_micro % accumulation:
+                continue
+            for g in opt.param_groups:
+                g["lr"] = lr * min(1.0, (step + 1) / 20)
+            opt.step()
+            opt.zero_grad(set_to_none=True)
+            step += 1
+            history.append({"step": step, "loss": acc_loss, "mean_p_a": acc_pa})
+            if step % 10 == 0:
+                recent = history[-10:]
+                print(f"step {step}/{total_steps}: weighted P(right) {-np.mean([h['loss'] for h in recent]):.4f}, mean P(A) "
+                      f"{np.mean([h['mean_p_a'] for h in recent]):.3f}, {(time.time() - started) / step:.1f} s/step", flush=True)
+            acc_loss, acc_pa = 0.0, 0.0
+            stop = step >= total_steps or time.time() - started > hours * 3600
+            if step % eval_every == 0 or stop:
+                m = evaluate(f"step {step}")
+                history[-1]["held"] = float(m)
+                if m > best:
+                    best = m
+                    model.save_pretrained(str(out / "adapter"))
+                    print(f"  saved adapter (step {step})", flush=True)
+            if stop:
+                break
+        if stop:
+            break
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "log_history.json").write_text(json.dumps(history, indent=1) + "\n", encoding="utf-8")
+    if not (out / "adapter").exists():
+        print("no step beat the base model on held; nothing saved", flush=True)
+        return
+    from peft import set_peft_model_state_dict
+    from safetensors.torch import load_file
+
+    set_peft_model_state_dict(model, load_file(str(out / "adapter" / "adapter_model.safetensors")))
+    model.eval()
+    targets = _decisive(("held", "dev"))[:limit or None]
+    for name in (run, "base2"):
+        path = OUT / f"names_grpo_{name}.jsonl"
+        if name == "base2" and (path.exists() or limit):
+            continue
+        if name == run:
+            p = _predict(model, processor, targets, ids)
+        else:
+            with model.disable_adapter():
+                p = _predict(model, processor, targets, ids)
+        path.write_text("".join(json.dumps({"split": r["split"], "photo": r["photo"], "p_top": [float(x) for x in pt]}) + "\n"
+                                for r, pt in zip(targets, p)), encoding="utf-8")
+        print(f"-> {path}", flush=True)
+
+
 def merge(run: str, adapter: str = "adapter") -> None:
     import torch
     from peft import PeftModel
@@ -357,7 +538,7 @@ def merge(run: str, adapter: str = "adapter") -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("pairs", "ask", "report", "train", "merge"))
+    parser.add_argument("cmd", choices=("pairs", "ask", "report", "train", "train-exact", "merge"))
     parser.add_argument("--name", default="base")
     parser.add_argument("--tag", default="", help="ignored (scripts/clue_judge.sh passes --tag)")
     parser.add_argument("--run", default="names-grpo-a")
@@ -367,6 +548,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--beta", type=float, default=0.04)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--accumulation", type=int, default=8)
+    parser.add_argument("--epochs", type=float, default=2.0)
+    parser.add_argument("--eval-every", type=int, default=100)
     parser.add_argument("--limit", type=int, default=0, help="train: examples (0: all)")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
@@ -376,6 +559,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ask(args.name)
     elif args.cmd == "report":
         report(args.name)
+    elif args.cmd == "train-exact":
+        train_exact(args.run, args.hours, args.lr, args.epochs, eval_every=args.eval_every, limit=args.limit)
     elif args.cmd == "train":
         train(args.run, args.hours, args.lr, args.beta, args.batch, args.accumulation, limit=args.limit, resume=args.resume)
     else:
