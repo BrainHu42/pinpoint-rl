@@ -3,6 +3,7 @@
   pinpoint   visual search: Pinpoint's retrieval + reranker over MP16, optionally restricted (box, country / region, near points, rows)
   maps       Google Maps: name search with near=, phone / website lookup, features_near (OSM + GeoNames + Overture; FeatureIndex for batches)
   web        Google web search: Wikipedia / Wikivoyage pages, plus where the words occur in Flickr titles / tags and named places
+  (planned)  imagery at (lat, lon): recent photos near a candidate to verify it; no offline stand-in covers it (TOOL_USE_DESIGN.md, lesson S3)
 
 Each tool has two faces: a text one the agent reads (Maps / Google-style result lists, no hidden coordinates beyond what Google shows) and
 structured batch calls for training and features (Pinpoint.search over many photos, MapsSearch.query -> Place, FeatureIndex, TextSearch.matches).

@@ -21,7 +21,7 @@ from the summary.**
   released 46.4). Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
 - **Two tracks, run in parallel sessions (user, 2026-10-20)**: `RETRIEVAL_PLAN.md` (retrain Pinpoint's retriever / index side, the largest
   loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates; closed offline 2026-10-20, lessons
-  S1-S3, its last section is a tool-use design input: verify independently proposed places with imagery at the place). Each brief has the coordination rules
+  S1-S3; carried into `TOOL_USE_DESIGN.md`: verify independently proposed places with imagery at the place). Each brief has the coordination rules
   for sharing the machine. The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
   131-137) is at `docs/archive/EXPERT_PLAN.md`; older plans at tag `plans-2026-10-15`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the current pipeline and the pool

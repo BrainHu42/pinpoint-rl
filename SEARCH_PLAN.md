@@ -1,5 +1,8 @@
 # Track S: an RL agent whose searches create candidates (2026-10-20)
 
+**Closed offline (2026-10-20, user): lessons S1-S3. The design inputs carried forward are in `TOOL_USE_DESIGN.md`; this brief stays for the
+record and for track R's coordination reference.**
+
 One of two tracks run in parallel sessions (the other: `RETRIEVAL_PLAN.md`). Read `LEARNINGS.md` first; lesson N is in
 `docs/archive/LESSONS_1-137.md#lN`. Lessons from this track go in `LESSONS.md` under "Search-agent track" as S1, S2, ...
 
