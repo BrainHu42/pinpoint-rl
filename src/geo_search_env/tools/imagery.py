@@ -188,9 +188,11 @@ class MapillaryImagery(CommonsImagery):
             props = [f["properties"] for f in feats]
             np.savez(path, lat=lat, lon=lon, id=np.asarray([int(p["id"]) for p in props], np.int64),
                      captured=np.asarray([int(p.get("captured_at") or 0) for p in props], np.int64),
-                     seq=np.asarray([str(p.get("sequence_id", "")) for p in props]), pano=np.asarray([bool(p.get("is_pano")) for p in props]))
+                     seq=np.asarray([str(p.get("sequence_id", "")) for p in props], dtype=str),
+                     pano=np.asarray([bool(p.get("is_pano")) for p in props], dtype=bool))
         z = np.load(path)
-        return {k: z[k] for k in z.files}
+        types = {"lat": np.float64, "lon": np.float64, "id": np.int64, "captured": np.int64, "seq": str, "pano": bool}
+        return {k: z[k].astype(types[k]) for k in z.files}  # empty tiles (no coverage) were saved with default dtypes
 
     def geosearch(self, lat: float, lon: float, km: float = 1.0, limit: int = 0) -> list[Photo]:
         import numpy as np
