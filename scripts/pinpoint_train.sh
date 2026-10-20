@@ -1,7 +1,7 @@
 #!/bin/bash
 # Fine-tune Pinpoint's reranker (PINPOINT_SET_PLAN.md step 4, lesson 70). Run A (+3.1 / +3.3):
 #   bash scripts/pinpoint_train.sh --run-name setft_a --batch-size 256 --steps 6000 --val-every 1500 --val-batches 40 --log-every 50 --num-workers 4 --lr 5e-5 --warmup-steps 300
-# Ablations via env: POOL=narrow (the released 8 / 2 / 2 lists sampled from a 2x pool instead of wide 32 / 8 / 8 with original-list rank
+# Ablations via env: POOL=deep (128 / 32 / 8 lists), POOL=narrow (the released 8 / 2 / 2 lists sampled from a 2x pool instead of wide 32 / 8 / 8 with original-list rank
 # features), EXCL=0 (no same-photographer exclusion), HEAD=0 (no co-trained set head; the control ft_nohead, +2.1 / +2.3).
 # Run inside a memory-capped scope (MemoryMax=13G); needs ~27 GB of GPU memory.
 cd "$(dirname "$0")/.."  # repo root
@@ -13,6 +13,8 @@ echo "retrieval index: $IDX"
 export PYTHONPATH=pinpoint_train/src:src PYTHONUNBUFFERED=1
 if [ "${POOL:-wide}" = narrow ]; then
   pool="--num-neighbors-image 8 --num-neighbors-raw-image 2 --num-neighbors-gps 2 --modality-pool-multiplier 2"
+elif [ "${POOL}" = deep ]; then  # retrieval track (lesson R1): image 128 / raw 32 / GPS 8, rank features still relative to 8 / 2 / 2
+  pool="--num-neighbors-image 128 --num-neighbors-raw-image 32 --num-neighbors-gps 8 --modality-pool-multiplier 1 --original-targets 8 2 2"
 else
   pool="--num-neighbors-image 32 --num-neighbors-raw-image 8 --num-neighbors-gps 8 --modality-pool-multiplier 1 --original-targets 8 2 2"
 fi

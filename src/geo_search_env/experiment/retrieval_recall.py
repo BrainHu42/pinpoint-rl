@@ -225,6 +225,39 @@ def compare(photo_set: str, tags: list[str]) -> None:
                       f"{100 * (r[m] < np.asarray((32, 8, 8))[None]).any(1).mean():5.1f} | {100 * (r[m] < 256).any(1).mean():5.1f}")
 
 
+def top1(photo_set: str, tag: str, targets: list[int], index_dir: str | None = None) -> None:
+    """The reranker's own pick (PINPOINT_RERANKER_CKPT, default released) over a pool of `targets` (image, raw, GPS) per photo, original
+    protocol: % within 1 / 25 km and the pool oracle. Saved to artifacts/retrieval/top1_{photo_set}_{tag}.npz."""
+
+    from ..models.pinpoint_reranker import PinpointReranker
+    from .pinpoint_set import NVME_INDEX
+    from .strategy_search import MP16_EMBED
+
+    photos = json.loads((Path("artifacts/photo_sets") / photo_set / "photos.json").read_text(encoding="utf-8"))
+    rows = np.asarray([e["row"] for e in photos], dtype=np.int64)
+    truth = np.asarray([e["truth"] for e in photos], dtype=np.float64)
+    emb = np.asarray(np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)[rows], dtype=np.float32)
+    model = PinpointReranker(device="cuda", index_dir=Path(index_dir) if index_dir else NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    model.widen(targets)
+    found = model.rank(emb)
+
+    def km(ll):
+        a, b = np.radians(truth), np.radians(ll)
+        h = np.sin((b[..., 0] - a[:, None, 0]) / 2) ** 2 + np.cos(a[:, None, 0]) * np.cos(b[..., 0]) * np.sin((b[..., 1] - a[:, None, 1]) / 2) ** 2
+        return 2 * EARTH_KM * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
+
+    d = np.where(found.valid, km(found.latlon), np.inf)
+    lines = [f"{photo_set}, {tag}, pool {'/'.join(map(str, targets))} ({found.valid.sum(1).mean():.1f} candidates): top-1 < 1 / 25 km "
+             f"{100 * np.mean(d[:, 0] < 1):.1f} / {100 * np.mean(d[:, 0] < 25):.1f}; pool oracle {100 * np.mean(d.min(1) < 1):.1f} / "
+             f"{100 * np.mean(d.min(1) < 25):.1f}"]
+    print(lines[0], flush=True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez(OUT / f"top1_{photo_set}_{tag}.npz", rows=found.rows, latlon=found.latlon.astype(np.float32), scores=found.scores.astype(np.float32),
+             truth=truth.astype(np.float32))
+    with open(OUT / "top1.txt", "a", encoding="utf-8") as fh:
+        fh.write(lines[0] + "\n")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -236,8 +269,15 @@ def main(argv=None) -> int:
     c = sub.add_parser("compare")
     c.add_argument("--photo-set", default="dev3k")
     c.add_argument("tags", nargs="+")
+    t = sub.add_parser("top1")
+    t.add_argument("--photo-set", default="dev3k")
+    t.add_argument("--tag", required=True)
+    t.add_argument("--targets", type=int, nargs=3, default=[32, 8, 8])
+    t.add_argument("--index-dir")
     a = p.parse_args(argv)
-    if a.cmd == "compare":
+    if a.cmd == "top1":
+        top1(a.photo_set, a.tag, a.targets, a.index_dir)
+    elif a.cmd == "compare":
         compare(a.photo_set, a.tags)
     else:
         ranks(a.photo_set, a.tag, a.index_dir) if a.cmd == "ranks" else report(a.photo_set, a.tag)
