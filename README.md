@@ -6,7 +6,7 @@ of MP16-Pro and OSV-5M). Evaluation is on the im2gps3k and yfcc4k eval halves wi
 excluded.
 
 - **`LEARNINGS.md`**: main points of the results so far (read first), linked to the archived lessons 1-137 in `docs/archive/`; new lessons in `LESSONS.md`.
-- **`RETRIEVAL_PLAN.md`, `SEARCH_PLAN.md`**: the two current tracks (parallel sessions). Earlier plans: `docs/archive/EXPERT_PLAN.md`, git tag
+- **`RETRIEVAL_PLAN.md`, `SEARCH_PLAN.md`**: the two tracks of 2026-10-20 (track S closed offline; its design inputs in `TOOL_USE_DESIGN.md`). Earlier plans: `docs/archive/EXPERT_PLAN.md`, git tag
   `plans-2026-10-15`.
 - **`CLAUDE.md`**: research plan summary, project rules, environment notes and code map.
 - **`SETUP.md`**: complete setup guide (hardware, environments, models, datasets, cache build order, commands).

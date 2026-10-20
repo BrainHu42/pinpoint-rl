@@ -20,7 +20,8 @@ from the summary.**
 - **Current best pipeline and where it stands: `LEARNINGS.md`** (`action_agent.py` on the `setft_own` reranker; test 51.2% < 25 km vs
   released 46.4). Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
 - **Two tracks, run in parallel sessions (user, 2026-10-20)**: `RETRIEVAL_PLAN.md` (retrain Pinpoint's retriever / index side, the largest
-  loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates). Each brief has the coordination rules
+  loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates; closed offline 2026-10-20, lessons
+  S1-S3; carried into `TOOL_USE_DESIGN.md`: verify independently proposed places with imagery at the place). Each brief has the coordination rules
   for sharing the machine. The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
   131-137) is at `docs/archive/EXPERT_PLAN.md`; older plans at tag `plans-2026-10-15`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the current pipeline and the pool
@@ -94,6 +95,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   `graph_diffusion.py` (MP16 kNN graph, `artifacts/diffusion/`), `names_judge.py` (named A/B and name PMI with a local VLM), `profile_judge.py`
   (Wikipedia / Wikivoyage area profiles), `cue_check.py` (photo cues vs GeoNames country tables), `scripts/subset_photo_set.py` (a split-only
   photo set with its caches, e.g. `commons26dev_setft_own`).
+- Track S (`SEARCH_PLAN.md`): `search_tree.py` (search speed, pool-derived constraint vocabulary, cached restricted searches, ceiling with luck controls, result-as-evidence and MegaLoc checks; lessons S1-S2), `text_verify.py` (text-proposed places verified by restricted search on commons26 dev; S3); outputs `artifacts/search/`.
 - Probes of lessons 134-137: `density_probe.py` (denser photo database), `clue_verify.py` (fetched YFCC photos / OSV-5M per text place,
   MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
   `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).

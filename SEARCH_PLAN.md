@@ -1,5 +1,8 @@
 # Track S: an RL agent whose searches create candidates (2026-10-20)
 
+**Closed offline (2026-10-20, user): lessons S1-S3. The design inputs carried forward are in `TOOL_USE_DESIGN.md`; this brief stays for the
+record and for track R's coordination reference.**
+
 One of two tracks run in parallel sessions (the other: `RETRIEVAL_PLAN.md`). Read `LEARNINGS.md` first; lesson N is in
 `docs/archive/LESSONS_1-137.md#lN`. Lessons from this track go in `LESSONS.md` under "Search-agent track" as S1, S2, ...
 
@@ -63,3 +66,30 @@ One of two tracks run in parallel sessions (the other: `RETRIEVAL_PLAN.md`). Rea
 - CPU: track R's reranker fine-tune is CPU-bound and will slow search jobs while it runs.
 - The machine stops at 02:00 UTC daily and wipes NVMe: checkpoint long jobs, re-stage the index after a restart.
 - Lessons only in your own `LESSONS.md` section; touch `LEARNINGS.md` / `CLAUDE.md` only for your own track's lines.
+
+## Status (2026-10-20): closed offline; the result feeds the tool-use design (user's decision)
+Lessons S1-S3 (`LESSONS.md`; code `search_tree.py`, `text_verify.py`; outputs `artifacts/search/`). Step 3 (the agent) was not built.
+- **S1, ceiling** (dev3k): ~37 constraints per photo from its own pool reach +14.0 pts beyond the area oracle, but a same-country photo > 100 km
+  away gets +7.7 by luck: net ~+6, ~+2.4 at 8 searches.
+- **S2, evidence** (1.31M cached searches on all train photos, dev3k): the restricted result lifts right-vs-wrong AUC among alternatives
+  0.71 -> 0.76, yet the best-scored alternative is right on 6% of photos (some alternative 14-25%) and no switch nets > 0, even in hindsight;
+  MegaLoc adds nothing. Pool-derived constraints all contain a look-alike by construction, so their search results can't verify them.
+- **S3, independent proposals** (commons26 dev): places proposed by read text verify much better (restricted-search AUC 0.944 vs 0.847 for
+  pool boxes on the same photos), but add nothing over the text ranker or the pipeline: where text is right and the pipeline wrong (116
+  photos), the right place has few MP16 references (index photos within 25 km e^7.2 vs e^8.9) and verifies worse than the wrong pick.
+
+### What carries into the tool-use agent
+- **Propose from evidence retrieval didn't produce; spend verification there.** Pool-derived candidates are not worth a verification call
+  (S2); text-proposed places are (S3). On commons26 dev a right text candidate exists on 35.0% of photos, 16.8% where the pipeline is wrong;
+  a perfect choice among them is +4.2 pts (lesson 121).
+- **Verification needs reference imagery at the candidate.** Offline, Pinpoint restricted to a +-25 km box is the check (batched ~1.5-3 ms;
+  one streamed query ~1.2 s; a box on the GPU-resident index 2.6 ms). It is strong where the gallery is dense and blind where it is sparse,
+  which is where text fixes live. The live tool to add is "photos at (lat, lon)": Street View / Places / recent Commons or Flickr images near
+  a candidate, compared with MegaLoc / SigLIP2. Old Flickr (YFCC) and OSV-5M were already too sparse or off-view (lessons 135, 136).
+- **The outcome dependence an RL policy can use:** the index density around a candidate (`Pinpoint.rows_near`) says when the free offline
+  check is blind; the costly live fetch is worth calling only then, and only for independently proposed places. Read -> propose -> offline
+  check -> live fetch if blind -> answer or next candidate.
+- **Test set for a live verifier:** the 116 commons26 dev photos with a right text candidate and a wrong pipeline answer; the verifier pays if
+  it ranks the right place above the ranker's wrong pick on well over half of them (offline checks: 16-37%), at matched call budget.
+- **Gotchas found:** the full-commons26 MegaLoc caches (`megaloc_queries_commons26_setft_own.npy`, `megaloc_commons26_setft_own.npz`) are
+  blank (pre-bd2d12d); only the commons26dev ones are valid. Small classifiers need enough optimizer steps (`search_tree._fit`, >= 2,000).

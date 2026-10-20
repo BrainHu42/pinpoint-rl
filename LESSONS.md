@@ -10,3 +10,40 @@ for `RETRIEVAL_PLAN.md`, S1, S2, ... for `SEARCH_PLAN.md`. Later single-track wo
 ## Retrieval track (R)
 
 ## Search-agent track (S)
+
+S1. **Search-tree ceiling (step 1): +14.0 pts beyond the area oracle with ~37 searches per photo, but about half is spread, not evidence**
+    (`search_tree.py`; dev3k, setft_own, original protocol). Vocabulary from each photo's own pool: its candidates' countries (6.3 per photo),
+    regions (14.5) and +-25 km boxes around candidates outside every area (16.0). Some restricted top-1 < 25 km: 70.3% (area oracle 61.4, pool
+    oracle 73.1); beyond the area oracle country +3.6, region +9.0, box +11.2, all +14.0, of which +3.3 beyond the pool oracle too (new places).
+    Luck (lesson 120, same vocabulary vs another photo's truth): a random photo +3.3; a same-country photo > 100 km away +7.7 (area oracle there
+    6.0), so net ~+6 pts, and the extras are only 1.8x chance where the areas are 10x. By budget (constraints in pool-mass order) real / same-
+    country luck: 8 searches +4.0 / +1.6, 16 +8.0 / +3.6, 64 +13.7 / +7.7. By bucket: never an area 89.9% reachable (boxes: they restate pool
+    candidates as areas), wrong area 75.0% (regions), retrieval miss only 12.5% (3.3 pts). True region as a reference search: 71.6% (+18.1).
+    Speed of `tools/pinpoint.py`: a streamed pass (none / box / country / region) costs ~1.2-1.7 s whatever the batch, 2.4-3.4 ms / query at
+    batch 1,024 (~1.5 ms at 4,096; GPU 4 GB); rows / near (box-sized, ~15k rows) 2.6 / 6.5 ms per query on the 10.5 GB resident index.
+
+S2. **A search's result is not evidence the head can act on (step 2, no-go)** (`search_tree.py evidence`, `evidence-megaloc`; 1.31M cached
+    searches on all 35,359 train photos, evaluated on dev3k). P(restricted top-1 < 25 km) from prior features A (the constraint's pool mass,
+    candidates inside, best score / rank inside) vs A + result features B (restricted top-1 score and drop vs the unconstrained top, margin,
+    agreement inside the restricted list, novelty, agreement with the photo's other searches): AUC among alternatives (top-1 >= 25 km from
+    the pipeline's answer) 0.686 -> 0.748 / 0.707 -> 0.764 / 0.783 -> 0.829 at 8 / 16 / all searches. But the best-scored alternative is right
+    on 6% of photos while some alternative is right on 14 / 19 / 25%, and no switch threshold nets > 0 even in hindsight (cross-fitted -0.01 to
+    -0.10 pts; the 30 most confident switches: 3-6 fixes / 10-17 breaks). Step 2b, MegaLoc (query vs restricted top-1; 78k photos, 7 min):
+    alone AUC 0.68; added to A+B (dev3k 5-fold) AUC among alternatives +0.002 to +0.006, switches -0.07 to -0.04 pts. (Numbers after the
+    `_fit` fix of S3; before it, the same conclusions.) As lessons 111-112 and main point 2: searching finds right regions the
+    evidence can't pick. A sequential agent over pool-derived constraints has nothing to condition on; closed in this form.
+
+S3. **Text-proposed places verify far better than pool ones, but not where text could fix the pipeline** (`text_verify.py`; commons26
+    dev, 977 photos). Lesson 119's text-search candidates (<= 64 per photo; some right 35.0%, luck 3.7%) and, on the same photos, boxes
+    around the pool candidates; Pinpoint restricted to +-25 km around each (77k searches). The restricted result alone separates right from
+    wrong text candidates at AUC 0.944 (0.914 away from the free top-1) vs 0.847 / 0.788 for pool boxes: independence from retrieval
+    matters (lesson S2's selection effect). But it adds nothing to lesson 119's ranker (top-1 20.7 -> 20.5 linear, 19.1 -> 19.2 MLP),
+    whose text features already hold "Pinpoint points here", and the switch against the pipeline stays below the bar (text only +0.41 /
+    +0.72, with verification +0.41 / +0.20; SE 0.5-0.7; a blank MegaLoc column had shown +1.1 / +1.2, so these switches move ~1 pt on noise).
+    Why: on the 116 photos with a right text candidate and a wrong pipeline, the right place verifies worse than the ranker's wrong top
+    (score drop vs the free search -0.24 vs -0.03, right ahead on 31%; index photos within 25 km e^7.2 vs e^8.9, ahead on 16%; MegaLoc ahead
+    on 37%). Fresh photos at the right place have few MP16 references; the wrong tops sit in dense, look-alike-rich places. The limit is
+    reference coverage at the candidate, which a live imagery tool would supply and the offline gallery can't.
+    Found on the way: `megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (Oct 16, before the bd2d12d path fix)
+    are blank (200 photos -> 4 distinct vectors, cosine 0.99999); only the commons26dev files were redone, so the commons26 test run of
+    lesson 113 had no MegaLoc signal. Also, `search_tree._fit` ran only 16-250 Adam steps on small sets (now >= 2,000); S2b re-run with it.
