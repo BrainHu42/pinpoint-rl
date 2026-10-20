@@ -27,6 +27,11 @@ Results (2026-10-19, closed; dev3k 1,370 decisive pairs, head right 85.6%):
   53 fixes / 229 breaks, -5.87 pts; base -0.30). Logistic of head margin + judge logit, fit and thresholded on held: dev +0.33 pts
   (26 fixes / 16 breaks) vs head margin alone -0.23; judge weight -0.06 vs head -0.88. Below the 1-pt bar: the 4B's knowledge of named
   places adds little beyond retrieval on the pairs the head gets wrong (as lessons 52-53, 106).
+- Bigger open judges, zero-shot, same prompt (ask; scripts/names_judge_partial_auc.py): Gemma-3-27B-FP8 dev AUC 0.613, right on 51.8% of
+  head-wrong pairs, orders agree 58%, -4.13 pts followed at the held threshold, -0.47 combined with the head margin (head alone -0.23).
+  Qwen2.5-VL-72B-AWQ (fits only with 8 GB CPU offload, ~14 requests / min; stopped after 500 dev pairs): AUC 0.674 [0.61, 0.73] vs the 4B
+  0.618 and Gemma 0.641 on the same pairs, the best so far but right on only 50.7% of head-wrong pairs; confident switches are mostly
+  breaks (P >= 0.95: 7 fixes / 23 breaks, >= 0.8: 19 / 54). Scale helps ranking slightly, not the calibrated confident fixes Sonnet had.
 """
 
 from __future__ import annotations
