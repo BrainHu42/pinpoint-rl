@@ -61,9 +61,9 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
    Photographer exclusion helped the photographer-excluded metric and hurt the original protocol ([74], [108]).
 
 ## Open, untested or under-tested
-- **Retrieval itself** (the largest loss, 26.5 + 11.8 pts): we retrained only Pinpoint's reranker; its retriever (an MLP tower over frozen
-  SigLIP2 embeddings, `pinpoint_train/src/pinpoint/contrastive_retrieval/`) and index are as released (a SigLIP2 adapter in the old setup gave
-  ~+1 recall, [38]). 44.2M geotagged YFCC100M photos are not in MP16, so Pinpoint's encoder never saw them: possible training data. A
+- **Retrieval itself** (the largest loss, 26.5 + 11.8 pts). Track R (`LESSONS.md` R1-R4): misses are depth, not absence (a right photo in the
+  top 256 per search for 90.5% vs 73.3% in the 32 / 8 / 8 pool), but fine-tuning the retriever (image-image positives, hard negatives), a
+  reranker trained on 128 / 32 / 8 pools and bucket-99 reranker data all land within +-0.5: the frozen SigLIP2 embedding is the ceiling. 44.2M geotagged YFCC100M photos are not in MP16, so Pinpoint's encoder never saw them: possible training data. A
   full-index MegaLoc search was never built ([75], [95]).
 - **Outcome-dependent, sequential actions** (the next check depends on the last result), the setting where an RL policy can beat fixed
   recipes; today's actions are not ([94]). Wrong picks are cross-region ([130]) and Pinpoint restricted to the true region reaches 61% ([64]),

@@ -27,5 +27,8 @@ R3. **A deeper pool isn't converted by the reranker, even trained on it** (`retr
     candidates): 28.4 / 44.0 (oracle 63.1 / 84.1). Fine-tuned on 128 / 32 / 8 pools (`ret_deep_own`: setft_own's recipe, no photographer exclusion,
     batch 64 x 16k steps = 1.0M photos vs 1.5M, ~26 GB GPU at batch 64; 39 GB at 256): 28.1 / 43.8 deep, 28.0 / 43.9 on 32 / 8 / 8. The +11-pt
     oracle headroom is unreachable with features from the same embeddings (as lesson 130 for ranks 9-29).
+R4. **In-distribution reranker data (bucket 99) doesn't help** (`PINPOINT_TRAIN_IDS`, `scripts/reranker_b99.sh`; setft_own continued on the 33,006
+    bucket-99 train photos without dev3k photographers vs the same steps on buckets 0-98; dev3k top-1 < 1 / 25 km, 32 / 8 / 8). 600 steps, lr 2e-5:
+    28.8 / 44.3 vs control 28.5 / 44.2 (setft_own 28.3 / 44.3). 2,000 steps, lr 5e-5: 27.1 / 42.4 (overfits) vs control 28.4 / 44.2.
 
 ## Search-agent track (S)
