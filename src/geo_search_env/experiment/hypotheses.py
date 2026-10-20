@@ -83,12 +83,11 @@ def _queries(photos: list[dict]) -> list[dict]:
     return [queries[e["index"]] for e in photos]
 
 
-def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
-    from ..models.pinpoint_reranker import PinpointReranker
-    from .strategy_search import load_world
+def restricted_search(photos: list[dict], hyps: list[dict], dst: Path) -> None:
+    """Pinpoint's retrieval + reranker restricted to a box of BOX_KM around each hypothesis centre -> dst (the hypotheses_{tag}.npz format)."""
 
-    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    hyps = _hypotheses(tag, k, clues and min_rank == 0, min_rank)
+    from ..models.pinpoint_reranker import PinpointReranker
+
     world, qrows = photo_world(photos)
     reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     p = np.asarray([h["photo"] for h in hyps])
@@ -96,14 +95,20 @@ def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
     dlat = BOX_KM / 111.0
     dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
     box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
-    print(f"{tag}: {len(photos)} photos, {len(hyps)} hypotheses ({sum(h['source'] == 1 for h in hyps)} from clues)", flush=True)
     found = reranker.rank(world.query_embeddings[qrows[p]], query_author=world.query_author[qrows[p]],
                           index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
-    suffix = f"_more{k}" if min_rank else ("_clues" if clues else "")
-    np.savez(OUT / f"hypotheses_{tag}{suffix}.npz", photo=p, source=np.asarray([h["source"] for h in hyps]), rank=np.asarray([h["rank"] for h in hyps]),
+    np.savez(dst, photo=p, source=np.asarray([h["source"] for h in hyps]), rank=np.asarray([h["rank"] for h in hyps]),
              support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
              rows=found.rows)
-    print(f"-> {OUT / f'hypotheses_{tag}{suffix}.npz'}", flush=True)
+    print(f"-> {dst}", flush=True)
+
+
+def run(tag: str, k: int, clues: bool, min_rank: int = 0) -> None:
+    photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
+    hyps = _hypotheses(tag, k, clues and min_rank == 0, min_rank)
+    print(f"{tag}: {len(photos)} photos, {len(hyps)} hypotheses ({sum(h['source'] == 1 for h in hyps)} from clues)", flush=True)
+    suffix = f"_more{k}" if min_rank else ("_clues" if clues else "")
+    restricted_search(photos, hyps, OUT / f"hypotheses_{tag}{suffix}.npz")
     if not min_rank:
         oracle(tag, clues)
 
@@ -115,9 +120,8 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
     Another name (e.g. moreclue): extra clue places appended after cluehyps (also > BOX_KM from its places), up to per_photo clue places in
     total; queries: the 4B's search queries count as clues too. count_only: report how many and how often right, no search."""
 
-    from ..models.pinpoint_reranker import PinpointReranker
     from .clue_judge import _judge_path, _items
-    from .strategy_search import _haversine_km, load_world
+    from .strategy_search import _haversine_km
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
     areas_npz = dict(np.load(OUT / f"hypotheses_{tag}.npz" if (OUT / f"hypotheses_{tag}.npz").exists() else OUT / f"hypotheses_{tag}_clues.npz"))
@@ -158,19 +162,7 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
         print(f"  right (centre < {BOX_KM:g} km) {right.mean() if len(hyps) else 0:.1%} of them; photos with a right one "
               f"{len({h['photo'] for h, r in zip(hyps, right) if r}) / len(photos):.2%}", flush=True)
         return
-    world, qrows = photo_world(photos)
-    reranker = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
-    pidx = np.asarray([h["photo"] for h in hyps])
-    centre = np.asarray([h["center"] for h in hyps], np.float64)
-    dlat = BOX_KM / 111.0
-    dlon = dlat / np.maximum(np.cos(np.radians(centre[:, 0])), 0.05)
-    box = np.stack([centre[:, 0] - dlat, centre[:, 0] + dlat, centre[:, 1] - dlon, centre[:, 1] + dlon], 1)
-    found = reranker.rank(world.query_embeddings[qrows[pidx]], query_author=world.query_author[qrows[pidx]],
-                          index_author=world.mp16["author"][reranker.cache_indices], query_box=box)
-    np.savez(OUT / f"hypotheses_{tag}_{name}.npz", photo=pidx, source=np.ones(len(hyps), int), rank=np.asarray([h["rank"] for h in hyps]),
-             support=np.asarray([h["support"] for h in hyps]), center=centre, latlon=found.latlon, scores=found.scores, features=found.features,
-             rows=found.rows)
-    print(f"-> {OUT / f'hypotheses_{tag}_{name}.npz'}", flush=True)
+    restricted_search(photos, hyps, OUT / f"hypotheses_{tag}_{name}.npz")
 
 
 def oracle(tag: str, clues: bool = False) -> None:

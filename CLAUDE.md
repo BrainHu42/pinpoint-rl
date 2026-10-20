@@ -1,8 +1,9 @@
 # pinpoint-rl
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
-inference, so design for tool use. **Past results and lessons: `LEARNINGS.md` (read its summary before proposing
-experiments); numbered lessons, condensed, in `LESSONS.md` (full original text at git tag `lessons-full-2026-10-15`).**
+inference, so design for tool use. **Past results: `LEARNINGS.md`, one page of main points (read it before proposing experiments);
+new lessons in `LESSONS.md` (per track: R1.. retrieval, S1.. search agent); lessons 1-137 archived in `docs/archive/LESSONS_1-137.md`, linked
+from the summary.**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -12,44 +13,18 @@ experiments); numbered lessons, condensed, in `LESSONS.md` (full original text a
 
 ## Research plan (2026-10-15)
 - **The reference to beat is Pinpoint's attention reranker** ("the reranker" everywhere; `models/pinpoint_reranker.py`, an
-  exact port of the released model; lesson 54): top-1 17.5 / 37.2 % within 1 / 25 km on the eval halves, oracle over its pool
-  (<= 12 candidates, the pool every experiment chooses from) 30.1 / 54.7; dev3k 17.0 / 33.4 (oracle 27.5 / 50.3).
-  **Primary benchmark (user, 2026-10-15): the original Pinpoint protocol, the query photographer's photos kept in the index**
-  (`PINPOINT_KEEP_OWN=1`, ckpt tag `setft_aown`; lesson 98): a table per benchmark (im2gps3k, yfcc4k, both) x 1 / 25 / 200 / 750 / 2500 km
-  vs the released Pinpoint under the same protocol (both 28.9 / 46.4 / 60.7 / 75.5 / 86.7; im2gps3k 21.8 / 48.9 / 64.6 / 79.6 / 89.8;
-  yfcc4k 33.5 / 44.8 / 58.2 / 73.0 / 84.8). Photographer-excluded numbers (our training rule so far; Pinpoint 17.5 / 37.2) are secondary.
-  Our models were all trained with the photographer excluded and lose at 1 km on yfcc4k under the primary protocol; expect to retrain
-  them (reranker, heads, policy, train / dev3k pools) without the exclusion.
-- Where we are (LEARNINGS summary): every chooser, evidence source, comparator and the knowledge SFT landed at -0.5 to +1.3 pts
-  over the reranker top-1 (then our one-step reranker, 16.7 / 38.2, and its ~17-candidate pool), because each re-encodes what
-  visual retrieval already knows. Knowledge in the weights sits on the photos retrieval already solves (lessons 52-53).
-- **Plan: `EXPERT_PLAN.md`** (2026-10-15): choose among retrieval's candidate areas the way an expert does: contrast the candidates,
-  fetch reference imagery (`references`: YFCC100M offline, Flickr / Mapillary / Commons live) and map data of each, eliminate, verify,
-  stop; an RL policy decides which check on which candidates, with real costs. Earlier plans (agent direction, hypothesis testing,
-  look-zoom-rerank, text search, knowledge SFT) were deleted; they are at git tag `plans-2026-10-15`, which lessons citing them refer to.
-- **Current best pipeline (lesson 109; lesson 111 adds `--one-km`)**: `action_agent.py` on the reranker fine-tuned without photographer
-  exclusion (`setft_own`, lesson 108): candidate areas (agreement clusters + clue places) -> an answer head over area tokens, with costly
-  actions (zoom = Pinpoint restricted to an area, read = 4B clues + text search + clue judge, recognise = MegaLoc same-place similarity)
-  chosen by a REINFORCE policy. Test set (eval halves), original protocol, RL lambda 0: 29.1 / 51.2 / 62.9 / 75.5 / 86.9 vs released
-  28.9 / 46.4 / 60.7 / 75.5 / 86.7 (+4.8 at 25 km); lambda 0.005 30.9 / 50.5 (+2.0 / +4.1). commons26 test (lesson 113): 24.2% < 25 km vs
-  released 16.8, the gain mostly from reading. Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
-  What built it (LEARNINGS table): agreement (68), hypotheses (69), reranker fine-tune + area model / answer head (70-74), clue reading as
-  a costly action (76), MegaLoc (93), the RL action policy (94).
-- **Closed lines (lessons 77-121), none above the 1-pt bar beyond the pipeline**: map / name checks and names as candidates (77-79), query
-  and clue RL (82, 87, 96), nested / region proposals (83-85), the 4B reading neighbour tags (86), bigger readers (88, 106, 114), crop views
-  (89), round trips (90), next-bucket and MegaLoc refinement (91, 107, 112), word-location statistics (92), MegaLoc as proposer / over more
-  photos (95, 97), contrast with fetched references (99-103), more areas (112), and the commons26 text-search line (115-121: span search,
-  OSM names, a learned candidate ranker, a confidence override, +0.9 at best). Their code was removed on 2026-10-16 and is at git tag
-  `pre-merge-cleanup-2026-10-16`. Paid-LLM readers (80, 102-105) were diagnostics only. Since then, also closed (122-133): clustering
-  variants (122), clue-area recall (123), geotag accuracy / hubness (124), near-miss training (125), head context columns (126), graph
-  diffusion over the gallery (127), and local judges of the head's top two areas: Gemma 3 27B in three formats, name PMI, Wikipedia /
-  Wikivoyage profiles in the prompt, photo cues vs country tables (128, 131-133).
-- **Where the pipeline loses (lessons 129-130, dev3k, 47.3 < 25 km)**: retrieval miss 26.5 pts (24.6 of them photos without the
-  photographer's own photo in the pool), right candidate never an area 11.8 (noise-level reranker weight, out of reach), wrong area picked
-  14.4 (wrong picks a median 381 km from the truth). The reachable ceiling with today's retrieval is the area oracle (61.7), not the pool
-  oracle (73.1). commons26 dev: retrieval miss 49.1, concentrated where the gallery is sparse.
-- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the reranker top-1
-  and the pool oracle), not against current greedy. Choose scorers and combiners on MP16 dev, never on benchmarks.
+  exact port of the released model). **Primary benchmark (user, 2026-10-15): the original Pinpoint protocol, the query photographer's
+  photos kept in the index** (`PINPOINT_KEEP_OWN=1`): a table per benchmark (im2gps3k, yfcc4k, both) x 1 / 25 / 200 / 750 / 2500 km vs the
+  released Pinpoint under the same protocol (eval halves: both 28.9 / 46.4 / 60.7 / 75.5 / 86.7; im2gps3k 21.8 / 48.9 / 64.6 / 79.6 / 89.8;
+  yfcc4k 33.5 / 44.8 / 58.2 / 73.0 / 84.8), with commons26 alongside. Photographer-excluded numbers are secondary.
+- **Current best pipeline and where it stands: `LEARNINGS.md`** (`action_agent.py` on the `setft_own` reranker; test 51.2% < 25 km vs
+  released 46.4). Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
+- **Two tracks, run in parallel sessions (user, 2026-10-20)**: `RETRIEVAL_PLAN.md` (retrain Pinpoint's retriever / index side, the largest
+  loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates). Each brief has the coordination rules
+  for sharing the machine. The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
+  131-137) is at `docs/archive/EXPERT_PLAN.md`; older plans at tag `plans-2026-10-15`.
+- Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the current pipeline and the pool
+  oracle), not against a weaker baseline. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
 ## Data (simplified 2026-10-07, user)
 One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
@@ -119,6 +94,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   `graph_diffusion.py` (MP16 kNN graph, `artifacts/diffusion/`), `names_judge.py` (named A/B and name PMI with a local VLM), `profile_judge.py`
   (Wikipedia / Wikivoyage area profiles), `cue_check.py` (photo cues vs GeoNames country tables), `scripts/subset_photo_set.py` (a split-only
   photo set with its caches, e.g. `commons26dev_setft_own`).
+- Probes of lessons 134-137: `density_probe.py` (denser photo database), `clue_verify.py` (fetched YFCC photos / OSV-5M per text place,
+  MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
+  `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
 - Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
   per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
   pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).

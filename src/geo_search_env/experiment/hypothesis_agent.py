@@ -33,6 +33,8 @@ from .area_model import VARIANT, _paths
 from .zoom_agent import POST_ZOOM, _pre_zoom
 
 SOURCES = (0, 1)  # Pinpoint areas and clue places (the 4B's own place proposals add nothing, lesson 70)
+if "osv" in VARIANT:  # + OSV-5M street-search areas (osv_propose hyps, source 2; revealed by action_agent's street action)
+    SOURCES = (0, 1, 2)
 BOX_KM = 25.0
 CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
@@ -179,7 +181,7 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
         "pre": pad(norm(pre, "pre")), "pre_noclue": pad(norm(pre_noclue, "pre")), "post": pad(norm(post, "post")), "hidden": pad(zm["hidden"][rows], dtype=np.float16), "cand": pad(cand),
         "cvalid": pad(valid, False, bool), "mask": pad(np.ones(len(rows), bool), False, bool),
         "km_zoom": pad(zoom_km, np.inf), "km_zoom_set": pad(set_km, np.inf), "km_unzoom": pad(un_km, np.inf),
-        "is_area": pad(f["source"][rows] == 0, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
+        "is_area": pad(f["source"][rows] == 0, False, bool), "is_osv": pad(f["source"][rows] == 2, False, bool), "rank": pad(f["rank"][rows].astype(np.float32), 99.0),
         "center": pad(np.asarray(f["center"][rows], np.float32)),
     }
     d["cvalid"][..., 0] |= d["mask"]  # an empty search keeps one zero slot so pooling is defined

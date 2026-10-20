@@ -20,11 +20,13 @@ from typing import Sequence
 
 import numpy as np
 
+from .area_model import VARIANT
 from .hypothesis_agent import CLUE_COLS, _net, _random_zoom, _right, _sub, load
 
 CKPT_TAG = "setft_a"
 N_ML = 4  # megaloc columns, appended last by load(extra=("megaloc",))
-UNITS = {"zoom": 1.0, "read": 2.0, "recognise": 1.0}
+UNITS = {"zoom": 1.0, "read": 2.0, "recognise": 1.0, "street": 1.0}
+STREET = "osv" in VARIANT  # HYP_VARIANT=moreosv: a street-search action reveals the OSV-5M areas (source 2 tokens, osv_propose hyps)
 MAX_STEPS = 8
 ONE_KM = 0.0  # --one-km W (lesson 111): the answer chooses a point per area (the global pool's best near the area, or the zoomed kernel peak)
 # and both the answer head's loss and the policy's return add W x [answer < 1 km]; 0 = lesson 94's area-only answer.
@@ -89,18 +91,19 @@ def _released_own_dev3k_km() -> np.ndarray:
     return _hav(z["truth"][:, 0], z["truth"][:, 1], ll[:, 0], ll[:, 1])
 
 
-def view(b, read, rec):
-    """The batch as the agent sees it: clue columns / clue-place tokens only if read, MegaLoc columns only if recognised; two flag columns."""
+def view(b, read, rec, street=None):
+    """The batch as the agent sees it: clue columns / clue-place tokens only if read, MegaLoc columns only if recognised, OSV areas only after
+    street search (STREET); one flag column per action."""
 
     import torch
 
     pre = b["pre"].clone()
     pre[..., CLUE_COLS] = torch.where(read[:, None, None], pre[..., CLUE_COLS], b["pre_noclue"][..., CLUE_COLS])
     pre[..., -N_ML:] = torch.where(rec[:, None, None], pre[..., -N_ML:], torch.zeros_like(pre[..., -N_ML:]))
-    flags = torch.stack([read, rec], 1).float()[:, None, :].expand(-1, pre.shape[1], -1)
+    flags = torch.stack([read, rec] + ([street] if STREET else []), 1).float()[:, None, :].expand(-1, pre.shape[1], -1)
     v = dict(b)
     v["pre"] = torch.cat([pre, flags], -1)
-    v["mask"] = b["mask"] & (b["is_area"] | read[:, None])
+    v["mask"] = b["mask"] & (b["is_area"] | (read[:, None] & ~b["is_osv"]) | (street[:, None] & b["is_osv"] if STREET else False))
     return v
 
 
@@ -109,7 +112,7 @@ def fit_answer(d, photos, seed, epochs=25):
 
     torch.manual_seed(seed)
     gen = torch.Generator(device="cuda").manual_seed(seed)
-    net = _net(d["pre"].shape[-1] + 2, d["post"].shape[-1], d["cand"].shape[-1]).cuda()
+    net = _net(d["pre"].shape[-1] + 2 + STREET, d["post"].shape[-1], d["cand"].shape[-1]).cuda()
     if ONE_KM:
         net.point = torch.nn.Sequential(torch.nn.LayerNorm(64), torch.nn.Linear(64, 64), torch.nn.GELU(), torch.nn.Linear(64, 2)).cuda()
     batches = max(1, len(photos) // 128)
@@ -121,8 +124,8 @@ def fit_answer(d, photos, seed, epochs=25):
     for _ in range(epochs):
         for bi in np.array_split(rng.permutation(photos), batches):
             b = _sub(d, torch.as_tensor(bi, device="cuda"))
-            u = torch.rand(len(bi), 2, device="cuda", generator=gen) < 0.5
-            v = view(b, u[:, 0], u[:, 1])
+            u = torch.rand(len(bi), 2 + STREET, device="cuda", generator=gen) < 0.5
+            v = view(b, u[:, 0], u[:, 1], u[:, 2] if STREET else None)
             z = _random_zoom(v, gen)
             if ONE_KM:
                 logp = torch.log_softmax(_options(net, v, z), 1)
@@ -194,26 +197,29 @@ def _policy(dim: int = 64):
             super().__init__()
             self.zoom = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, 1))
             self.glance = nn.Sequential(nn.Linear(1536, dim), nn.GELU())
-            self.glob = nn.Sequential(nn.LayerNorm(2 * dim + 3), nn.Linear(2 * dim + 3, dim), nn.GELU(), nn.Linear(dim, 3))  # read, recognise, stop
+            n = 3 + STREET  # read, recognise, [street,] stop
+            self.glob = nn.Sequential(nn.LayerNorm(2 * dim + n), nn.Linear(2 * dim + n, dim), nn.GELU(), nn.Linear(dim, n))
 
-        def logits(self, net, b, zoomed, read, rec):
-            v = view(b, read, rec)
+        def logits(self, net, b, zoomed, read, rec, street=None):
+            v = view(b, read, rec, street)
             with torch.no_grad():
                 e = net.encode(v, zoomed)
             m = v["mask"].float().unsqueeze(-1)
             pooled = (e * m).sum(1) / m.sum(1).clamp(min=1)
-            state = torch.stack([read.float(), rec.float(), zoomed.float().sum(1) / 8], 1)
+            state = torch.stack([read.float(), rec.float()] + ([street.float()] if STREET else []) + [zoomed.float().sum(1) / 8], 1)
             gl = self.glance(b["glance"])
             z = self.zoom(e + gl[:, None, :]).squeeze(-1).masked_fill(~v["mask"] | zoomed, float("-inf"))
             g = self.glob(torch.cat([pooled, gl, state], 1))
-            g = torch.stack([g[:, 0].masked_fill(read, float("-inf")), g[:, 1].masked_fill(rec, float("-inf")), g[:, 2]], 1)
+            g = torch.stack([g[:, 0].masked_fill(read, float("-inf")), g[:, 1].masked_fill(rec, float("-inf"))]
+                            + ([g[:, 2].masked_fill(street, float("-inf"))] if STREET else []) + [g[:, -1]], 1)
             return torch.cat([z, g], 1), v
 
     return Policy().cuda()
 
 
 def rollout(net, pol, b, lam: float, mode: str, gen=None, fixed=None):
-    """mode: 'sample' / 'greedy' (policy) or 'fixed' (fixed = (read, recognise, n top areas to zoom)). Returns km, cost, logp, entropy, counts."""
+    """mode: 'sample' / 'greedy' (policy) or 'fixed' (fixed = (read, recognise, [street,] n top areas to zoom)). Returns km, cost, logp, entropy,
+    counts (zooms, read, recognise[, street])."""
 
     import torch
 
@@ -222,22 +228,23 @@ def rollout(net, pol, b, lam: float, mode: str, gen=None, fixed=None):
     zoomed = torch.zeros_like(b["mask"])
     read = torch.zeros(n, dtype=torch.bool, device=dev)
     rec = torch.zeros_like(read)
+    street = torch.zeros_like(read)
     cost = torch.zeros(n, device=dev)
     logp = torch.zeros(n, device=dev)
     ent = torch.zeros(n, device=dev)
     if mode == "fixed":
-        r, c, k = fixed
-        read[:], rec[:] = bool(r), bool(c)
-        v = view(b, read, rec)
+        r, c, *st, k = fixed
+        read[:], rec[:], street[:] = bool(r), bool(c), bool(st and st[0])
+        v = view(b, read, rec, street)
         prio = torch.where(v["is_area"], -v["rank"], -v["rank"] - 10.0).masked_fill(~v["mask"], float("-inf"))
         order = prio.argsort(1, descending=True)
         kk = h if k == "all" else k
         zoomed = torch.zeros_like(v["mask"]).scatter(1, order[:, :kk], True) & v["mask"]
-        cost = lam * (UNITS["read"] * read + UNITS["recognise"] * rec + UNITS["zoom"] * zoomed.sum(1))
-        return _km(net, v, zoomed), cost, logp, ent, (zoomed.sum(1).float(), read.float(), rec.float())
+        cost = lam * (UNITS["read"] * read + UNITS["recognise"] * rec + UNITS["street"] * street + UNITS["zoom"] * zoomed.sum(1))
+        return _km(net, v, zoomed), cost, logp, ent, _counts(zoomed, read, rec, street)
     done = torch.zeros_like(read)
     for _ in range(MAX_STEPS):
-        logits, v = pol.logits(net, b, zoomed, read, rec)
+        logits, v = pol.logits(net, b, zoomed, read, rec, street)
         if mode == "sample":
             g = -torch.log(-torch.log(torch.rand(logits.shape, device=dev, generator=gen).clamp(1e-9, 1 - 1e-9)))
             a = (logits + g).argmax(1)
@@ -247,16 +254,23 @@ def rollout(net, pol, b, lam: float, mode: str, gen=None, fixed=None):
         live = ~done
         logp = logp + torch.where(live, lp.gather(1, a[:, None]).squeeze(1), 0.0)
         ent = ent + torch.where(live, -(lp.exp() * lp.nan_to_num(0.0, neginf=0.0)).sum(1), 0.0)
-        is_zoom, is_read, is_rec, is_stop = a < h, a == h, a == h + 1, a == h + 2
+        is_zoom, is_read, is_rec, is_stop = a < h, a == h, a == h + 1, a == h + 2 + STREET
+        is_street = (a == h + 2) & STREET
         zoomed = zoomed | (torch.nn.functional.one_hot(a.clamp(max=h - 1), h).bool() & (is_zoom & live)[:, None])
         read = read | (is_read & live)
         rec = rec | (is_rec & live)
-        cost = cost + lam * torch.where(live, UNITS["zoom"] * is_zoom + UNITS["read"] * is_read + UNITS["recognise"] * is_rec, 0.0)
+        street = street | (is_street & live)
+        cost = cost + lam * torch.where(live, UNITS["zoom"] * is_zoom + UNITS["read"] * is_read + UNITS["recognise"] * is_rec
+                                        + UNITS["street"] * is_street, 0.0)
         done = done | is_stop
         if done.all():
             break
-    v = view(b, read, rec)
-    return _km(net, v, zoomed & v["mask"]), cost, logp, ent, (zoomed.sum(1).float(), read.float(), rec.float())
+    v = view(b, read, rec, street)
+    return _km(net, v, zoomed & v["mask"]), cost, logp, ent, _counts(zoomed, read, rec, street)
+
+
+def _counts(zoomed, read, rec, street):
+    return (zoomed.sum(1).float(), read.float(), rec.float()) + ((street.float(),) if STREET else ())
 
 
 def fit_policy(net, d, photos, lam, seed, epochs=10, beta=0.01):
@@ -287,11 +301,14 @@ def evaluate(net, pols: dict, d, photos, base_km) -> list[tuple]:
 
     rows = []
     configs = [(r, c, k) for k in (0, 2, "all") for r in (0, 1) for c in (0, 1)]
+    if STREET:
+        configs = [(r, c, s, k) for k in (0, 2, "all") for r in (0, 1) for c in (0, 1) for s in (0, 1)]
     with torch.no_grad():
         b = _sub(d, torch.as_tensor(np.asarray(photos), device="cuda"))
         for cfg in configs:
             km, _, _, _, cnt = rollout(net, None, b, 0.0, "fixed", fixed=cfg)
-            rows.append((f"fixed: read {cfg[0]}, recognise {cfg[1]}, zoom {cfg[2]}", km.cpu().numpy(), [c.mean().item() for c in cnt]))
+            label = f"fixed: read {cfg[0]}, recognise {cfg[1]}, " + (f"street {cfg[2]}, " if STREET else "") + f"zoom {cfg[-1]}"
+            rows.append((label, km.cpu().numpy(), [c.mean().item() for c in cnt]))
         for lam, pol in pols.items():
             globals()["DETAILS"] = []
             km, _, _, _, cnt = rollout(net, pol, b, lam, "greedy")
@@ -305,12 +322,13 @@ def report(name, rows, base_km, rt_km):
 
     print(f"\n {name}: released Pinpoint {np.mean(base_km < 25):.1%} / {np.mean(base_km < 1):.1%}, retrained top-1 {np.mean(rt_km < 25):.1%} / "
           f"{np.mean(rt_km < 1):.1%} (< 25 / 1 km)")
-    print(f"   {'':40s} {'<25 km':>7s} {'vs rel.':>8s} {'<1 km':>6s} {'vs rel.':>8s} {'zooms':>6s} {'read':>5s} {'recog':>6s} {'cost':>5s}")
-    for label, km, (nz, nr, nc), *_ in rows:
+    print(f"   {'':50s} {'<25 km':>7s} {'vs rel.':>8s} {'<1 km':>6s} {'vs rel.':>8s} {'zooms':>6s} {'read':>5s} {'recog':>6s}"
+          + (f" {'street':>6s}" if STREET else "") + f" {'cost':>5s}")
+    for label, km, (nz, nr, nc, *ns), *_ in rows:
         c = _bootstrap((km < 25).astype(float) - (base_km < 25))
-        units = UNITS["zoom"] * nz + UNITS["read"] * nr + UNITS["recognise"] * nc
-        print(f"   {label:40s} {np.mean(km < 25):7.1%} {100 * c[0]:+7.1f} {np.mean(km < 1):6.1%} {100 * (np.mean(km < 1) - np.mean(base_km < 1)):+7.1f} "
-              f"{nz:6.2f} {nr:5.0%} {nc:6.0%} {units:5.2f}", flush=True)
+        units = UNITS["zoom"] * nz + UNITS["read"] * nr + UNITS["recognise"] * nc + UNITS["street"] * sum(ns)
+        print(f"   {label:50s} {np.mean(km < 25):7.1%} {100 * c[0]:+7.1f} {np.mean(km < 1):6.1%} {100 * (np.mean(km < 1) - np.mean(base_km < 1)):+7.1f} "
+              f"{nz:6.2f} {nr:5.0%} {nc:6.0%}" + "".join(f" {x:6.0%}" for x in ns) + f" {units:5.2f}", flush=True)
 
 
 def run(lambdas: Sequence[float]) -> None:
@@ -352,7 +370,7 @@ def apply(lambdas: Sequence[float], targets: Sequence[str]) -> None:
             if label == "all":
                 saved |= {f"{name}|{r[0]}": r[1] for r in rows} | {f"{name}|released": d["base_km"], f"{name}|retrained": d["rt_base_km"]}
                 saved |= {f"{name}|{r[0]}|{k}": v for r in rows if len(r) > 3 for k, v in r[3].items()}
-    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{f'_1km{ONE_KM:g}' if ONE_KM else ''}{''.join('_' + t.split(':')[0] for t in targets if not t.startswith('full:'))}.npz", **saved)
+    np.savez(f"artifacts/agent/action_agent_apply_km{'' if CKPT_TAG == 'setft_a' else '_' + CKPT_TAG}{'_' + VARIANT if VARIANT else ''}{f'_1km{ONE_KM:g}' if ONE_KM else ''}{''.join('_' + t.split(':')[0] for t in targets if not t.startswith('full:'))}.npz", **saved)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

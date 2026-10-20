@@ -17,9 +17,11 @@ clues=${CLUES:-9b}
 mkdir -p artifacts/agent/logs
 mm_kwargs=${MM_KWARGS:-}  # image processor options; Qwen's max_pixels by default, MM_KWARGS='{}' for models without it (Gemma 3)
 [ -z "$mm_kwargs" ] && mm_kwargs="{\"max_pixels\": ${PIXELS:-786432}}"
+mm=(--mm-processor-kwargs "$mm_kwargs")
+[ "${PIXELS:-}" = 0 ] && mm=()  # PIXELS=0: no processor options at all
 PATH=$PWD/.venvs/vllm/bin:$PATH vllm serve "$model" --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 \
-  --gpu-memory-utilization ${GPU_UTIL:-0.9} --max-model-len 8192 --max-num-seqs 64 --limit-mm-per-prompt "{\"image\":${LIMIT_MM:-1}}" \
-  --mm-processor-kwargs "$mm_kwargs" > artifacts/agent/logs/vllm_clue_judge_$name.log 2>&1 &
+  --gpu-memory-utilization ${GPU_UTIL:-0.9} --max-model-len ${MAX_LEN:-8192} --max-num-seqs 64 --limit-mm-per-prompt "{\"image\":${LIMIT_MM:-1}}" \
+  "${mm[@]}" ${SERVE_EXTRA:-} > artifacts/agent/logs/vllm_clue_judge_$name.log 2>&1 &
 server=$!
 trap '[ -n "${server:-}" ] && kill $server 2>/dev/null' EXIT
 until curl -sf 127.0.0.1:8765/health >/dev/null; do kill -0 $server 2>/dev/null || { echo "vLLM died"; exit 1; }; sleep 5; done

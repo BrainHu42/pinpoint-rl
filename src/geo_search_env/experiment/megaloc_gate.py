@@ -21,6 +21,7 @@ import numpy as np
 
 OUT = Path("artifacts/agent")
 CKPT_TAG = "setft_a"
+BASE = ""  # features --base: the run whose similarities a variant reuses
 SNAPSHOT = Path("data/hf/hub/models--gberton--MegaLoc/snapshots/a0f34722c4297ff787e022433799250180860af7")
 SIZE = 322  # the paper's evaluation resolution
 
@@ -118,13 +119,21 @@ def features(tag: str, batch: int = 64, workers: int = 3) -> None:
 
     zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{CKPT_TAG}.npz")
     rows, photo = zm["rows"], zm["photo"]
-    need = np.unique(rows[rows >= 0])
-    h_idx, k_idx = np.nonzero(rows >= 0)
+    sims = np.full(rows.shape, np.nan, np.float32)
+    todo = rows >= 0
+    base_x = None
+    if BASE:  # a variant whose zoom file starts with the base's rows (extra hypotheses appended): reuse those, embed only the new rows' photos
+        b, bz = np.load(OUT / f"megaloc_{tag}_{BASE}.npz"), np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{BASE}.npz")
+        nb = len(bz["photo"])
+        assert np.array_equal(bz["rows"], rows[:nb]) and np.array_equal(bz["photo"], photo[:nb]), "variant does not extend the base"
+        base_x = b["x"]  # older base files keep only the per-row columns (best, top-3 mean), which is all the variant needs
+        todo[:nb] = False
+    need = np.unique(rows[todo])
+    h_idx, k_idx = np.nonzero(todo)
     pos = np.searchsorted(need, rows[h_idx, k_idx])
     order = np.argsort(pos, kind="stable")
     h_idx, k_idx, pos = h_idx[order], k_idx[order], pos[order]
     state = OUT / f"megaloc_partial_{tag}_{CKPT_TAG}.npz"
-    sims = np.full(rows.shape, np.nan, np.float32)
     done = 0
     if state.exists():
         st = np.load(state)
@@ -133,6 +142,8 @@ def features(tag: str, batch: int = 64, workers: int = 3) -> None:
     ids, nq, dataset_cls = _image_ids(tag, need)
     model = _model()
     qpath = OUT / f"megaloc_queries_{tag}_{CKPT_TAG}.npy"
+    if BASE and not qpath.exists():
+        qpath = OUT / f"megaloc_queries_{tag}_{BASE}.npy"
     if qpath.exists():
         q = torch.as_tensor(np.load(qpath), device="cuda")
     else:
@@ -156,7 +167,7 @@ def features(tag: str, batch: int = 64, workers: int = 3) -> None:
             if b % 800 == 799:
                 np.savez(state, sims=sims, done=start)
                 print(f"  {start} / {len(need)}", flush=True)
-    _write_columns(tag, zm, sims)
+    _write_columns(tag, zm, sims, base_x)
     state.unlink(missing_ok=True)
 
 
@@ -179,7 +190,15 @@ def _image_ids(tag: str, need: np.ndarray):
         next(reader)
         csv_ids = [r[0] for r in reader]
     # benchmark queries (photo set full) are read from their files, MP16 photos from the tar shards
-    ids = [e.get("path") or str(Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"]) if "benchmark" in e else e["image_id"] for e in photos]
+    def bench_path(e) -> str:  # stored paths can point into deleted worktrees; commons26 images live under release/
+        options = [e.get("path"), Path("data/pinpoint") / e["benchmark"] / "images" / e["image_id"],
+                   Path("data/pinpoint") / e["benchmark"] / "release" / "images" / e["image_id"]]
+        found = next((str(p) for p in options if p and Path(p).exists()), None)
+        if found is None:
+            raise FileNotFoundError(f"no image file for {e['benchmark']} {e['image_id']}")
+        return found
+
+    ids = [bench_path(e) if "benchmark" in e else e["image_id"] for e in photos]
     ids += [csv_ids[row_index[cache[r]]] for r in need]
     mean, std = np.asarray([0.485, 0.456, 0.406], np.float32), np.asarray([0.229, 0.224, 0.225], np.float32)
 
@@ -197,7 +216,7 @@ def _image_ids(tag: str, need: np.ndarray):
                 self.images = MP16Images()
             try:
                 key = self.keys[i]
-                data = Path(key).read_bytes() if key.startswith("data/pinpoint/") else self.images.read(key)
+                data = Path(key).read_bytes() if key.startswith("data/pinpoint/") or key.startswith("/") else self.images.read(key)
                 im = Image.open(io.BytesIO(data)).convert("RGB").resize((SIZE, SIZE), Image.BILINEAR)
                 a = (np.asarray(im, np.float32) / 255.0 - mean) / std
                 return i, torch.from_numpy(a.transpose(2, 0, 1).copy())
@@ -218,19 +237,24 @@ def _embed_all(model, dataset, batch: int, workers: int):
     return torch.cat(out)
 
 
-def _write_columns(tag: str, zm, sims: np.ndarray) -> None:
+def _write_columns(tag: str, zm, sims: np.ndarray, base_x: np.ndarray | None = None) -> None:
     photo = zm["photo"]
     srt = np.sort(np.where(np.isnan(sims), -np.inf, sims), 1)[:, -3:]
     best = np.where(np.isfinite(srt[:, -1]), srt[:, -1], -1.0)
     with np.errstate(invalid="ignore"):
         top3 = np.nan_to_num(np.nanmean(np.where(np.isfinite(srt), srt, np.nan), 1), nan=-1.0)
+    if base_x is not None:  # the base run's rows (features --base)
+        best[:len(base_x)], top3[:len(base_x)] = base_x[:, 0], base_x[:, 1]
     cols = [best, top3]
+    street = zm["source"] == 2  # street-search areas: out of the other rows' reference (they are hidden until that action)
     for v in (best, top3):
         rel = np.zeros_like(v)
         for p in np.unique(photo):
             J = np.flatnonzero(photo == p)
             for k, j in enumerate(J):
                 o = np.delete(v[J], k)
+                if not street[j]:
+                    o = o[~np.delete(street[J], k)]
                 rel[j] = v[j] - (o.max() if len(o) else v[j])
         cols.append(rel)
     x = np.stack(cols, 1).astype(np.float32)
@@ -372,8 +396,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("cmd", choices=("embed", "gate", "features", "columns"))
     parser.add_argument("--tag", default="dev3k")
     parser.add_argument("--ckpt-tag", default=CKPT_TAG, help="photo set / zoom file suffix (setft_aown: the test set with the photographer's photos kept)")
+    parser.add_argument("--base", default="", help="features: ckpt-tag of the base run a variant extends (e.g. setft_own for setft_own_moreosv)")
     args = parser.parse_args(argv)
     globals()["CKPT_TAG"] = args.ckpt_tag
+    globals()["BASE"] = args.base
     {"embed": embed, "gate": gate, "features": features, "columns": columns_from_gate}[args.cmd](args.tag)
     return 0
 
