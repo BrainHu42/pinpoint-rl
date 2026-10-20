@@ -71,22 +71,30 @@ class CommonsImagery:
         self.cache = cache
         (cache / "geo").mkdir(parents=True, exist_ok=True)
         (cache / "thumbs").mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._last = 0.0
+        self._lock, self._tlock = threading.Lock(), threading.Lock()
+        self._tslots = threading.BoundedSemaphore(self.THUMB_PARALLEL)
+        self._last = self._tlast = 0.0
+
+    THUMB_INTERVAL = 1.0  # thumbnails (CDN) have their own limiter: upload.wikimedia.org's bot-traffic limit ("Your bot is making too
+    THUMB_PARALLEL = 1    # many requests", 429) fires at ~24 in flight and now and then even one at a time at ~3 / s
 
     def _get(self, url: str, retries: int = 4, paced: bool = True) -> bytes:
-        """paced: API calls keep MIN_INTERVAL between them; thumbnail downloads (CDN, not the API) run unpaced in the caller's threads."""
+        """paced: API calls keep MIN_INTERVAL between them; thumbnail downloads (paced=False) keep THUMB_INTERVAL."""
 
+        lock, attr, gap = (self._lock, "_last", MIN_INTERVAL) if paced else (self._tlock, "_tlast", self.THUMB_INTERVAL)
         for attempt in range(retries):
-            if paced:
-                with self._lock:
-                    wait = self._last + MIN_INTERVAL - time.monotonic()
+            if gap > 0:
+                with lock:
+                    wait = getattr(self, attr) + gap - time.monotonic()
                     if wait > 0:
                         time.sleep(wait)
-                    self._last = time.monotonic()
+                    setattr(self, attr, time.monotonic())
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-                with urllib.request.urlopen(req, timeout=30) as r:
+                if paced:
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        return r.read()
+                with self._tslots, urllib.request.urlopen(req, timeout=30) as r:
                     return r.read()
             except Exception as e:  # noqa: BLE001  (429 / 5xx / timeouts: back off and retry)
                 if attempt == retries - 1:
@@ -225,6 +233,7 @@ class MapillaryImagery(CommonsImagery):
     otherwise fill every slot), date guard on capture time. The uploader guard does not apply (Mapillary users are not Commons users)."""
 
     PER_SEQUENCE = 2
+    THUMB_INTERVAL, THUMB_PARALLEL = 0.0, 24  # Mapillary's CDN took ~24 parallel downloads without throttling
     ZOOM = 14
 
     def __init__(self, cache: Path = MAPILLARY_CACHE) -> None:

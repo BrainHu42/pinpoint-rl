@@ -50,14 +50,19 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
 
 ## Single-track lessons (138-)
 
-138. **Live imagery near a text-proposed place doesn't verify it: the nearest photos rarely share the query's view, even at the true spot**
+138. **Live imagery near a text-proposed place doesn't verify it: the view is rarely covered, though a covered view is matched cleanly**
     (`tools/imagery.py`, `live_verify.py`; `TOOL_USE_DESIGN.md` first test, the 116 commons26 dev photos of S3). Guarded live imagery (made
-    before the query was taken; Commons also not by its uploader), the <= 20 nearest per place, best MegaLoc match vs the query. Right text
-    place above the ranker's wrong pick: Commons (10 km) 50% (AUC 0.49), Mapillary street level (1 km, no panoramas, <= 2 frames per
-    sequence) 39% (AUC 0.40); the pre-declared go ("well over half") fails, so the 977-photo switch was not run. Control, imagery at the
-    photo's own location: Commons 64% (AUC 0.63; best >= 0.2 on 15%), Mapillary 54% (0.52; 4%), so no candidate could do much better. Two
-    limits: right text places are a median 8.3 km from the spot (20% within 1 km), and a nearest-20 sample seldom contains the query's view
-    (as [135]: old Flickr photos, AUC 0.60). Imagery verification would need ~100 m candidates and view-directed imagery, not a nearby sample.
-    Tooling: Commons geosearch throttles ("search too busy"); Mapillary's bbox API returns HTTP 500 in dense areas, so the tool reads its z14
-    coverage tiles (positions match the API to ~1 m); fetch runs places in parallel with unpaced CDN thumbnails. The Commons `geo_tags` dump
-    (Oct 3, 768 MB, `artifacts/tool_use/dumps/`) would make the Commons search local if needed again.
+    before the query was taken; Commons also not by its uploader), the N nearest per place, best MegaLoc match vs the query, and z = that
+    best against the same imagery's best matches to the other 115 queries (cancels generic or plentiful imagery). N = 20: right text place
+    above the ranker's wrong pick on 50% (AUC 0.49; z 54%) with Commons (10 km), 39% (0.40; z 45%) with Mapillary street level (1 km, no
+    panoramas, <= 2 frames per sequence); the pre-declared go ("well over half") fails, so the 977-photo switch was not run. Control, imagery
+    at the photo's own location: Commons 64% (z AUC 0.66; best >= 0.2 on 15%, z >= 3 on 25% vs 12% at wrong picks), Mapillary 54% (0.54;
+    z >= 3 on 10%). Mapillary at N = 200 changes nothing (truth z >= 3 on 12%; a median 34 frames exist within 1 km of commons26 spots).
+    Where Commons covers the view, MegaLoc is unambiguous (same church 0.58 at 18 m, same plaque 0.54, same valley 0.47); typically the
+    nearest files show other things. Two limits: right text places are a median 8.3 km from the spot (20% within 1 km), and the view's
+    coverage. Optimistic yield as tested (20% of the 116 near the spot x a ~30% hit rate) ~7 photos, ~0.7 pts of 977: below the bar.
+    Untested: dense Commons (N >= 60, or a search over the candidate's whole area); upload.wikimedia.org's bot limit ("Your bot is making
+    too many requests", 429) throttled cold thumbnails even at 1 / s after the parallel runs, so a dense or area search needs a multi-day
+    crawl or a higher limit (bot-traffic@wikimedia.org). Tooling: Commons geosearch also throttles ("search too busy"), so the tool searches
+    a local index of the `geo_tags` dump (40.6M primary coordinates, `imagery index`; agrees with the API) and looks up file info by page id;
+    Mapillary's bbox API returns HTTP 500 in dense areas, so the tool reads its z14 coverage tiles (positions match the API to ~1 m).

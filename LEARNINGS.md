@@ -52,8 +52,8 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
    chance on the head's mistakes, and their confident switches are mostly breaks ([84], [88], [106], [114], [128], [131]-[133], [137]). Sonnet
    given only town names did +0.94 at 25 km with calibrated confidence ([105]), so the signal exists. Paid LLMs are ruled out.
 5. **The right place's own photos look like "the same kind of scene nearby", not the same spot** ([90], [95]). External imagery is limited by
-   coverage of the exact view: old Flickr photos rarely show the query's view ([135]), nor do live Commons / Mapillary photos, even at the
-   true spot (AUC 0.63 / 0.52, [138]). OSV-5M sits on roads, not photo spots ([136]). New
+   coverage of the exact view: old Flickr photos rarely show the query's view ([135]), nor do the 20 nearest live Commons / Mapillary
+   photos, even at the true spot (AUC 0.63 / 0.52; a covered view is matched cleanly, [138]). OSV-5M sits on roads, not photo spots ([136]). New
    nearby YFCC photos would fix at most 1-3% at 1 km ([134]).
 6. **RL over today's actions only buys cost**: the policy ties "take every action", because the actions are cheap, independent and reveal fixed
    features ([94], [98]). RL on open-model free text learns silence ([87], [96]); GRPO on a 2-way one-token answer collapses (use the exact
