@@ -458,9 +458,13 @@ function toggleTheme() {
 // ---------- upload ----------
 function setupUpload() {
   const dlg = $("#upload-dlg"), status = $("#upload-status");
+  if (!S.sets.some((s) => s.name === "upload" && s.live)) {  // cached mode: browse saved traces only
+    $("#upload-btn").hidden = true;
+    $("#empty").textContent = "Pick a photo on the left.";
+    return;
+  }
   $("#upload-btn").onclick = () => {
-    const up = S.sets.find((s) => s.name === "upload");
-    status.textContent = up && !up.live ? "Live mode is off: restart the server with --live to run uploads." : "";
+    status.textContent = "";
     dlg.showModal();
   };
   $("#upload-go").onclick = async (e) => {
