@@ -94,6 +94,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   `graph_diffusion.py` (MP16 kNN graph, `artifacts/diffusion/`), `names_judge.py` (named A/B and name PMI with a local VLM), `profile_judge.py`
   (Wikipedia / Wikivoyage area profiles), `cue_check.py` (photo cues vs GeoNames country tables), `scripts/subset_photo_set.py` (a split-only
   photo set with its caches, e.g. `commons26dev_setft_own`).
+- Track S (`SEARCH_PLAN.md`): `search_tree.py` (search speed, constraint vocabulary from the pool, cached restricted searches, ceiling with luck controls; `artifacts/search/`, lesson S1).
 - Probes of lessons 134-137: `density_probe.py` (denser photo database), `clue_verify.py` (fetched YFCC photos / OSV-5M per text place,
   MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
   `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
