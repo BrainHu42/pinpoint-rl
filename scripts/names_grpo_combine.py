@@ -1,6 +1,6 @@
 """Head margin + judge logit, logistic regression fit on held, switch threshold chosen on held, applied to dev3k (names_grpo results).
 
-Usage: .venv/bin/python scripts/names_grpo_combine.py
+Usage: .venv/bin/python scripts/names_grpo_combine.py [names ...]
 """
 import json
 
@@ -36,7 +36,9 @@ def auc(s, y):
     return (r[y].sum() - y.sum() * (y.sum() + 1) / 2) / (y.sum() * (~y).sum())
 
 
-for name in ("names-exact-a", "base2"):
+import sys
+
+for name in sys.argv[1:] or ("names-exact-a", "base2"):
     Xh, yh = data(name, "held")
     Xd, yd = data(name, "dev")
     for cols, label in (([0], "head only"), ([0, 1], "head + judge")):

@@ -191,7 +191,7 @@ def ask(name: str, server: str = "http://127.0.0.1:8765", workers: int = 32) -> 
     rows = _decisive(("held", "dev"))
     path = OUT / f"names_grpo_{name}.jsonl"
     done = {(r["split"], r["photo"]) for r in map(json.loads, path.read_text(encoding="utf-8").splitlines())} if path.exists() else set()
-    todo = [r for r in rows if (r["split"], r["photo"]) not in done]
+    todo = sorted((r for r in rows if (r["split"], r["photo"]) not in done), key=lambda r: r["split"] != "dev")  # dev first
     print(f"{name}: {len(todo)} pairs to ask ({len(done)} done)", flush=True)
     images = MP16Images()
 
