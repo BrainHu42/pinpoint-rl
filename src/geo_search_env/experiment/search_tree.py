@@ -458,8 +458,8 @@ def _auc(score: np.ndarray, y: np.ndarray) -> float:
     return float((r[y].sum() - y.sum() * (y.sum() + 1) / 2) / (y.sum() * (~y).sum()))
 
 
-def _fit(x: np.ndarray, y: np.ndarray, epochs: int = 4, seed: int = 0):
-    """A small MLP (64 x 2, BCE) on standardized features; returns predict(x) -> P(right)."""
+def _fit(x: np.ndarray, y: np.ndarray, epochs: int = 4, seed: int = 0, min_steps: int = 2000):
+    """A small MLP (64 x 2, BCE) on standardized features, >= min_steps Adam steps (small sets: more epochs); returns predict(x) -> P(right)."""
 
     import torch
 
@@ -468,7 +468,7 @@ def _fit(x: np.ndarray, y: np.ndarray, epochs: int = 4, seed: int = 0):
     xt, yt = torch.as_tensor((x - mu) / sd), torch.as_tensor(y, dtype=torch.float32)
     net = torch.nn.Sequential(torch.nn.Linear(x.shape[1], 64), torch.nn.ReLU(), torch.nn.Linear(64, 64), torch.nn.ReLU(), torch.nn.Linear(64, 1))
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
-    for _ in range(epochs):
+    for _ in range(max(epochs, -(-min_steps // -(-len(xt) // 4096)))):
         for b in torch.randperm(len(xt)).split(4096):
             loss = torch.nn.functional.binary_cross_entropy_with_logits(net(xt[b]).squeeze(1), yt[b])
             opt.zero_grad()
