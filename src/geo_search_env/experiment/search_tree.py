@@ -374,12 +374,274 @@ def ceiling(tag: str, seed: int = 0) -> None:
     print(text)
 
 
+# ---------------------------------------------------------------- step 2: is a search's result evidence?
+
+A_NAMES = ("is_country", "is_region", "is_box", "log_mass", "log_n_inside", "best_inside_vs_top", "log_rank_inside", "has_pool_top1",
+           "pool_top_score", "pool_top_mass")
+B_NAMES = ("r1_score", "r1_vs_pool_top", "r1_margin", "r_agree", "r_valid", "sim_image", "sim_raw", "sim_gps", "rank_image", "rank_raw",
+           "rank_gps", "in_image", "in_raw", "in_gps", "log_km_pool", "log_km_pool_top1", "r1_in_pool", "log_n_agree_searches",
+           "agree_searches_mass")
+
+
+def _features(tag: str, budget: int | None) -> dict:
+    """Per vocabulary search (the first `budget` of each photo in pool-mass order; None: all): prior features A (what the pool already says
+    about the constraint), result features B (what the restricted search returned, incl. agreement with the photo's other searches in the
+    budget), the label (restricted top-1 < 25 km), the photo and the restricted top-1."""
+
+    from ..tools.pinpoint import LABELS_NPZ
+    from .pinpoint_reference import load_pools
+
+    photos = _photos(tag)
+    pools = load_pools(photos[0]["pools"])
+    voc = json.loads((OUT / f"vocab_{tag}.json").read_text(encoding="utf-8"))
+    z = np.load(OUT / f"searches_{tag}.npz")
+    LL, SC, FE, RO = z["latlon"], z["scores"], z["features"], z["rows"]
+    lab = np.load(LABELS_NPZ)
+    country = dict(zip(lab["row"].tolist(), lab["country"].tolist()))
+    region = {r: f"{c}|{g}" for r, c, g in zip(lab["row"].tolist(), lab["country"].tolist(), lab["region"].tolist()) if c and g}
+    A, B, y, ph, top, search = [], [], [], [], [], []
+    i = 0
+    for r, e in zip(voc, photos):
+        cons = r["constraints"]
+        ks = np.arange(i, i + len(cons))
+        i += len(cons) + bool(r["truth_country"]) + bool(r["truth_region"])
+        if not len(cons):
+            continue
+        chosen = np.argsort([-c["mass"] for c in cons], kind="stable")[:budget]
+        v = pools["valid"][e["index"]]
+        ll = pools["latlon"][e["index"]][v].astype(np.float64)
+        s = pools["scores"][e["index"]][v].astype(np.float64)
+        w = np.exp((s - s.max()) / TEMP)
+        w /= w.sum()
+        cache = pools["cache_rows"][e["index"]][v]
+        prow = set(pools["rows"][e["index"]][v].tolist())
+        labels = {"country": np.asarray([country.get(int(c), "") for c in cache], object),
+                  "region": np.asarray([region.get(int(c), "") for c in cache], object)}
+        r1 = LL[ks[chosen], 0].astype(np.float64)
+        ok1 = np.isfinite(r1[:, 0])
+        pair = _km(np.where(ok1[:, None], r1, 0)[:, None], np.where(ok1[:, None], r1, 0)[None]) < BOX_KM
+        pair &= ok1[:, None] & ok1[None]
+        np.fill_diagonal(pair, False)
+        masses = np.asarray([cons[j]["mass"] for j in chosen])
+        truth = np.asarray(e["truth"], np.float64)
+        for q, j in enumerate(chosen):
+            c, k = cons[j], ks[j]
+            inside = _km(ll, np.asarray(c["center"])) < BOX_KM if c["kind"] == "box" else labels[c["kind"]] == c["label"]
+            n_in = int(inside.sum())
+            A.append((c["kind"] == "country", c["kind"] == "region", c["kind"] == "box", np.log(c["mass"] + 1e-6), np.log1p(n_in),
+                      (s[inside].max() - s.max()) if n_in else -10.0, np.log1p(np.flatnonzero(inside)[0]) if n_in else np.log1p(len(s)),
+                      bool(inside[0]), s.max(), w.max()))
+            rs = SC[k].astype(np.float64)
+            valid = np.isfinite(rs)
+            if not ok1[q]:
+                B.append((-10.0, -10.0 - s.max(), 0.0, 0.0, 0.0) + (0.0,) * 9 + (np.log1p(20000.0),) * 2 + (0.0, 0.0, 0.0))
+            else:
+                wr = np.exp((rs[valid] - rs[valid].max()) / TEMP)
+                wr /= wr.sum()
+                agree = float(wr[_km(LL[k][valid].astype(np.float64), r1[q]) < BOX_KM].sum())
+                B.append((rs[0], rs[0] - s.max(), rs[0] - rs[1] if valid.sum() > 1 else 0.0, agree, valid.mean(),
+                          *FE[k, 0].astype(np.float64), np.log1p(_km(ll, r1[q]).min()), np.log1p(_km(ll[0], r1[q])), int(RO[k, 0]) in prow,
+                          np.log1p(pair[q].sum()), float(masses[pair[q]].sum())))
+            y.append(ok1[q] and _km(truth, r1[q]) < 25)
+            ph.append(r["photo"])
+            top.append(r1[q])
+            search.append(k)
+    return {"A": np.asarray(A, np.float32), "B": np.asarray(B, np.float32), "y": np.asarray(y, bool), "photo": np.asarray(ph),
+            "top": np.asarray(top, np.float64), "search": np.asarray(search)}
+
+
+def _auc(score: np.ndarray, y: np.ndarray) -> float:
+    if y.all() or not y.any():
+        return float("nan")
+    r = np.empty(len(score))
+    r[np.argsort(score, kind="stable")] = np.arange(1, len(score) + 1)
+    return float((r[y].sum() - y.sum() * (y.sum() + 1) / 2) / (y.sum() * (~y).sum()))
+
+
+def _fit(x: np.ndarray, y: np.ndarray, epochs: int = 4, seed: int = 0):
+    """A small MLP (64 x 2, BCE) on standardized features; returns predict(x) -> P(right)."""
+
+    import torch
+
+    torch.manual_seed(seed)
+    mu, sd = x.mean(0), x.std(0) + 1e-6
+    xt, yt = torch.as_tensor((x - mu) / sd), torch.as_tensor(y, dtype=torch.float32)
+    net = torch.nn.Sequential(torch.nn.Linear(x.shape[1], 64), torch.nn.ReLU(), torch.nn.Linear(64, 64), torch.nn.ReLU(), torch.nn.Linear(64, 1))
+    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    for _ in range(epochs):
+        for b in torch.randperm(len(xt)).split(4096):
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(net(xt[b]).squeeze(1), yt[b])
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+    def predict(x2: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            return torch.sigmoid(net(torch.as_tensor((x2 - mu) / sd)).squeeze(1)).numpy()
+
+    return predict
+
+
+def _context(tag: str) -> dict:
+    photos = _photos(tag)
+    ok, area_ok, pool_ok, bucket = _buckets(tag, photos)
+    apply = np.load(APPLY)
+    base = tag.split("_")[0]
+    return {"n": len(photos), "ok": ok, "area_ok": area_ok, "bucket": bucket, "answer": apply[f"{base}|RL policy, lambda 0|center"],
+            "conf": apply[f"{base}|RL policy, lambda 0|conf"], "truth": np.asarray([e["truth"] for e in photos], np.float64)}
+
+
+def _switch_lines(name: str, p: np.ndarray, te: dict, cx: dict, seeds: int = 20) -> list[str]:
+    """AUC (all, among alternatives = searches whose top-1 is >= 25 km from the pipeline's answer, the only ones that can change it) and the
+    switch rule pipeline answer -> the best alternative's top-1 when P (or P - the pipeline's confidence) beats a threshold; thresholds
+    cross-fitted on random photo halves (seeds x 2), plus the hindsight-best threshold and the 30 most confident switches."""
+
+    n, ok, answer, conf, truth = cx["n"], cx["ok"], cx["answer"], cx["conf"], cx["truth"]
+    wrong = ~ok[te["photo"]]
+    alt = _km(te["top"], answer[te["photo"]]) >= 25
+    best = np.full(n, -1)
+    for k in np.flatnonzero(alt)[np.argsort(p[alt])]:
+        best[te["photo"][k]] = k  # the last write is the highest P
+    has = best >= 0
+    pb, tb = np.where(has, p[np.maximum(best, 0)], -1.0), te["top"][np.maximum(best, 0)]
+    right_b = has & (_km(tb, truth) < 25)
+    lines = [f"  {name:22s}: AUC {_auc(p, te['y']):.3f} (pipeline-wrong photos {_auc(p[wrong], te['y'][wrong]):.3f}); among alternatives "
+             f"{_auc(p[alt], te['y'][alt]):.3f} (pipeline-wrong photos {_auc(p[alt & wrong], te['y'][alt & wrong]):.3f}); best alternative "
+             f"right on {100 * right_b.mean():.1f}% of photos (pipeline wrong & it right {100 * (right_b & ~ok).mean():.1f}, "
+             f"some alternative right {100 * np.isin(np.arange(n), te['photo'][alt & te['y']]).mean():.1f})"]
+    for rule, gate in (("P(best) > t", pb), ("P(best) - conf > t", pb - conf)):
+        grid = np.append(np.quantile(gate[has], np.linspace(0, 1, 101)) if has.any() else [], np.inf)  # inf: never switch
+
+        def net(m, t):
+            sw = m & has & (gate > t)
+            return int((sw & right_b & ~ok).sum()) - int((sw & ~right_b & ok).sum()), sw
+
+        h_net, h_sw = net(np.ones(n, bool), max(grid, key=lambda t: net(np.ones(n, bool), t)[0]))
+        fixes, breaks = [], []
+        rng = np.random.default_rng(0)
+        for _ in range(seeds):
+            half = rng.permutation(n) < n // 2
+            for fit_m, use_m in ((half, ~half), (~half, half)):
+                _, sw = net(use_m, max(grid, key=lambda t: net(fit_m, t)[0]))
+                fixes.append((sw & right_b & ~ok).sum())
+                breaks.append((sw & ~right_b & ok).sum())
+        nf, nb = 2 * np.mean(fixes), 2 * np.mean(breaks)  # per full set (each half is half the photos)
+        top30 = np.flatnonzero(has)[np.argsort(-gate[has])][:30]
+        lines.append(f"    switch {rule:20s}: cross-fitted fixes {nf:.0f} / breaks {nb:.0f}, net {100 * (nf - nb) / n:+.2f} pts "
+                     f"(precision {nf / max(nf + nb, 1):.0%}); hindsight best t: net {100 * h_net / n:+.2f} pts on {h_sw.sum()} switches; "
+                     f"30 most confident: {int((right_b & ~ok)[top30].sum())} fixes / {int((~right_b & ok)[top30].sum())} breaks")
+    return lines
+
+
+def _bucket_lines(preds: dict, te: dict, cx: dict) -> list[str]:
+    out = []
+    for b, nm in enumerate(BUCKETS):
+        m = cx["bucket"][te["photo"]] == b
+        out.append(f"  AUC within bucket '{nm}': " + ", ".join(f"{name.split()[0]} {_auc(p[m], te['y'][m]):.3f}" for name, p in preds.items()))
+    return out
+
+
+def evidence(tag: str, train_tag: str = "train_setft_own") -> None:
+    """Fit P(restricted top-1 right) on train searches with prior features A and with A + result features B; on `tag` (dev3k): AUC and the
+    switch rule (_switch_lines; the pipeline's confidence on train is in-sample, so thresholds are cross-fitted on `tag`)."""
+
+    cx = _context(tag)
+    lines = [f"Step 2, is a search's result evidence? fit on {train_tag}, evaluated on {tag} ({cx['n']} photos; pipeline "
+             f"{100 * cx['ok'].mean():.1f}, area oracle {100 * cx['area_ok'].mean():.1f})"]
+    for budget in (8, 16, None):
+        tr, te = _features(train_tag, budget), _features(tag, budget)
+        fams = {"A (prior)": (tr["A"], te["A"]), "A+B (prior + result)": (np.hstack([tr["A"], tr["B"]]), np.hstack([te["A"], te["B"]]))}
+        lines.append(f"\n== budget {budget or 'all'}: {len(tr['y'])} train / {len(te['y'])} {tag} searches, right {100 * tr['y'].mean():.1f} / "
+                     f"{100 * te['y'].mean():.1f}%")
+        preds = {}
+        for name, (xtr, xte) in fams.items():
+            preds[name] = _fit(xtr, tr["y"])(xte)
+            lines += _switch_lines(name, preds[name], te, cx)
+        lines += _bucket_lines(preds, te, cx)
+    text = "\n".join(lines)
+    (OUT / f"evidence_{tag}.txt").write_text(text + "\n")
+    print(text)
+
+
+# ---------------------------------------------------------------- step 2b: MegaLoc of the restricted top-1
+
+def megaloc(tag: str, batch: int = 64, workers: int = 3) -> None:
+    """MegaLoc similarity (query, restricted top-1) for every search of `tag` -> artifacts/search/megaloc_{tag}.npz (NaN: empty search or
+    unreadable photo). Queries: the cached artifacts/agent/megaloc_queries_{tag}.npy (megaloc_gate, same photo order)."""
+
+    import torch
+    from torch.utils.data import DataLoader
+
+    from . import megaloc_gate as mg
+
+    base, mg.CKPT_TAG = tag.split("_", 1)
+    z = np.load(OUT / f"searches_{tag}.npz")
+    r1, photo = z["rows"][:, 0], z["photo"]
+    need = np.unique(r1[r1 >= 0])
+    ids, nq, dataset = mg._image_ids(base, need)
+    q = torch.as_tensor(np.load(AGENT / f"megaloc_queries_{tag}.npy"), device="cuda").float()
+    assert len(q) == nq
+    model = mg._model()
+    emb = torch.zeros((len(need), q.shape[1]), dtype=torch.float16)
+    blank = np.zeros(len(need), bool)
+    t = time.perf_counter()
+    with torch.inference_mode():
+        for b, (i, x) in enumerate(DataLoader(dataset(ids[nq:]), batch_size=batch, num_workers=workers)):
+            blank[i.numpy()] = (x.flatten(1) == 0).all(1).numpy()
+            emb[i] = model(x.cuda()).half().cpu()
+            if b % 100 == 0:
+                print(f"  {(b + 1) * batch} / {len(need)} photos, {time.perf_counter() - t:.0f} s", flush=True)
+    sim = np.full(len(r1), np.nan, np.float32)
+    has = r1 >= 0
+    pos = np.searchsorted(need, r1[has])
+    e = emb[torch.as_tensor(pos)].float().cuda()
+    sim[has] = (e * q[torch.as_tensor(photo[has], device="cuda")]).sum(1).cpu().numpy()
+    sim[np.flatnonzero(has)[blank[pos]]] = np.nan
+    np.savez(OUT / f"megaloc_{tag}.npz", sim=sim)
+    print(f"-> {OUT / f'megaloc_{tag}.npz'}: {len(need)} photos ({blank.sum()} unreadable) in {time.perf_counter() - t:.0f} s", flush=True)
+
+
+def evidence_megaloc(tag: str, folds: int = 5) -> None:
+    """Step 2b on `tag` alone (no train MegaLoc): A+B vs A+B+M (MegaLoc of the restricted top-1, a missing flag, and minus the best MegaLoc
+    among the photo's searches in the budget), cross-fitted over photo folds; same switch report as evidence."""
+
+    cx = _context(tag)
+    sim_all = np.load(OUT / f"megaloc_{tag}.npz")["sim"]
+    lines = [f"Step 2b, MegaLoc of the restricted top-1 as result evidence, {tag} ({cx['n']} photos), {folds}-fold cross-fitting by photo"]
+    fold = np.random.default_rng(0).permutation(cx["n"]) % folds
+    for budget in (8, 16, None):
+        te = _features(tag, budget)
+        sim = sim_all[te["search"]]
+        filled = np.nan_to_num(sim, nan=0.0)
+        best_in_photo = np.full(cx["n"], -1.0)
+        np.maximum.at(best_in_photo, te["photo"], filled)
+        M = np.stack([filled, np.isnan(sim), filled - best_in_photo[te["photo"]]], 1).astype(np.float32)
+        ab = np.hstack([te["A"], te["B"]])
+        fams = {"A+B (prior + result)": ab, "A+B+M (+ MegaLoc)": np.hstack([ab, M])}
+        lines.append(f"\n== budget {budget or 'all'}: {len(te['y'])} searches, right {100 * te['y'].mean():.1f}%; MegaLoc AUC alone "
+                     f"{_auc(filled, te['y']):.3f}")
+        preds = {}
+        for name, x in fams.items():
+            p = np.zeros(len(x), np.float32)
+            for f in range(folds):
+                held = fold[te["photo"]] == f
+                p[held] = _fit(x[~held], te["y"][~held])(x[held])
+            preds[name] = p
+            lines += _switch_lines(name, p, te, cx)
+        lines += _bucket_lines(preds, te, cx)
+    text = "\n".join(lines)
+    (OUT / f"evidence_megaloc_{tag}.txt").write_text(text + "\n")
+    print(text)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("speed", "vocab", "run", "ceiling"))
+    cmds = {"speed": speed, "vocab": vocab, "run": run, "ceiling": ceiling, "evidence": evidence, "megaloc": megaloc,
+            "evidence-megaloc": evidence_megaloc}
+    parser.add_argument("cmd", choices=tuple(cmds))
     parser.add_argument("--tag", default="dev3k_setft_own")
     args = parser.parse_args(argv)
-    {"speed": speed, "vocab": vocab, "run": run, "ceiling": ceiling}[args.cmd](args.tag)
+    cmds[args.cmd](args.tag)
     return 0
 
 
