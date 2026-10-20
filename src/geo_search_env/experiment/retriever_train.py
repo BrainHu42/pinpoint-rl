@@ -104,6 +104,47 @@ def _negative_weight(km: torch.Tensor, low: float = 0.02, dead: float = 1.0, ful
     return low + (1 - low) * ((km - dead) / (full - dead)).clamp(0, 1)
 
 
+@torch.inference_mode()
+def _mine(anchors: np.ndarray, k_far: int, far_km: float, device) -> np.ndarray:
+    """Hard negatives: for each anchor (index row), its first k_far neighbours by the released image search that are > far_km away (-1: fewer).
+    Cached in artifacts/retrieval/mined_*.npy."""
+
+    dst = OUT / f"mined_{len(anchors)}_{k_far}_{int(far_km)}.npy"
+    if dst.exists():
+        return np.load(dst)
+    manifest = json.loads((RELEASED_INDEX / "manifest.json").read_text())
+    count = int(manifest["num_samples"])
+    src = np.memmap(RELEASED_INDEX / manifest["files"]["image_embeddings"], dtype=np.float16, mode="r", shape=(count, 256))
+    img = torch.cat([torch.as_tensor(np.asarray(src[c : c + (1 << 20)]), device=device) for c in range(0, count, 1 << 20)])
+    ll = torch.as_tensor(np.fromfile(RELEASED_INDEX / manifest["files"]["latlon_deg"], dtype=np.float32).reshape(-1, 2), device=device)
+    out = np.full((len(anchors), k_far), -1, np.int64)
+    depth = 4 * k_far + 32
+    for b in range(0, len(anchors), 1024):
+        idx = torch.as_tensor(anchors[b : b + 1024], device=device)
+        best_v = torch.full((len(idx), depth), float("-inf"), device=device, dtype=torch.float16)
+        best_i = torch.zeros((len(idx), depth), dtype=torch.long, device=device)
+        for c in range(0, count, 1 << 20):
+            v, i = torch.topk(img[idx] @ img[c : c + (1 << 20)].T, depth, dim=1)
+            best_v, keep = torch.topk(torch.cat([best_v, v], 1), depth, dim=1)
+            best_i = torch.gather(torch.cat([best_i, i + c], 1), 1, keep)
+        far = _haversine_rows(ll[idx], ll[best_i]) > far_km
+        slot = torch.where(far, torch.cumsum(far.long(), 1) - 1, k_far).clamp(max=k_far)  # the first k_far far hits in score order
+        kept = torch.full((len(idx), k_far + 1), -1, dtype=torch.long, device=device).scatter_(1, slot, torch.where(far, best_i, -1))
+        out[b : b + len(idx)] = kept[:, :k_far].cpu().numpy()
+        if (b // 1024) % 100 == 0:
+            print(f"  mined {b + len(idx):,}/{len(anchors):,}", flush=True)
+    np.save(dst, out)
+    return out
+
+
+def _haversine_rows(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """[A, K] km between a [A, 2] and b [A, K, 2] (degrees)."""
+
+    a, b = torch.deg2rad(a.float())[:, None], torch.deg2rad(b.float())
+    h = torch.sin((b[..., 0] - a[..., 0]) / 2) ** 2 + torch.cos(a[..., 0]) * torch.cos(b[..., 0]) * torch.sin((b[..., 1] - a[..., 1]) / 2) ** 2
+    return 2 * EARTH_KM * torch.asin(torch.sqrt(h.clamp(0, 1)))
+
+
 def train(a) -> None:
     torch.manual_seed(a.seed)
     device = torch.device("cuda")
@@ -133,21 +174,33 @@ def train(a) -> None:
     mp16_ll = torch.as_tensor(mp16_ll, device=device)
     per = a.batch // 2
     generator = torch.Generator(device=device).manual_seed(a.seed)
+    if a.hard_neg:  # anchors come from the mined subset, each with one of its far look-alikes as an extra negative for the whole batch
+        mined_rows = np.sort(np.random.default_rng(a.seed).choice(count, a.mine, replace=False))
+        far = _mine(mined_rows, a.hard_neg, a.hard_km, device)
+        print(f"hard negatives: {(far >= 0).mean() * 100:.1f}% of slots filled", flush=True)
+        mined_rows, far = torch.as_tensor(mined_rows, device=device), torch.as_tensor(far, device=device)
 
     def rows(q, scale, idx):
         return q[idx].float() * scale[idx, None]
 
     def batches():
         while True:
-            anchor = torch.randint(0, count, (per,), device=device, generator=generator)
+            if a.hard_neg:
+                pick = torch.randint(0, len(mined_rows), (per,), device=device, generator=generator)
+                anchor = mined_rows[pick]
+                hard = far[pick, torch.randint(0, a.hard_neg, (per,), device=device, generator=generator)]
+            else:
+                anchor = torch.randint(0, count, (per,), device=device, generator=generator)
+                hard = torch.full_like(anchor, -1)
             pos = position[anchor]
             has = cell_size[pos] > 1
             j = cell_start[pos] + (torch.rand(per, device=device, generator=generator) * (cell_size[pos] - 1).clamp(min=1)).long()
             j = torch.where(j >= pos, j + 1, j).clamp(max=count - 1)  # skip the anchor itself
             partner = torch.where(has, order[j], anchor)
             o = torch.randint(0, len(osv_ll), (per,), device=device, generator=generator)
+            hard = hard[hard >= 0]
             yield (rows(mp16_q, mp16_s, anchor), mp16_ll[anchor], rows(mp16_q, mp16_s, partner), mp16_ll[partner], has,
-                   rows(osv_q, osv_s, o), osv_ll[o])
+                   rows(osv_q, osv_s, o), osv_ll[o], rows(mp16_q, mp16_s, hard), mp16_ll[hard])
 
     print(f"training data on the GPU: {torch.cuda.memory_allocated() / 2**30:.1f} GB; {(cell_size > 1).float().mean() * 100:.1f}% of MP16 rows "
           f"have a partner within their {a.ii_cell_km} km cell", flush=True)
@@ -159,7 +212,7 @@ def train(a) -> None:
     for step, batch in enumerate(batches()):
         if step >= a.steps:
             break
-        m_raw, m_ll, p_raw, p_ll, has, o_raw, o_ll = batch
+        m_raw, m_ll, p_raw, p_ll, has, o_raw, o_ll, h_raw, h_ll = batch
         with torch.autocast("cuda", dtype=torch.bfloat16):
             m_img = module.encode_image(m_raw)
             o_img = module.encode_osv_image(o_raw)
@@ -169,10 +222,12 @@ def train(a) -> None:
             loss = (loss_m * 1.0 + loss_o * float(hp["loss_weight_osv_image_loc"])) / (1.0 + float(hp["loss_weight_osv_image_loc"]))
             parts = {"mp16": loss_m.detach(), "osv": loss_o.detach()}
             if a.ii_weight > 0 and has.any():
-                anchor, positive = m_img[has].float(), module.encode_image(p_raw[has]).float()
-                logits = torch.exp(ii_scale).clamp(max=100.0) * anchor @ positive.T + ii_bias
-                eye = torch.eye(len(anchor), device=device, dtype=torch.bool)
-                weight = torch.where(eye, 1.0, _negative_weight(_haversine(m_ll[has], p_ll[has])))
+                # candidates: every anchor's positive, then the hard negatives; anchor i's only positive is column i
+                anchor = m_img[has].float()
+                candidate = module.encode_image(torch.cat([p_raw[has], h_raw])).float()
+                logits = torch.exp(ii_scale).clamp(max=100.0) * anchor @ candidate.T + ii_bias
+                eye = torch.eye(len(anchor), len(candidate), device=device, dtype=torch.bool)
+                weight = torch.where(eye, 1.0, _negative_weight(_haversine(m_ll[has], torch.cat([p_ll[has], h_ll]))))
                 loss_ii = -(weight * F.logsigmoid(torch.where(eye, logits, -logits))).sum(1).mean()
                 loss = loss + a.ii_weight * loss_ii
                 parts["ii"] = loss_ii.detach()
@@ -292,6 +347,9 @@ def main(argv=None) -> int:
     t.add_argument("--warmup", type=int, default=200)
     t.add_argument("--ii-weight", type=float, default=0.0)
     t.add_argument("--ii-cell-km", type=float, default=1.0)
+    t.add_argument("--hard-neg", type=int, default=0, help="far look-alikes mined per anchor (0: none)")
+    t.add_argument("--hard-km", type=float, default=25.0)
+    t.add_argument("--mine", type=int, default=1_000_000, help="anchors mined (the anchor pool when --hard-neg)")
     t.add_argument("--seed", type=int, default=0)
     t.add_argument("--log-every", type=int, default=50)
     t.add_argument("--save-every", type=int, default=1000)
