@@ -353,6 +353,15 @@ class MP16EmbedDataset(Dataset):
 
         self._indices = np.asarray(keep_rows, dtype=np.int64)
         self._selected_image_ids = keep_image_ids
+        # retrieval track: train on exactly these photos (one image id per line, e.g. bucket 99's train split, which the index doesn't hold)
+        ids_path = os.environ.get("PINPOINT_TRAIN_IDS")
+        if ids_path and self.split == "train":
+            wanted = set(Path(ids_path).read_text().split())
+            keep_rows = [r for r, image_id in enumerate(all_image_ids) if image_id in wanted]
+            self._indices = np.asarray(keep_rows, dtype=np.int64)
+            if self.return_metadata:
+                self._selected_image_ids = [all_image_ids[r] for r in keep_rows]
+            print(f"PINPOINT_TRAIN_IDS {ids_path}: {len(self._indices)} training rows")
         # cross-fitting (geo_search_env lesson 75): train on one photographer half only; the retrieval index keeps every photo
         mask_path = os.environ.get("PINPOINT_TRAIN_ROW_MASK")
         if mask_path and self.split == "train":
