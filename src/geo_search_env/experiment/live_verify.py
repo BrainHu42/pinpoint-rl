@@ -28,14 +28,15 @@ import numpy as np
 OUT = Path("artifacts/tool_use")
 AGENT = Path("artifacts/agent")
 KM = {"commons": 10.0, "mapillary": 1.0}  # radius per source (Commons: the API's cap; Mapillary: street level, +-1 km box)
-N = 20  # files per place
+N = 20  # files per place (--n)
 SOURCE = "commons"  # --source
+FETCH = ("right", "wrong pick", "pipeline", "truth")  # --roles
 
 
 def _out(kind: str, ext: str = "json") -> Path:
-    """artifacts/tool_use/{kind}_commons26dev[_mapillary].{ext}"""
+    """artifacts/tool_use/{kind}_commons26dev[_mapillary][_n200].{ext}"""
 
-    return OUT / f"{kind}_commons26dev{'' if SOURCE == 'commons' else '_' + SOURCE}.{ext}"
+    return OUT / f"{kind}_commons26dev{'' if SOURCE == 'commons' else '_' + SOURCE}{'' if N == 20 else f'_n{N}'}.{ext}"
 ROLES = ("right", "wrong pick", "pipeline")
 
 
@@ -87,7 +88,7 @@ def fetch(workers: int = 6) -> None:
     tool = SOURCES[SOURCE]()
     tg = json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))
     truth = lambda t: {"role": "truth", "lat": t["truth"][0], "lon": t["truth"][1]}  # control: imagery at the photo's own location
-    jobs = [(t, pl) for t in tg for pl in t["places"] + [truth(t)]]
+    jobs = [(t, pl) for t in tg for pl in t["places"] + [truth(t)] if pl["role"] in FETCH]
 
     def one(job):
         t, pl = job
@@ -97,7 +98,8 @@ def fetch(workers: int = 6) -> None:
         except RuntimeError as e:  # a place the source can't serve counts as uncovered (reported), not a crash
             photos, error = [], str(e)
             print(f"  {error}", flush=True)
-        paths = [tool.thumb(p) for p in photos]
+        with ThreadPoolExecutor(4) as tx:
+            paths = list(tx.map(tool.thumb, photos))
         return {"photo": t["photo"], "role": pl["role"], "error": error, "files": [
             {"page_id": p.page_id, "title": p.title, "dist_m": p.dist_m, "uploaded": p.uploaded, "path": str(path)}
             for p, path in zip(photos, paths) if path is not None]}
@@ -143,66 +145,75 @@ def score(batch: int = 64) -> None:
             if good:
                 e = model(torch.stack([x for _, x in good]).cuda()).float()
                 emb.update({p: v for (p, _), v in zip(good, e)})
+    others = sorted({pl["photo"] for pl in fetched})
     for pl in fetched:
         for f in pl["files"]:
             f["megaloc"] = float((emb[f["path"]] * q[pl["photo"]]).sum()) if f["path"] in emb else None
+        e = [emb[f["path"]] for f in pl["files"] if f["path"] in emb]
+        if e:  # null: the same imagery's best match to the other target queries (generic or plentiful imagery matches everyone)
+            best = (torch.stack(e) @ q[[o for o in others if o != pl["photo"]]].T).max(0).values
+            pl["null_mu"], pl["null_sd"] = float(best.mean()), float(best.std())
     _out("scores").write_text(json.dumps(fetched), encoding="utf-8")
     print(f"-> {_out('scores')}: {len(emb)} thumbnails embedded, {bad} unreadable")
 
 
 def report() -> None:
+    """Per place: best MegaLoc match (and top-3 mean), and z = (best - null mean) / null sd against the same imagery's best matches to the
+    other target queries. Each role vs the wrong pick: share of photos where it scores higher (no imagery = lowest) and AUC. Truth is the
+    control: imagery at the photo's own location, the ceiling of any candidate."""
+
     from .search_tree import _auc
 
     sc = json.loads(_out("scores").read_text(encoding="utf-8"))
-    by = {(pl["photo"], pl["role"]): [f["megaloc"] for f in pl["files"] if f["megaloc"] is not None] for pl in sc}
+    tg = {t["photo"]: t for t in json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))}
     photos = sorted({pl["photo"] for pl in sc})
-    stat = lambda v, k: float(np.mean(sorted(v, reverse=True)[:k])) if v else -1.0  # best (k=1) / top-3 mean; -1 = no imagery
+    roles = [r for r in ROLES + ("truth",) if any(pl["role"] == r for pl in sc)]
+    place = {(pl["photo"], pl["role"]): pl for pl in sc}
+
+    def stat(p, r, kind):
+        pl = place.get((p, r))
+        v = sorted((f["megaloc"] for f in pl["files"] if f["megaloc"] is not None), reverse=True) if pl else []
+        if not v:
+            return -1.0 if kind != "z" else -9.0  # no imagery: lowest
+        if kind == "z":
+            return (v[0] - pl["null_mu"]) / max(pl["null_sd"], 1e-3)
+        return float(np.mean(v[: 1 if kind == "best" else 3]))
+
     lines = [f"Live verification with guarded {SOURCE} imagery (<= {N} files within {KM[SOURCE]:g} km, made before the query was taken"
              f"{', not by its uploader' if SOURCE == 'commons' else ''}); {len(photos)} commons26 dev photos with a right text candidate and a "
-             f"wrong pipeline answer (lesson S3)"]
-    for r in ROLES:
-        cnt = np.asarray([len(by[(p, r)]) for p in photos])
-        lines.append(f"  {r:10s}: places with any file {100 * np.mean(cnt > 0):.0f}%, files per place median {np.median(cnt):.0f}; best MegaLoc "
-                     f"median {np.median([stat(by[(p, r)], 1) for p in photos if by[(p, r)]]):.3f}")
-    for k, nm in ((1, "best"), (3, "top-3 mean")):
-        right = np.asarray([stat(by[(p, "right")], k) for p in photos])
-        for other in ("wrong pick", "pipeline"):
-            o = np.asarray([stat(by[(p, other)], k) for p in photos])
-            both = (right > -1) & (o > -1)
-            lines.append(f"  {nm:10s}: right place scores higher than the {other} on {100 * np.mean(right > o):.0f}% of photos "
-                         f"(both covered {both.sum()}: {100 * np.mean(right[both] > o[both]):.0f}%; offline checks 16-37%)")
-        allv = np.concatenate([right, np.asarray([stat(by[(p, "wrong pick")], k) for p in photos])])
-        lab = np.r_[np.ones(len(photos), bool), np.zeros(len(photos), bool)]
-        lines.append(f"  {nm:10s}: AUC right vs wrong-pick places {_auc(allv, lab):.3f} (lesson 135, old Flickr photos: 0.60)")
-    for t in (0.2, 0.3, 0.4):
-        r = np.mean([stat(by[(p, "right")], 1) >= t for p in photos])
-        w = np.mean([stat(by[(p, "wrong pick")], 1) >= t for p in photos])
-        pp = np.mean([stat(by[(p, "pipeline")], 1) >= t for p in photos])
-        tr = np.mean([stat(by.get((p, "truth"), []), 1) >= t for p in photos])
-        lines.append(f"  best MegaLoc >= {t}: right places {100 * r:.0f}%, wrong picks {100 * w:.0f}%, pipeline places {100 * pp:.0f}%, "
-                     f"truth (control) {100 * tr:.0f}%")
-    tg = {t["photo"]: t for t in json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))}
-    km = [next(pl["km_to_truth"] for pl in tg[p]["places"] if pl["role"] == "right") for p in photos]
-    lines.append(f"  right place to the photo's location: median {np.median(km):.1f} km, within 1 km {100 * np.mean(np.asarray(km) < 1):.0f}%, "
-                 f"within {KM[SOURCE]:g} km {100 * np.mean(np.asarray(km) < KM[SOURCE]):.0f}%")
-    if any((p, "truth") in by for p in photos):  # control: the ceiling of any candidate (imagery at the photo's own location)
-        tv = np.asarray([stat(by[(p, "truth")], 1) for p in photos])
-        w = np.asarray([stat(by[(p, "wrong pick")], 1) for p in photos])
-        lines.append(f"  truth (control): places with any file {100 * np.mean(tv > -1):.0f}%; best MegaLoc median {np.median(tv[tv > -1]):.3f}; "
-                     f"beats the wrong pick on {100 * np.mean(tv > w):.0f}%; AUC truth vs wrong-pick places "
-                     f"{_auc(np.r_[tv, w], np.r_[np.ones(len(tv), bool), np.zeros(len(w), bool)]):.3f}")
+             f"wrong pipeline answer (lesson S3); truth = control at the photo's own location"]
+    for r in roles:
+        cnt = np.asarray([len(place[(p, r)]["files"]) if (p, r) in place else 0 for p in photos])
+        best = np.asarray([stat(p, r, "best") for p in photos])
+        z = np.asarray([stat(p, r, "z") for p in photos])
+        lines.append(f"  {r:10s}: any file {100 * np.mean(cnt > 0):.0f}%, files median {np.median(cnt):.0f}; best MegaLoc median "
+                     f"{np.median(best[cnt > 0]):.3f}, >= 0.2 / 0.3 / 0.4 on {100 * np.mean(best >= 0.2):.0f} / {100 * np.mean(best >= 0.3):.0f} / "
+                     f"{100 * np.mean(best >= 0.4):.0f}%; z median {np.median(z[cnt > 0]):.2f}, z >= 3 on {100 * np.mean(z >= 3):.0f}%")
+    if "wrong pick" in roles:
+        for kind in ("best", "top3", "z"):
+            w = np.asarray([stat(p, "wrong pick", kind) for p in photos])
+            for r in [r for r in roles if r != "wrong pick"]:
+                v = np.asarray([stat(p, r, kind) for p in photos])
+                lab = np.r_[np.ones(len(v), bool), np.zeros(len(w), bool)]
+                lines.append(f"  {kind:4s}: {r:8s} above the wrong pick on {100 * np.mean(v > w):.0f}% of photos, AUC {_auc(np.r_[v, w], lab):.3f}"
+                             f"{'  (offline checks 16-37%; lesson 135 AUC 0.60)' if r == 'right' else ''}")
+    km = np.asarray([next(pl["km_to_truth"] for pl in tg[p]["places"] if pl["role"] == "right") for p in photos])
+    lines.append(f"  right place to the photo's location: median {np.median(km):.1f} km, within 1 km {100 * np.mean(km < 1):.0f}%, "
+                 f"within {KM[SOURCE]:g} km {100 * np.mean(km < KM[SOURCE]):.0f}%")
     text = "\n".join(lines)
     _out("report", "txt").write_text(text + "\n")
     print(text)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    global SOURCE
+    global SOURCE, N, FETCH
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("cmd", choices=("targets", "fetch", "score", "report"))
     parser.add_argument("--source", choices=tuple(KM), default="commons", help="imagery source (outputs of non-commons sources get a suffix)")
+    parser.add_argument("--n", type=int, default=N, help="files per place (outputs of other values get a suffix)")
+    parser.add_argument("--roles", default=",".join(FETCH), help="places to fetch, comma-separated (wrong_pick = 'wrong pick')")
     args = parser.parse_args(argv)
-    SOURCE = args.source
+    SOURCE, N, FETCH = args.source, args.n, tuple(r.replace("_", " ") for r in args.roles.split(","))
     {"targets": targets, "fetch": fetch, "score": score, "report": report}[args.cmd]()
     return 0
 

@@ -31,6 +31,21 @@ CACHE = Path("artifacts/tool_use/commons")
 THUMB_PX = 500  # a standard Commons thumbnail step; MegaLoc reads 322 px
 MIMES = ("image/jpeg", "image/png", "image/webp")
 MIN_INTERVAL = 0.25  # seconds between requests (shared across threads): polite serial-ish rate
+# Local search (when the API's search backend is too busy): the geo_tags table dump (https://dumps.wikimedia.org/commonswiki/), indexed by
+# `index`; geosearch then only looks up file info by page id.
+GEO_DUMP = Path("artifacts/tool_use/dumps/geo_tags_20261003/commonswiki-latest-geo_tags.sql.gz")
+GEO_INDEX = CACHE / "geo_index_20261003.npz"
+
+
+def _thumb_url(info: dict) -> str:
+    """THUMB_PX-wide thumbnail of a Commons file from its file URL (.../commons/a/ab/Name.jpg -> .../commons/thumb/a/ab/Name.jpg/500px-Name.jpg);
+    the file itself when it is no wider (Commons doesn't upscale) or WebP (its thumbnails change extension)."""
+
+    url = info["url"].split("?", 1)[0]
+    if info.get("width", THUMB_PX + 1) <= THUMB_PX or info.get("mime") == "image/webp":
+        return url
+    head, name = url.rsplit("/", 1)
+    return f"{head.replace('/wikipedia/commons/', '/wikipedia/commons/thumb/', 1)}/{name}/{THUMB_PX}px-{name}"
 
 
 @dataclass(frozen=True)
@@ -84,12 +99,20 @@ class CommonsImagery:
 
         key = f"{lat:.4f}_{lon:.4f}_{km:g}_{limit}"
         path = self.cache / "geo" / f"{key}.json"
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
+        local = self.cache / "local" / f"{key}.json"  # answered by the local index (same format)
+        if path.exists() or local.exists():
+            data = json.loads((path if path.exists() else local).read_text(encoding="utf-8"))
+        elif GEO_INDEX.exists():
+            data = self._local(lat, lon, km, limit)
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(json.dumps(data), encoding="utf-8")
         else:
             params = {"action": "query", "format": "json", "generator": "geosearch", "ggscoord": f"{lat}|{lon}",
                       "ggsradius": int(min(km, 10.0) * 1000), "ggsnamespace": 6, "ggslimit": limit, "prop": "imageinfo|coordinates",
                       "iiprop": "user|timestamp|url|mime", "iiurlwidth": THUMB_PX, "colimit": "max", "maxlag": 5}
+            if limit > 50:  # the API renders thumbnail URLs for only 50 files per request: build them from the file URL instead (_thumb_url)
+                params.pop("iiurlwidth")
+                params["iiprop"] += "|size"
             for attempt in range(12):  # API-level errors (search too busy, maxlag) come back as HTTP 200 and are intermittent: short
                 data = json.loads(self._get(f"{API}?{urllib.parse.urlencode(params)}"))  # jittered waits, never cache them
                 if "error" not in data:
@@ -101,6 +124,8 @@ class CommonsImagery:
         out = []
         for page in (data.get("query") or {}).get("pages", {}).values():
             info, coords = (page.get("imageinfo") or [{}])[0], (page.get("coordinates") or [{}])[0]
+            if "thumburl" not in info and info.get("url"):
+                info["thumburl"] = _thumb_url(info)
             if info.get("mime") not in MIMES or "lat" not in coords or not info.get("thumburl"):
                 continue
             la, lo = float(coords["lat"]), float(coords["lon"])  # generator mode returns no distance: compute it
@@ -109,13 +134,51 @@ class CommonsImagery:
                              info.get("user", ""), info.get("timestamp", ""), info["thumburl"]))
         return sorted(out, key=lambda p: p.dist_m)
 
+    def _local(self, lat: float, lon: float, km: float, limit: int) -> dict:
+        """geosearch from the local index (build_index): the `limit` nearest geotagged pages within km, then their file info by page id,
+        50 per API call (a database lookup; the search backend, which throttles, is not involved). Non-file pages come back without imageinfo."""
+
+        import numpy as np
+
+        if not hasattr(self, "_index"):
+            with self._lock:
+                if not hasattr(self, "_index"):
+                    z = np.load(GEO_INDEX)
+                    self._index = (z["lat"], z["lon"], z["page"])
+        la, lo, page = self._index
+        dlat = km / 111.0
+        s, e = np.searchsorted(la, lat - dlat), np.searchsorted(la, lat + dlat, side="right")  # sorted by latitude
+        bl, bo = la[s:e].astype(np.float64), lo[s:e].astype(np.float64)
+        h = np.sin(np.radians(bl - lat) / 2) ** 2 + math.cos(math.radians(lat)) * np.cos(np.radians(bl)) * np.sin(np.radians(bo - lon) / 2) ** 2
+        dist = 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
+        inside = np.flatnonzero(dist <= km)
+        pick = inside[np.argsort(dist[inside], kind="stable")[:limit]]
+        coords = {int(page[s + i]): (float(bl[i]), float(bo[i])) for i in pick}
+        pages = {}
+        ids = list(coords)
+        for b in range(0, len(ids), 50):
+            params = {"action": "query", "format": "json", "pageids": "|".join(map(str, ids[b: b + 50])), "prop": "imageinfo",
+                      "iiprop": "user|timestamp|url|mime|size", "maxlag": 5}
+            for attempt in range(8):
+                got = json.loads(self._get(f"{API}?{urllib.parse.urlencode(params)}"))
+                if "error" not in got:
+                    break
+                time.sleep(min(30.0, 2.0 * (attempt + 1)) * (0.5 + random.random()))
+            else:
+                raise RuntimeError(f"Commons page lookup failed at ({lat}, {lon}): {got['error'].get('code')}")
+            for pid, pg in (got.get("query") or {}).get("pages", {}).items():
+                if int(pid) in coords:
+                    pg["coordinates"] = [{"lat": coords[int(pid)][0], "lon": coords[int(pid)][1]}]
+                    pages[pid] = pg
+        return {"query": {"pages": pages}, "source": "local geo_tags index"}
+
     def near(self, lat: float, lon: float, km: float = 10.0, n: int = 20, before: str | None = None, exclude_group: str | None = None,
              exclude_titles: Sequence[str] = ()) -> list[Photo]:
         """The n nearest guarded files: uploaded before `before` (ISO date; the query's capture date), not by the query's uploader."""
 
         cut = datetime.fromisoformat(before).replace(tzinfo=timezone.utc) if before else None
         keep = []
-        for p in self.geosearch(lat, lon, km):
+        for p in self.geosearch(lat, lon, km, 100 if n <= 50 else 500):
             if exclude_group and p.group == exclude_group or p.title in exclude_titles:
                 continue
             if cut and (not p.uploaded or datetime.fromisoformat(p.uploaded.replace("Z", "+00:00")) >= cut):
@@ -234,15 +297,15 @@ class MapillaryImagery(CommonsImagery):
 
         photos = super().near(lat, lon, km, n, before, None, exclude_titles)
         todo = [p for p in photos if not (self.cache / "thumbs" / f"{p.page_id}.jpg").exists()]
-        if todo:
+        urls = {}
+        for s in range(0, len(todo), 50):
             try:
-                ids = ",".join(str(p.page_id) for p in todo)
+                ids = ",".join(str(p.page_id) for p in todo[s: s + 50])
                 rows = json.loads(self._get(f"{MAPILLARY_API}?access_token={self._token}&image_ids={ids}&fields=id,thumb_1024_url"))["data"]
-                urls = {int(r["id"]): r.get("thumb_1024_url", "") for r in rows}
-                photos = [replace(p, thumb_url=urls.get(p.page_id, "")) for p in photos]
+                urls.update({int(r["id"]): r.get("thumb_1024_url", "") for r in rows})
             except Exception:  # noqa: BLE001  (thumb() falls back to one lookup per image)
                 pass
-        return photos
+        return [replace(p, thumb_url=urls.get(p.page_id, "")) for p in photos]
 
     def thumb(self, p: Photo) -> Path | None:
         path = self.cache / "thumbs" / f"{p.page_id}.jpg"
@@ -259,17 +322,46 @@ class MapillaryImagery(CommonsImagery):
 SOURCES = {"commons": CommonsImagery, "mapillary": MapillaryImagery}
 
 
+def build_index(dump: Path = GEO_DUMP) -> None:
+    """Primary Earth coordinates of every geotagged Commons page from the geo_tags SQL dump (one row per line), sorted by latitude ->
+    GEO_INDEX (float32 lat / lon, uint32 page id). The page ids include non-file pages; their lookups return no file info."""
+
+    import array
+    import gzip
+    import re
+
+    import numpy as np
+
+    row = re.compile(rb"^\((\d+),(\d+),'earth',1,(-?[\d.]+),(-?[\d.]+),")
+    page, la, lo = array.array("I"), array.array("f"), array.array("f")
+    with gzip.open(dump, "rb") as f:
+        for line in f:
+            m = row.match(line)
+            if m:
+                page.append(int(m[2]))
+                la.append(float(m[3]))
+                lo.append(float(m[4]))
+    la_, lo_, page_ = np.frombuffer(la, np.float32), np.frombuffer(lo, np.float32), np.frombuffer(page, np.uint32)
+    ok = (np.abs(la_) <= 90) & (np.abs(lo_) <= 180) & ~((la_ == 0) & (lo_ == 0))
+    order = np.argsort(la_[ok], kind="stable")
+    np.savez(GEO_INDEX, lat=la_[ok][order], lon=lo_[ok][order], page=page_[ok][order])
+    print(f"{ok.sum():,} primary coordinates ({len(page_):,} rows) -> {GEO_INDEX}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("near",))
-    parser.add_argument("lat", type=float)
-    parser.add_argument("lon", type=float)
+    parser.add_argument("cmd", choices=("near", "index"))
+    parser.add_argument("lat", type=float, nargs="?")
+    parser.add_argument("lon", type=float, nargs="?")
     parser.add_argument("--source", choices=tuple(SOURCES), default="commons")
     parser.add_argument("--km", type=float, default=None, help="radius (default: 10 for commons, 1 for mapillary)")
     parser.add_argument("--n", type=int, default=20)
     parser.add_argument("--before", default=None)
     parser.add_argument("--fetch", action="store_true")
     args = parser.parse_args(argv)
+    if args.cmd == "index":
+        build_index()
+        return 0
     tool = SOURCES[args.source]()
     km = args.km if args.km is not None else (10.0 if args.source == "commons" else 1.0)
     for p in tool.near(args.lat, args.lon, km, args.n, args.before):
