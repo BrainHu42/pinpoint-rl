@@ -43,5 +43,13 @@ R6. **On commons26's geolocatable photos the room is large and reachable** (`scr
     weakest (pipeline 16.0, pool 45.2). Wrong photos (68.4% of them): right place in both the text candidates and the visual top 1,000 28.1,
     text only 3.3, visual only 29.9, neither 7.1. Retrieval misses 41.0, of which 30.6 have a right photo deeper (top 1,000). Two independent
     sources agree on the right place for over a quarter of the photos; S3 found MP16 too sparse there to verify it.
+R7. **Pre-2026 Commons imagery can't pick among text places at scale: coverage doesn't separate right from wrong, and the fixable photos are
+    few** (`commons_verify.py`; the 719 geolocatable commons26 dev photos). Candidate set: the pipeline's answer + the top-5 distinct text places
+    (> 25 km apart, lesson 119's ordering): pipeline 32.3%, a text place right where the pipeline is wrong 8.1 pts (oracle 40.3; top-8 / 16 / 64:
+    9.7 / 12.5 / 19.7). Commons files within 2 km, pre-2026, not by the uploader (geosearch, 4,285 places, 38 min; `scripts/commons_verify_coverage.py`): no file at 36.5% of right
+    and 39.7% of wrong text places, 36.2% / 32.0% of right / wrong pipeline answers (nearest median 47 vs 98 m), so coverage is no signal.
+    Only 38 photos (5.3 pts geo, 3.9 of 977) have both a fixable right text place and any reference there; at lesson 138's rates (~30% of
+    covered views matched, right place ahead 50%) that's ~1 pt before breaks. The thumbnail download (~43k at upload.wikimedia.org's ~1 / s bot
+    limit, ~12 h) was stopped after 16 files; embed / report are in place but never ran.
 
 ## Search-agent track (S)
