@@ -3,8 +3,11 @@
   PYTHONPATH=src .venv/bin/python -m geo_search_env.viz.server [--port 8800] [--live]
   then open http://localhost:8800 (from a laptop: ssh -L 8800:localhost:8800 <this machine>)
 
+By default it serves the cached traces only (no GPU, starts in well under a second; the upload button is hidden, earlier uploads stay
+browsable). --live starts the upload worker (GPU; viz.live, and scripts/viz_vlm.sh for clue reading) and shows the upload button.
+
 Routes: / (app), /api/sets, /api/index/{set}, /api/featured, /api/trace/{set}/{i}, /img/{bench|mp16|upload}/..., POST /api/upload,
-/api/job/{id}. --live starts the upload worker (GPU; viz.live), otherwise uploads are refused.
+/api/job/{id}.
 """
 
 from __future__ import annotations
@@ -74,7 +77,8 @@ def _sets() -> list[dict]:
     for name, title in SET_NAMES.items():
         if name == "upload":
             n = len(list(UPLOADS.glob("*/trace.json"))) if UPLOADS.exists() else 0
-            out.append({"name": name, "title": title, "n": n, "live": LIVE is not None})
+            if n or LIVE is not None:
+                out.append({"name": name, "title": title, "n": n, "live": LIVE is not None})
         elif (TRACES / name / "index.json").exists():
             out.append({"name": name, "title": title, "n": len(json.loads((TRACES / name / "index.json").read_text()))})
     return out

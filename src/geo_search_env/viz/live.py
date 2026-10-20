@@ -88,6 +88,8 @@ def _scratch() -> None:
              "artifacts/viz/cities.npz": REPO / "artifacts/viz/cities.npz", "artifacts/viz/agent_setft_own.pt": REPO / "artifacts/viz/agent_setft_own.pt"}
     for rel, target in links.items():
         p = LIVE_ROOT / rel
+        if p.is_symlink() and not p.exists():  # dangling (e.g. made from a since-deleted worktree)
+            p.unlink()
         if not p.is_symlink() and not p.exists():
             p.symlink_to(target)
     os.chdir(LIVE_ROOT)
