@@ -86,7 +86,8 @@ def fetch(workers: int = 6) -> None:
 
     tool = SOURCES[SOURCE]()
     tg = json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))
-    jobs = [(t, pl) for t in tg for pl in t["places"]]
+    truth = lambda t: {"role": "truth", "lat": t["truth"][0], "lon": t["truth"][1]}  # control: imagery at the photo's own location
+    jobs = [(t, pl) for t in tg for pl in t["places"] + [truth(t)]]
 
     def one(job):
         t, pl = job
@@ -177,7 +178,19 @@ def report() -> None:
         r = np.mean([stat(by[(p, "right")], 1) >= t for p in photos])
         w = np.mean([stat(by[(p, "wrong pick")], 1) >= t for p in photos])
         pp = np.mean([stat(by[(p, "pipeline")], 1) >= t for p in photos])
-        lines.append(f"  best MegaLoc >= {t}: right places {100 * r:.0f}%, wrong picks {100 * w:.0f}%, pipeline places {100 * pp:.0f}%")
+        tr = np.mean([stat(by.get((p, "truth"), []), 1) >= t for p in photos])
+        lines.append(f"  best MegaLoc >= {t}: right places {100 * r:.0f}%, wrong picks {100 * w:.0f}%, pipeline places {100 * pp:.0f}%, "
+                     f"truth (control) {100 * tr:.0f}%")
+    tg = {t["photo"]: t for t in json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))}
+    km = [next(pl["km_to_truth"] for pl in tg[p]["places"] if pl["role"] == "right") for p in photos]
+    lines.append(f"  right place to the photo's location: median {np.median(km):.1f} km, within 1 km {100 * np.mean(np.asarray(km) < 1):.0f}%, "
+                 f"within {KM[SOURCE]:g} km {100 * np.mean(np.asarray(km) < KM[SOURCE]):.0f}%")
+    if any((p, "truth") in by for p in photos):  # control: the ceiling of any candidate (imagery at the photo's own location)
+        tv = np.asarray([stat(by[(p, "truth")], 1) for p in photos])
+        w = np.asarray([stat(by[(p, "wrong pick")], 1) for p in photos])
+        lines.append(f"  truth (control): places with any file {100 * np.mean(tv > -1):.0f}%; best MegaLoc median {np.median(tv[tv > -1]):.3f}; "
+                     f"beats the wrong pick on {100 * np.mean(tv > w):.0f}%; AUC truth vs wrong-pick places "
+                     f"{_auc(np.r_[tv, w], np.r_[np.ones(len(tv), bool), np.zeros(len(w), bool)]):.3f}")
     text = "\n".join(lines)
     _out("report", "txt").write_text(text + "\n")
     print(text)

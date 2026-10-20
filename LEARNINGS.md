@@ -52,7 +52,8 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
    chance on the head's mistakes, and their confident switches are mostly breaks ([84], [88], [106], [114], [128], [131]-[133], [137]). Sonnet
    given only town names did +0.94 at 25 km with calibrated confidence ([105]), so the signal exists. Paid LLMs are ruled out.
 5. **The right place's own photos look like "the same kind of scene nearby", not the same spot** ([90], [95]). External imagery is limited by
-   coverage of the exact view: old Flickr photos rarely show the query's view ([135]). OSV-5M sits on roads, not photo spots ([136]). New
+   coverage of the exact view: old Flickr photos rarely show the query's view ([135]), nor do live Commons / Mapillary photos, even at the
+   true spot (AUC 0.63 / 0.52, [138]). OSV-5M sits on roads, not photo spots ([136]). New
    nearby YFCC photos would fix at most 1-3% at 1 km ([134]).
 6. **RL over today's actions only buys cost**: the policy ties "take every action", because the actions are cheap, independent and reveal fixed
    features ([94], [98]). RL on open-model free text learns silence ([87], [96]); GRPO on a 2-way one-token answer collapses (use the exact
@@ -69,7 +70,7 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
   recipes; today's actions are not ([94]). Track S (lessons S1-S3 in `LESSONS.md`, closed offline 2026-10-20): constrained searches over a
   photo's own pool find right regions (net of luck ~+6 pts beyond the area oracle) that their results can't verify, since every pool region
   holds a look-alike; text-proposed places verify much better (AUC 0.94 vs 0.85) but are blind where the gallery is sparse, which is where text
-  fixes the pipeline. Verifying independently proposed places with live imagery at the candidate is the open part (`TOOL_USE_DESIGN.md`).
+  fixes the pipeline. Live imagery near the candidate doesn't verify them either ([138], `TOOL_USE_DESIGN.md`).
 - **Sub-threshold gains were never stacked**: crops +0.4 ([89]), region hypotheses +0.3 ([85]), extra areas +0.3 and local refinement +0.3
   ([112]), diffusion seeds +0.4 ([127]), MegaLoc 1 km chooser +0.6 at 1 km ([107]), rare OSM names +1.4 and text override +0.9 on commons26
   dev ([118], [121]).
@@ -164,3 +165,4 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
 [135]: docs/archive/LESSONS_1-137.md#l135
 [136]: docs/archive/LESSONS_1-137.md#l136
 [137]: docs/archive/LESSONS_1-137.md#l137
+[138]: LESSONS.md

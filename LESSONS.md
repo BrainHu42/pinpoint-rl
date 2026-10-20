@@ -47,3 +47,17 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     Found on the way: `megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (Oct 16, before the bd2d12d path fix)
     are blank (200 photos -> 4 distinct vectors, cosine 0.99999); only the commons26dev files were redone, so the commons26 test run of
     lesson 113 had no MegaLoc signal. Also, `search_tree._fit` ran only 16-250 Adam steps on small sets (now >= 2,000); S2b re-run with it.
+
+## Single-track lessons (138-)
+
+138. **Live imagery near a text-proposed place doesn't verify it: the nearest photos rarely share the query's view, even at the true spot**
+    (`tools/imagery.py`, `live_verify.py`; `TOOL_USE_DESIGN.md` first test, the 116 commons26 dev photos of S3). Guarded live imagery (made
+    before the query was taken; Commons also not by its uploader), the <= 20 nearest per place, best MegaLoc match vs the query. Right text
+    place above the ranker's wrong pick: Commons (10 km) 50% (AUC 0.49), Mapillary street level (1 km, no panoramas, <= 2 frames per
+    sequence) 39% (AUC 0.40); the pre-declared go ("well over half") fails, so the 977-photo switch was not run. Control, imagery at the
+    photo's own location: Commons 64% (AUC 0.63; best >= 0.2 on 15%), Mapillary 54% (0.52; 4%), so no candidate could do much better. Two
+    limits: right text places are a median 8.3 km from the spot (20% within 1 km), and a nearest-20 sample seldom contains the query's view
+    (as [135]: old Flickr photos, AUC 0.60). Imagery verification would need ~100 m candidates and view-directed imagery, not a nearby sample.
+    Tooling: Commons geosearch throttles ("search too busy"); Mapillary's bbox API returns HTTP 500 in dense areas, so the tool reads its z14
+    coverage tiles (positions match the API to ~1 m); fetch runs places in parallel with unpaced CDN thumbnails. The Commons `geo_tags` dump
+    (Oct 3, 768 MB, `artifacts/tool_use/dumps/`) would make the Commons search local if needed again.

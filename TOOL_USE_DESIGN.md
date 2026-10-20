@@ -33,6 +33,10 @@ The 116 commons26 dev photos with a right text candidate and a wrong pipeline an
 if it ranks the right place above the text ranker's wrong pick on well over half of them (offline checks: 16-37%), then measure the switch
 against the pipeline on all 977 dev photos (bar +1 pt at 25 km), with dev3k for regressions.
 
+**Result (lesson 138, 2026-10-20): no-go.** Commons 50% (AUC 0.49), Mapillary 39% (0.40); imagery at the photo's own location reaches only
+64% / 54%. A nearby sample of photos seldom shows the query's view, and right text places are a median 8.3 km off. `imagery` as a
+nearest-N verifier is closed; a view-directed source or ~100 m candidates would be needed to reopen it.
+
 ## Known data issues
 - `artifacts/agent/megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (full commons26, Oct 16) are blank
   (written before the bd2d12d image-path fix); only the commons26dev files are valid. Lesson 113's commons26 test run had no MegaLoc signal.
