@@ -30,5 +30,12 @@ R3. **A deeper pool isn't converted by the reranker, even trained on it** (`retr
 R4. **In-distribution reranker data (bucket 99) doesn't help** (`PINPOINT_TRAIN_IDS`, `scripts/reranker_b99.sh`; setft_own continued on the 33,006
     bucket-99 train photos without dev3k photographers vs the same steps on buckets 0-98; dev3k top-1 < 1 / 25 km, 32 / 8 / 8). 600 steps, lr 2e-5:
     28.8 / 44.3 vs control 28.5 / 44.2 (setft_own 28.3 / 44.3). 2,000 steps, lr 5e-5: 27.1 / 42.4 (overfits) vs control 28.4 / 44.2.
+R5. **The pipeline's misses are photos with no geography in the pixels; what locates them is the photographer's own upload batch**
+    (`scripts/scene_zeroshot.py`, `scripts/event_ceiling.py`; dev3k, pipeline 47.3% < 25 km). SigLIP2 zero-shot scene tags: indoor / people
+    close-up / object close-up are 77% of photos and 43.5 of the 52.7 wrong pts (pipeline 41.3 / 53.0 / 30.7%); terrain skylines (mountains, hills)
+    8.2% of photos, 3.8 wrong pts (a DEM skyline check can't matter). "Same event" (index photo < 25 km, Flickr photo id within 5e5 ~ 2.5 h of
+    upload): 69.6% vs 26% with the query's id shifted (luck), but by other photographers only 33.3% vs 27.8%: the +44-pt excess is the
+    photographer's own batch, other people's same-day photos ~+5. A pixel-only "same-trip" retriever would chase the original protocol's
+    own-photo effect, not geography.
 
 ## Search-agent track (S)
