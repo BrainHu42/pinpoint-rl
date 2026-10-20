@@ -6,8 +6,8 @@
 By default it serves the cached traces only (no GPU, starts in well under a second; the upload button is hidden, earlier uploads stay
 browsable). --live starts the upload worker (GPU; viz.live, and scripts/viz_vlm.sh for clue reading) and shows the upload button.
 
-Routes: / (app), /api/sets, /api/index/{set}, /api/featured, /api/trace/{set}/{i}, /img/{bench|mp16|upload}/..., POST /api/upload,
-/api/job/{id}.
+Routes: / (app), /api/sets, /api/index/{set}, /api/errors/{set} (error triage, viz.errors), /api/featured, /api/trace/{set}/{i},
+/img/{bench|mp16|upload}/..., POST /api/upload, /api/job/{id}.
 """
 
 from __future__ import annotations
@@ -126,6 +126,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(_sets())
             if parts[:2] == ["api", "featured"]:
                 return self._json(json.loads(FEATURED.read_text()) if FEATURED.exists() else [])
+            if parts[:2] == ["api", "errors"] and len(parts) == 3:
+                from .errors import load
+
+                return self._json(load(Path(parts[2]).name))
             if parts[:2] == ["api", "index"] and len(parts) == 3:
                 if parts[2] == "upload":
                     return self._json(_upload_index())

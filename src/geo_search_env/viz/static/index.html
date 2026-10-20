@@ -19,8 +19,14 @@
 
 <div class="layout">
   <aside class="browser">
+    <div class="mode-row"><div class="seg" id="mode"><button data-m="triage">Triage errors</button><button data-m="browse">Browse all</button></div></div>
     <div class="tabs" id="set-tabs"></div>
     <input id="search" class="search" type="search" placeholder="Search image id or place…">
+    <div id="triage" hidden>
+      <div class="chips" id="bench-chips"></div>
+      <div class="tierbar" id="tierbar"></div>
+      <div class="tierlist" id="tierlist"></div>
+    </div>
     <div class="chips" id="filters">
       <button data-f="all" class="chip on">All</button>
       <button data-f="fixed" class="chip">Agent fixed</button>
@@ -41,6 +47,7 @@
           <div class="eyebrow" id="photo-id"></div>
           <h1 id="truth-place"></h1>
           <div class="muted" id="truth-coord"></div>
+          <div class="triage-note" id="triage-note" hidden></div>
           <div class="tiles" id="tiles"></div>
           <div class="trail" id="trail"></div>
         </div>
