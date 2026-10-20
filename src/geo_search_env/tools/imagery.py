@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -59,13 +59,16 @@ class CommonsImagery:
         self._lock = threading.Lock()
         self._last = 0.0
 
-    def _get(self, url: str, retries: int = 4) -> bytes:
+    def _get(self, url: str, retries: int = 4, paced: bool = True) -> bytes:
+        """paced: API calls keep MIN_INTERVAL between them; thumbnail downloads (CDN, not the API) run unpaced in the caller's threads."""
+
         for attempt in range(retries):
-            with self._lock:
-                wait = self._last + MIN_INTERVAL - time.monotonic()
-                if wait > 0:
-                    time.sleep(wait)
-                self._last = time.monotonic()
+            if paced:
+                with self._lock:
+                    wait = self._last + MIN_INTERVAL - time.monotonic()
+                    if wait > 0:
+                        time.sleep(wait)
+                    self._last = time.monotonic()
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
                 with urllib.request.urlopen(req, timeout=30) as r:
@@ -126,7 +129,7 @@ class CommonsImagery:
         path = self.cache / "thumbs" / f"{p.page_id}.jpg"
         if not path.exists():
             try:
-                data = self._get(p.thumb_url)
+                data = self._get(p.thumb_url, paced=False)
             except Exception:  # noqa: BLE001
                 return None
             path.write_bytes(data)
@@ -186,10 +189,12 @@ class MapillaryImagery(CommonsImagery):
             lon = (x + px[:, 0] / ext) / n * 360.0 - 180.0
             lat = np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * (y + px[:, 1] / ext) / n))))
             props = [f["properties"] for f in feats]
-            np.savez(path, lat=lat, lon=lon, id=np.asarray([int(p["id"]) for p in props], np.int64),
+            tmp = path.with_suffix(f".{threading.get_ident()}.tmp.npz")  # atomic: threads may fetch the same tile
+            np.savez(tmp, lat=lat, lon=lon, id=np.asarray([int(p["id"]) for p in props], np.int64),
                      captured=np.asarray([int(p.get("captured_at") or 0) for p in props], np.int64),
                      seq=np.asarray([str(p.get("sequence_id", "")) for p in props], dtype=str),
                      pano=np.asarray([bool(p.get("is_pano")) for p in props], dtype=bool))
+            tmp.replace(path)
         z = np.load(path)
         types = {"lat": np.float64, "lon": np.float64, "id": np.int64, "captured": np.int64, "seq": str, "pano": bool}
         return {k: z[k].astype(types[k]) for k in z.files}  # empty tiles (no coverage) were saved with default dtypes
@@ -225,14 +230,27 @@ class MapillaryImagery(CommonsImagery):
 
     def near(self, lat: float, lon: float, km: float = 1.0, n: int = 20, before: str | None = None, exclude_group: str | None = None,
              exclude_titles: Sequence[str] = ()) -> list[Photo]:
-        return super().near(lat, lon, km, n, before, None, exclude_titles)
+        """As CommonsImagery.near; thumbnail URLs (signed, short-lived) of the not yet cached files come from one batched API call."""
+
+        photos = super().near(lat, lon, km, n, before, None, exclude_titles)
+        todo = [p for p in photos if not (self.cache / "thumbs" / f"{p.page_id}.jpg").exists()]
+        if todo:
+            try:
+                ids = ",".join(str(p.page_id) for p in todo)
+                rows = json.loads(self._get(f"{MAPILLARY_API}?access_token={self._token}&image_ids={ids}&fields=id,thumb_1024_url"))["data"]
+                urls = {int(r["id"]): r.get("thumb_1024_url", "") for r in rows}
+                photos = [replace(p, thumb_url=urls.get(p.page_id, "")) for p in photos]
+            except Exception:  # noqa: BLE001  (thumb() falls back to one lookup per image)
+                pass
+        return photos
 
     def thumb(self, p: Photo) -> Path | None:
         path = self.cache / "thumbs" / f"{p.page_id}.jpg"
         if not path.exists():
             try:
-                info = json.loads(self._get(f"{MAPILLARY_API.rsplit('/', 1)[0]}/{p.page_id}?access_token={self._token}&fields=thumb_1024_url"))
-                path.write_bytes(self._get(info["thumb_1024_url"]))
+                url = p.thumb_url or json.loads(self._get(f"{MAPILLARY_API.rsplit('/', 1)[0]}/{p.page_id}?access_token={self._token}"
+                                                          "&fields=thumb_1024_url"))["thumb_1024_url"]
+                path.write_bytes(self._get(url, paced=False))
             except Exception:  # noqa: BLE001
                 return None
         return path

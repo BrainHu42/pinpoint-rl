@@ -79,27 +79,34 @@ def targets() -> None:
     print(f"{len(out)} target photos (lesson S3: 116) -> {OUT / 'targets_commons26dev.json'}")
 
 
-def fetch(workers: int = 3) -> None:
+def fetch(workers: int = 6) -> None:
+    """Places run `workers` at a time: API calls stay paced by the tool's shared limiter, thumbnails (CDN) download unpaced."""
+
     from ..tools.imagery import SOURCES
 
     tool = SOURCES[SOURCE]()
     tg = json.loads((OUT / "targets_commons26dev.json").read_text(encoding="utf-8"))
     jobs = [(t, pl) for t in tg for pl in t["places"]]
-    fetched = []
-    for i, (t, pl) in enumerate(jobs):
+
+    def one(job):
+        t, pl = job
         try:
             photos = tool.near(pl["lat"], pl["lon"], KM[SOURCE], N, before=t["taken"], exclude_group=t["group"])
             error = ""
         except RuntimeError as e:  # a place the source can't serve counts as uncovered (reported), not a crash
             photos, error = [], str(e)
             print(f"  {error}", flush=True)
-        with ThreadPoolExecutor(workers) as ex:
-            paths = list(ex.map(tool.thumb, photos))
-        fetched.append({"photo": t["photo"], "role": pl["role"], "error": error, "files": [
+        paths = [tool.thumb(p) for p in photos]
+        return {"photo": t["photo"], "role": pl["role"], "error": error, "files": [
             {"page_id": p.page_id, "title": p.title, "dist_m": p.dist_m, "uploaded": p.uploaded, "path": str(path)}
-            for p, path in zip(photos, paths) if path is not None]})
-        if i % 20 == 0:
-            print(f"  {i + 1} / {len(jobs)} places; {sum(len(f['files']) for f in fetched)} files", flush=True)
+            for p, path in zip(photos, paths) if path is not None]}
+
+    fetched = []
+    with ThreadPoolExecutor(workers) as ex:
+        for i, row in enumerate(ex.map(one, jobs)):
+            fetched.append(row)
+            if i % 20 == 0:
+                print(f"  {i + 1} / {len(jobs)} places; {sum(len(f['files']) for f in fetched)} files", flush=True)
     _out("fetched").write_text(json.dumps(fetched), encoding="utf-8")
     print(f"-> {_out('fetched')}: {sum(len(f['files']) for f in fetched)} files for {len(fetched)} places")
 
