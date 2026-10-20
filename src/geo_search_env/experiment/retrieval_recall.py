@@ -55,7 +55,7 @@ def _mp16_meta(query_rows: np.ndarray):
     return np.asarray(authors, dtype=np.int64)[row_index], scene
 
 
-def ranks(photo_set: str, tag: str, chunk: int = 131_072, query_batch: int = 512) -> None:
+def ranks(photo_set: str, tag: str, index_dir: str | None = None, chunk: int = 131_072, query_batch: int = 512) -> None:
     import torch
     from scipy.spatial import cKDTree
 
@@ -70,7 +70,7 @@ def ranks(photo_set: str, tag: str, chunk: int = 131_072, query_batch: int = 512
     query_author = mp16_author[query_rows]
     embeddings = np.asarray(np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)[query_rows], dtype=np.float32)
 
-    model = PinpointReranker(device="cuda", index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    model = PinpointReranker(device="cuda", index_dir=Path(index_dir) if index_dir else NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     index_author = mp16_author[model.cache_indices]
     latlon = np.asarray(model.latlon, dtype=np.float64)
     print(f"{len(photos)} queries; index {len(latlon):,} rows; loading it onto the GPU", flush=True)
@@ -214,8 +214,9 @@ def main(argv=None) -> int:
         s = sub.add_parser(name)
         s.add_argument("--photo-set", default="dev3k")
         s.add_argument("--tag", default="released")
+    sub.choices["ranks"].add_argument("--index-dir", help="a retrained retriever's index (with PINPOINT_CONTRASTIVE_CKPT set to its checkpoint)")
     a = p.parse_args(argv)
-    (ranks if a.cmd == "ranks" else report)(a.photo_set, a.tag)
+    ranks(a.photo_set, a.tag, a.index_dir) if a.cmd == "ranks" else report(a.photo_set, a.tag)
     return 0
 
 

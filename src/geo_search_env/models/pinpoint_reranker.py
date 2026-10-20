@@ -37,7 +37,9 @@ from ._pinpoint_torch import _load_image_tower
 
 # PINPOINT_RERANKER_CKPT: a retrained reranker (pinpoint_train/, PINPOINT_SET_PLAN.md step 4) instead of the released one
 RERANKER_CHECKPOINT = Path(os.environ.get("PINPOINT_RERANKER_CKPT", PINPOINT_ROOT / "exp/attention_reranker/checkpoints/ckpt_best.pt"))
-CONTRASTIVE_CHECKPOINT = PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/ckpt_best.pt"
+# PINPOINT_CONTRASTIVE_CKPT: a retrained retriever (experiment/retriever_train.py; pass its index as index_dir) instead of the released one
+RELEASED_CONTRASTIVE = PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/ckpt_best.pt"
+CONTRASTIVE_CHECKPOINT = Path(os.environ.get("PINPOINT_CONTRASTIVE_CKPT", RELEASED_CONTRASTIVE))
 INDEX_ROOT = PINPOINT_ROOT / "exp/contrastive_retrieval/checkpoints/attention_retrieval_index"
 MODALITIES = ("image", "raw_image", "gps")
 # Retrieval feature columns per token: [similarity, rank, in-shortlist] of that modality (feature order is
@@ -148,7 +150,8 @@ class PinpointReranker:
         self.head.load_state_dict(state, strict=True)
         self.head.to(self.device).eval()
         tower_state = {k.removeprefix("contrastive_model.image_tower."): v for k, v in checkpoint["state_dict"].items() if k.startswith("contrastive_model.image_tower.")}
-        if any(not torch.equal(tower_state[k], v.cpu()) for k, v in self.tower.state_dict().items()):
+        # a retrained retriever under a reranker trained on the released one only serves searches (retrieval_recall), not scoring
+        if CONTRASTIVE_CHECKPOINT == RELEASED_CONTRASTIVE and any(not torch.equal(tower_state[k], v.cpu()) for k, v in self.tower.state_dict().items()):
             raise ValueError("the reranker's contrastive image tower differs from the standalone contrastive checkpoint")
         # Reranker in bf16 on Ampere and newer (as the original), float32 otherwise; the tower in fp16 on CUDA.
         cuda = self.device.type == "cuda"
