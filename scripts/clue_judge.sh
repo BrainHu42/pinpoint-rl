@@ -15,8 +15,10 @@ name=${NAME:-4b}
 tag=${TAG:-dev3k}
 clues=${CLUES:-9b}
 mkdir -p artifacts/agent/logs
-mm=(--mm-processor-kwargs "{\"max_pixels\": ${PIXELS:-786432}}")
-[ "${PIXELS:-}" = 0 ] && mm=()  # PIXELS=0: non-Qwen processors (no max_pixels)
+mm_kwargs=${MM_KWARGS:-}  # image processor options; Qwen's max_pixels by default, MM_KWARGS='{}' for models without it (Gemma 3)
+[ -z "$mm_kwargs" ] && mm_kwargs="{\"max_pixels\": ${PIXELS:-786432}}"
+mm=(--mm-processor-kwargs "$mm_kwargs")
+[ "${PIXELS:-}" = 0 ] && mm=()  # PIXELS=0: no processor options at all
 PATH=$PWD/.venvs/vllm/bin:$PATH vllm serve "$model" --served-model-name vlm --port 8765 --host 127.0.0.1 --dtype bfloat16 \
   --gpu-memory-utilization ${GPU_UTIL:-0.9} --max-model-len ${MAX_LEN:-8192} --max-num-seqs 64 --limit-mm-per-prompt "{\"image\":${LIMIT_MM:-1}}" \
   "${mm[@]}" ${SERVE_EXTRA:-} > artifacts/agent/logs/vllm_clue_judge_$name.log 2>&1 &

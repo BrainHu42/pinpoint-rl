@@ -2,7 +2,8 @@
 
 RL agent for image geolocation. Target: beat our retrieval baselines and Gemini, and later call live data APIs at
 inference, so design for tool use. **Past results: `LEARNINGS.md`, one page of main points (read it before proposing experiments);
-new numbered lessons in `LESSONS.md` (from 126); lessons 1-125 archived in `docs/archive/LESSONS_1-125.md`, linked from the summary.**
+new lessons in `LESSONS.md` (per track: R1.. retrieval, S1.. search agent); lessons 1-137 archived in `docs/archive/LESSONS_1-137.md`, linked
+from the summary.**
 
 ## Direction (decided with the user)
 - Keep the RL framing. Not a plain supervised reranker (that just rebuilds Pinpoint).
@@ -18,9 +19,10 @@ new numbered lessons in `LESSONS.md` (from 126); lessons 1-125 archived in `docs
   yfcc4k 33.5 / 44.8 / 58.2 / 73.0 / 84.8), with commons26 alongside. Photographer-excluded numbers are secondary.
 - **Current best pipeline and where it stands: `LEARNINGS.md`** (`action_agent.py` on the `setft_own` reranker; test 51.2% < 25 km vs
   released 46.4). Run: `action_agent --ckpt-tag setft_own --apply full:setft_own` (test only when asked).
-- **Plan: `EXPERT_PLAN.md`** (2026-10-15): choose among retrieval's candidate areas the way an expert does: contrast the candidates,
-  fetch reference imagery and map data of each, eliminate, verify, stop; an RL policy decides which check on which candidates, with real
-  costs. Earlier plans are at tag `plans-2026-10-15`.
+- **Two tracks, run in parallel sessions (user, 2026-10-20)**: `RETRIEVAL_PLAN.md` (retrain Pinpoint's retriever / index side, the largest
+  loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates). Each brief has the coordination rules
+  for sharing the machine. The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
+  131-137) is at `docs/archive/EXPERT_PLAN.md`; older plans at tag `plans-2026-10-15`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the current pipeline and the pool
   oracle), not against a weaker baseline. Choose scorers and combiners on MP16 dev, never on benchmarks.
 
@@ -88,6 +90,13 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
     `load(extra=("megaloc",))`), `zoom_agent.py`, `read_agent.py` (lesson 76), `megaloc_gate.py` (MegaLoc columns, lesson 93),
     `crop_look.py` (crop views; view 0 is the policy's free glance), `refine_headroom.py` (geometry helpers), `action_agent.py` (the RL action
     policy, `--apply`, `--one-km`).
+- Diagnostics and screens (lessons 122-133): `scripts/pipeline_diagnostics.py` and `scripts/candidate_drill.py` (where photos are lost),
+  `graph_diffusion.py` (MP16 kNN graph, `artifacts/diffusion/`), `names_judge.py` (named A/B and name PMI with a local VLM), `profile_judge.py`
+  (Wikipedia / Wikivoyage area profiles), `cue_check.py` (photo cues vs GeoNames country tables), `scripts/subset_photo_set.py` (a split-only
+  photo set with its caches, e.g. `commons26dev_setft_own`).
+- Probes of lessons 134-137: `density_probe.py` (denser photo database), `clue_verify.py` (fetched YFCC photos / OSV-5M per text place,
+  MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
+  `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
 - Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
   per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
   pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).

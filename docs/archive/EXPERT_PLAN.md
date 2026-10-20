@@ -1,5 +1,8 @@
 # Plan: choose among candidate areas the way an expert does (2026-10-15)
 
+**Archived 2026-10-20.** Its first experiment ran as lessons 99-106 and the line closed (also 128, 131-137); superseded by `RETRIEVAL_PLAN.md`
+and `SEARCH_PLAN.md`. Lesson numbers refer to `LESSONS_1-137.md`.
+
 Replaces the earlier plans (agent direction, hypothesis testing, look-zoom-rerank, text search, knowledge SFT); they are at git tag
 `plans-2026-10-15`. Results and lessons: `LEARNINGS.md`, `LESSONS.md`.
 

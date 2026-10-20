@@ -1,7 +1,7 @@
 # Learnings (rewritten 2026-10-15)
 
-**Archived 2026-10-20**, superseded by `../../LEARNINGS.md`. "Lesson N" below is in `LESSONS_1-125.md` (anchor `#lN`); it predates
-lessons 110-125.
+**Archived 2026-10-20**, superseded by `../../LEARNINGS.md`. "Lesson N" below is in `LESSONS_1-137.md` (anchor `#lN`); it predates
+lessons 110-137.
 
 What is true now, in one page. Numbered lessons, one entry each: `LESSONS.md` (cited as "lesson N"; full original text at git tag
 `lessons-full-2026-10-15`). Plan: `EXPERT_PLAN.md`. Numbers are % of photos within 1 / 25 km of the truth unless stated.

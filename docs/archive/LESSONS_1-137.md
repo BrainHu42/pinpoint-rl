@@ -1,8 +1,9 @@
-# Lessons 1-125 (archive, 2026-10-20)
+# Lessons 1-137 (archive, 2026-10-20)
 
-Archived detail. The working summary is `../../LEARNINGS.md`; new lessons go in `../../LESSONS.md` (from 126). Each lesson has an anchor
+Archived detail. The working summary is `../../LEARNINGS.md`; new lessons go in `../../LESSONS.md` (from 138). Each lesson has an anchor
 (`#l68`) the summary links to. Lessons 1-121 are as condensed on 2026-10-15 (full original text of 1-106 at git tag `lessons-full-2026-10-15`,
-`git show lessons-full-2026-10-15:LESSONS.md`); 122-125 were written on 2026-10-20 from the module docstrings that hold their full results.
+`git show lessons-full-2026-10-15:LESSONS.md`); 122-133 come from branch worktree-clue-areas-verified (2026-10-17/19); 134-137 were written
+on 2026-10-20 from the module docstrings that hold their full results (branch worktree-density-probe, same dates; numbered after merging).
 The previous one-page summary is `LEARNINGS_2026-10-15.md` (its "assumptions questioned" section is still a useful list of open doors).
 Modules no longer in the tree: lessons 1-51 at tag `pre-cleanup-2026-10-07`, 1-53 (one-step reranker) at commit 57918cb, 55-67 and 77-79 at
 tag `pre-tool-consolidation`, 55-69 and 72 also at `pre-prune-2026-10-13`, the closed lines of 82-121 at `pre-merge-cleanup-2026-10-16`;
@@ -18,7 +19,7 @@ Read with these corrections:
   not pipeline components.
 - **commons26 "recognise" was blind in lesson 113** (and the commons26 numbers of 114-121): `megaloc_gate` read benchmark images through the MP16
   tar reader and got blank images, so every commons26 MegaLoc query was the same vector (fixed in bd2d12d). With MegaLoc recomputed the
-  lesson 111 agent is 25.2% < 25 km on commons26 dev (was 24.8%; lesson 124).
+  lesson 111 agent is 25.2% < 25 km on commons26 dev (was 24.8%; lesson 136).
 
 ## A. Choosing among one-shot retrieval results with the 4B (Sep 2026; old reference)
 1. <a id="l1"></a>**Selection is saturated**: SFT and GRPO land at reranker parity; model and reranker agree on > 90% of photos.
@@ -273,19 +274,114 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     fixes / 14 breaks), logistic over (ranker conf, pipeline conf, text support of the pipeline's area, distance, Pinpoint mass) +0.5, ranker
     conf alone +0.9. Below the agreed +1 stop rule; not tested on dev3k. The λ0 policy reads 73% of commons26 photos (lesson 113's +4.4 comes from those).
 
-## F. Denser references, visual verification, OSV-5M, trained and larger judges (Oct 16-20)
-122. <a id="l122"></a>**Denser photo database, worked back from the truth** (`density_probe.py`; dev3k, im2gps3k, yfcc4k; own photo and photographer
+## F. Area formation, clue funnel, head context, diffusion, where the pipeline loses, local judges (Oct 17-19)
+122. <a id="l122"></a>**Area formation is not the lever** (`scripts/area_cluster_screen.py`; setft_own pools, ~46 candidates; chosen on 12k train, dev3k shown).
+    Proxy "some area's founder < 25 km" with 5 areas: current rule (R 25 km, T 0.2) 61.1% (real restricted-search oracle 60.3; pool oracle 73.1).
+    No family beats it by 1 pt: radius 5-100 km (25 best), pool width 12-46 (all best), index-density radius -0.7, pool-spread radius -1.7,
+    same-place merge on reranker states -5.4, admin areas (MP16-Pro city) -1.7, best-member / medoid centres -0.5 / -0.1. Only T 0.05: coverage
+    +0.6 [-0.1, +1.3], area 1 +2.1 (area 1 under T 0.2 is 1.2 below the reranker's top-1, 43.1 vs 44.3). Bigger areas hold the right candidate more
+    often (memb up to 72%) but their one point lands farther; the loss is choosing among areas (60.3 vs ~47.9), not forming them.
+123. <a id="l123"></a>**Clue reading splits evenly between proposing and evidence; clue areas are recall-limited at the search** (`scripts/clue_ablation.py`,
+    `scripts/clue_funnel.py`, `scripts/clue_lost_right.py`; dev3k, setft_own, MegaLoc on, all areas zoomed, 3-seed ensembles). Answer head
+    without reading 47.2 / 28.1, clue areas only 47.6, clue evidence only 47.4, both 47.9 / 28.5 (+0.7 [+0.2, +1.2]); clue areas +20.5 pts on
+    the 1.3% of photos that get one, evidence +1.7 on the 22% with a clue in some Pinpoint area. Funnel (% of photos; "uncovered" = no Pinpoint
+    area right): a search result < 25 km on 17.5 / 19.0% (dev3k / commons26 dev) but on uncovered photos only 1.3 / 7.0%, of which the current
+    rule already proposes 0.4 / 3.8. Uncovered photos with a right result not yet proposed: 0.9 / 3.2% in all (judge < 0.2, share < 0.3, near a
+    wrong Pinpoint area, or loose-judge proposable 0.1 / 1.2%). More clue areas (`hypotheses clue-hyps --name moreclue --queries --min-p 0.2
+    --per-photo 6`, count only): 215 / 206 extra areas, right 1.9 / 6.3%, photos with a right one 0.13 / 1.33%; not built (ceiling below the bar).
+    The limit is upstream: on uncovered photos the 4B's phrases rarely search to a right place (lesson 115). commons26 dev-only caches:
+    `scripts/subset_photo_set.py --src commons26_setft_own --dst commons26dev_setft_own --split dev`.
+124. <a id="l124"></a>**Index geotag accuracy carries non-visual signal; hubness doesn't mark the look-alikes** (`scripts/geotag_accuracy_probe.py`,
+    `scripts/hubness_probe.py`; dev3k, setft_own pools). Flickr geotag accuracy (YFCC100M, all 4.12M MP16 rows found; level <= 13 on 30%):
+    the reranker's top-1 is right 37.8% / near-miss (25-100 km) 9.3% when its geotag is level 11-13 (23% of photos), 39.8 / 11.4 at <= 10,
+    vs 50.3 / 5.4 at 14-15 and 44.7 / 5.4 at 16 (exact GPS; partly photo type). Not yet a head feature. Hubness (mean SigLIP2 cosine to the 10
+    nearest gallery photos by other photographers) is higher for right candidates (0.860 vs 0.852) and top-1 is best in the top quintile
+    (50.9%); a CSLS-style penalty only hurts (train-chosen beta 0). It measures how densely a place is photographed, not genericness.
+125. <a id="l125"></a>**Near-misses are not a training-signal problem** (`scripts/nearmiss_precheck.py`; setft_own, MegaLoc on, clues read, all areas zoomed).
+    A right area and a near-miss wrong area (answer 25-100 km off) co-occur on 21.5% of train photos (13.6k pairs) and 21.6% of dev3k. Answer
+    head pairwise accuracy on dev3k: near 83.7%, far (> 100 km) 86.5%; a pairwise model on the same token features trained on train near pairs
+    only 85.0% (linear) vs all pairs 84.2% (about +0.2 pts of photo accuracy). On the 649 photos with such a pair the head is right 78.0%, picks
+    the near-miss 11.9%, a far area 10.2%. Hard near-miss augmentation not built: the choosing gap needs new per-area evidence, not more training.
+126. <a id="l126"></a>**Area location, the query glance and geotag reliability add nothing to the answer head** (`scripts/head_context_probe.py`; setft_own,
+    MegaLoc on, clues read, all areas zoomed, 3-seed ensembles, dev3k). Base 47.9 / 28.5; + area centre (xyz + lat / lon Fourier) 47.3
+    (-0.6 [-1.2, -0.1], overfits); + query SigLIP2 glance (PCA 32) 47.9 (+0.0); + restricted candidates' Flickr geotag accuracy 48.0 (+0.1
+    [-0.4, +0.6]; lesson 124's top-1 correlation is already implicit); all three 47.4. Metadata and reweighting signals are redundant with
+    the head's inputs; only new computation (diffusion over the index) or more training data remain on this axis.
+127. <a id="l127"></a>**Graph diffusion over the gallery adds nothing** (`graph_diffusion.py`: knn graph of all 4.12M MP16 photos, 32 neighbours by other
+    photographers, 12 min on the L40S, `artifacts/diffusion/`; `scripts/diffusion_probe.py`; setft_own). Personalized PageRank from a photo's 64
+    nearest gallery photos (itself excluded), mass summed within 25 km of each area. Within-photo AUC right vs wrong area on dev3k: diffused
+    (3 steps, alpha 0.7) 0.761, 1 step alpha 0.3 0.784, edges only within 50 km 0.791, seeds only 0.792, Pinpoint support 0.815 (train the same
+    order); mass peak < 25 km 32.5 vs 36.9 seeds only. Answer head (3 seeds, dev3k): base 47.9, + seeds 48.2, + diffused 47.8 (-0.1), + both 48.3
+    (+0.4 [-0.2, +1.0]). Spreading mass along visual edges reaches other look-alike places. With lessons 122-126: every addition to the head built
+    from the same embeddings or index metadata lands within +-0.5 of 47.9.
+128. <a id="l128"></a>**Gemma 3 27B can't do the named A/B choice either** (`names_judge.py` restored from `pre-merge-cleanup-2026-10-16` with a think-first mode;
+    `scripts/names_judge_gemma.sh`; unsloth/gemma-3-27b-it-FP8-Dynamic on vLLM 0.30; lesson 106's 202 decisive dev3k pairs, both orders).
+    Plain first-token A/B: P(first-shown) 0.12, almost pure position bias; averaged over orders it defers to the head (>= 0.7: 2 fixes / 4 breaks).
+    Evidence first + stated confidence: right on 68.7% of decisive pairs (head 84.4%), >= 0.7: 10 fixes / 29 breaks (-3.6 pts) vs Qwen3.8-27B
+    8 / 28 and Sonnet 8 / 3; 23 / 404 answers cut off at 160 tokens. Step-by-step reasoning first (Gemma 3 has no thinking mode; <= 1,200
+    tokens): worse, 59.6% right, >= 0.7: 4 fixes / 30 breaks; 39 cut off. Open 27B-class models of two families lack the calibrated recognition.
+129. <a id="l129"></a>**Where the pipeline loses (diagnostic)** (`scripts/pipeline_diagnostics.py`; cached `action_agent --apply --one-km 0.5` outputs on
+    setft_own, RL lambda 0; dev3k and commons26 dev only). Each photo is assigned to the first stage that loses it. dev3k (47.3 < 25 km):
+    retrieval miss (no pool candidate or area < 25 km) 26.5 pts, right candidate in the pool but never made an area 11.8, right area offered
+    but wrong one chosen 14.4; 16.5% are right at 25 km but > 1 km off; vs the retrained top-1, 158 fixes / 67 breaks. Retrieval misses
+    are photos without the photographer's own photo in the pool: 24.6 of the 26.5 pts. Those photos are 58.7% of dev3k: pipeline 33.7,
+    pool oracle 57.6, vs 66.6 / 95.2 with an own photo. Weak slices: indoor 40.1, natural 40.2, urban 57.4; < 100 gallery photos within
+    25 km 21.5; no read text 38.9 vs 59.0. Countries are flat (40-53). Confidence ranks well (quintiles 12 / 20 / 44 / 76 / 84% right);
+    the choice loss (area oracle minus pipeline) sits in the lower three quintiles (23 / 21 / 18 pts vs 7 / 4). commons26 dev (25.2):
+    retrieval miss 49.1, never an area 11.4, wrong area 14.3. 22.3 of the 49.1 pts are photos with < 100 gallery photos within 25 km (28%
+    of photos, pool oracle 16.4). Tiers none / region reach 7.4 / 16.0. With place text: 43.3 vs area oracle 59.6.
+130. <a id="l130"></a>**The areas the pipeline loses although retrieval found the place** (`scripts/candidate_drill.py`; same cached outputs as lesson 129;
+    dev3k / commons26 dev). "Never an area" (11.8 / 11.4 pts): every such photo already had 5 agreement areas. None was folded into a
+    cluster centred elsewhere. The best right candidate ranks 9 / 17 / 29 (quartiles) of ~46 by reranker score, and 73% rank >= 10. The right
+    candidates hold 2.4% of softmax(score / 0.2) (median), vs 55% on photos with a right area. That is noise-level weight: no clustering or
+    area count reaches it (lessons 112, 122), so the reachable ceiling is the area oracle (61.7), not the pool oracle (73.1). "Wrong area
+    chosen" (14.4 / 14.3 pts): the right area is the top-support one on 23% (3.3 pts the head overrides wrongly) and rank 1 / 2 / 3+ on
+    27 / 21 / 29%. Clue areas are 1% / 7%. Pick success by the right area's rank: 92 / 52 / 35 / 26% (rank 0 / 1 / 2 / 3+). The head picks a
+    rank-1 right area on 64% of photos with the photographer's own photo in the pool, 37% without. Even reaching the own-photo rate
+    everywhere is worth ~1.4 pts. Wrong picks are far apart: answer error 118 / 381 / 1,100 km (quartiles), only 22% within 100 km
+    (commons26 98 / 214 / 675 km, 26%). With an own photo in the pool, retrieval returns it right 89% of the time (pipeline 72.4%), and
+    20.4% when that own photo is wrong.
+131. <a id="l131"></a>**Scoring instead of choosing: the 4B's name PMI is unbiased but weak** (`names_judge.py` `_pmi` mode; lesson 106's 202 dev3k pairs;
+    run beside a GRPO job at 30% GPU). Per area: log P("This photo was taken near <town>, <country>." | photo) minus the same without the
+    photo, from prompt logprobs. 25 km: right on 60.0% of decisive pairs (head 85.0%), vs 55% and position-biased when the 4B chooses.
+    The photo-only likelihood is at chance (50.5%), so the photo adds real signal. Right on 73.3% of the head's 30 mistakes but 57.6% of
+    its right pairs, so following it never pays: margin > 0 / 2 / 4 nats gives 22 / 72, 8 / 25, 4 / 7 fixes / breaks. Country level ("taken in
+    <country>.", 55 pairs with different countries): 61.8%, > 0 nats 6 / 20. Qwen3.8-27B and Gemma 27B PMI not run yet (GPU busy;
+    `scripts/names_judge_pmi.sh`).
+132. <a id="l132"></a>**Knowledge in the prompt and cue tables don't separate the confused areas either** (lesson 106's 202 dev3k pairs, the 4B beside a GRPO
+    job). (1) `profile_judge.py`: each area gets a profile from offline English Wikipedia / Wikivoyage (`area_profiles_names202.json`; the
+    town's lead 79%, a Wikivoyage lead matched only when the same-titled Wikipedia page is within 30 km 30%, the 10 best-known geotagged
+    pages within 10 km 99%). The 4B judges each area alone, P(yes) for "taken within about 25 km of <town, country>?". Name only: 52.5% right
+    on decisive pairs (chance). With the profile: 59.0%, but 53.3% on the head's 30 mistakes. Confident switches are all breaks (margin > 3
+    logits: 0 fixes / 10). Worse than the plain name PMI (lesson 131: 60.0%, 73.3% on mistakes). (2) `cue_check.py`: the 4B reports languages /
+    scripts of visible text, driving side and web domains (JSON). GeoNames countryInfo (languages, tld) plus a left-driving list say which
+    area's country each cue fits; English, Latin script and generic domains decide nothing. Cues are rare on these photos: non-English
+    text 7%, non-Latin script 3%, driving side 9%, a country domain 2%. The two areas are in different countries on 55 pairs, have
+    different language sets on 52 and driving sides on 12. The cues decide 2 pairs, both for the head's area: 0 fixes / 0 breaks. As in
+    lessons 21 and 79, the decisive cues sit on photos the head already gets right.
+133. <a id="l133"></a>**Cue tables at scale: still nothing** (`cue_check.py`, run name `4b_cues_grpo`; the answer head's top two areas from
+    `names_grpo_pairs.jsonl` on 2,817 dev3k + 4,692 held-out train photos; currency and phone codes added). The 4B reports non-English
+    text on 8.1 / 7.2% of photos (dev / held), non-Latin script 3.1 / 2.2%, driving side 5.5 / 6.4%, a country domain 0.6 / 0.8%, currency
+    0.2%, phone code 0.1-0.2%. The two areas are in different countries on 1,050 / 1,763 pairs, 434 / 722 of them decisive at 25 km (head
+    85.6 / 85.1% right). Cues decide 20 / 35 decisive pairs. Language picks the right area on 67 / 90%, script 5 / 5, driving side 1 / 3 and
+    5 / 9. Where cues favour the head's area, it is right on 9 / 9 and 24 / 25 decisive pairs. Where they favour the other area, that area is
+    right on 2 / 9 and 2 / 7. Following the cues: 2 fixes / 7 breaks (dev3k, -0.18 pts), 2 / 5 (held); language + script only 1 / 5 and 2 / 2.
+    Readable cues sit on photos the head already gets right. When one contradicts the head it is usually misread or non-local (tourist
+    or foreign-language text), so it confirms the head rather than correcting it.
+
+## G. Denser references, visual verification, OSV-5M, trained and larger judges (Oct 16-20)
+134. <a id="l134"></a>**Denser photo database, worked back from the truth** (`density_probe.py`; dev3k, im2gps3k, yfcc4k; own photo and photographer
     excluded). Pinpoint's index already has a photo within 1 km of the truth for ~85% of queries (25 km > 99%); of the reranker's 1 km misses
     ~17% are coverage gaps, the rest ranking (the near-truth photo at SigLIP rank 12-999 or >= 1000). Adding the 50 nearest new YFCC100M photos
     within 1 km (21% gone from Flickr): a new photo beats the SigLIP top-1 for 3.7 / 2.7 / 4.3%, and where the retrained reranker is wrong at
     1 km for 1.8 / 1.2 / 2.8% (the truth-centred ceiling for 1 km fixes), still growing with k.
-123. <a id="l123"></a>**Visual verification of text-search places with fetched photos: negative** (`clue_verify.py`; commons26 dev, 6,693 places,
+135. <a id="l135"></a>**Visual verification of text-search places with fetched photos: negative** (`clue_verify.py`; commons26 dev, 6,693 places,
     42k YFCC photos fetched). Best MegaLoc cosine, right vs wrong text places AUC 0.60 vs text-search weight 0.68; switch rule 24.8 -> 24.2-24.7%
     (ceiling 31.0). Scores sit near noise (right places median 0.07): 2004-14 Flickr photos rarely show the 2026 query's view. Landmarks only:
     MegaLoc >= 0.2 marks 11.1% of right places vs 1.0% of wrong (precise, rare). Keypoints (DISK + LightGlue + MAGSAC) AUC 0.535, 0 fixes: the
     limit is the photos, not the matcher. OSV-5M street images near each place: SigLIP gives regional look only (AUC 0.68 = text weight,
     switches -0.6 to +0.2); MegaLoc on up to 40 OSV images within 1 km stays at noise.
-124. <a id="l124"></a>**OSV-5M (street level) as proposer, evidence, action and 1 km refiner: nothing** (`osv_propose.py`, `osv_refine.py`,
+136. <a id="l136"></a>**OSV-5M (street level) as proposer, evidence, action and 1 km refiner: nothing** (`osv_propose.py`, `osv_refine.py`,
     `osv_remote.py`, `scripts/clue_verify/osv_*.py`; dev3k / commons26 dev). The user had earlier tried OSV as reranker candidates (domain
     gap). Pinpoint's OSV support token: setft_own dev3k 28.0 / 43.1 on vs 28.0 / 43.3 off at 1 / 25 km. OSV retrieval top-1 < 25 km 15.9 / 8.0%
     (MP16 33-35 / 13-18%); a right place the pipeline lacks in OSV's top 50 on 2.7-3.1 / 5.3-7.6%. A CV gate by street-likeness, OSV agreement
@@ -294,7 +390,7 @@ Setup for 99-106: the answer head's top two areas; "decisive" = exactly one with
     cluster support is anti-informative (AUC 0.42). 1 km refinement: MegaLoc over OSV images in the agent's area right 14% vs the agent's 65%,
     CV switch -0.1 / -0.4. Why: OSV lies within 50 m of the truth for 6% of photos (MP16 42%: Flickr clusters at photo spots, OSV on roads),
     MegaLoc never matches (max 0.26 vs 0.73), ~2 near vs ~2,600 far images per area.
-125. <a id="l125"></a>**A trained local named-area judge, and bigger open judges: no gain** (`names_grpo.py`; dev3k 1,370 decisive pairs of the
+137. <a id="l137"></a>**A trained local named-area judge, and bigger open judges: no gain** (`names_grpo.py`; dev3k 1,370 decisive pairs of the
     head's top two named areas, head right 85.6%). GRPO on a 2-way one-token answer collapsed onto "A" twice (all-same groups carry no gradient);
     exact expected-reward training (both orders per batch, position penalty) raised held balanced P(right) 0.530 -> 0.577 but dev AUC stayed
     0.593 (base 0.600); followed when confident -5.87 pts, combined with the head margin +0.33. Zero-shot Gemma-3-27B AUC 0.613 (-4.1 followed,
