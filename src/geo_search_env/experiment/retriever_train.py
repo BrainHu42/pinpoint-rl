@@ -194,7 +194,9 @@ def train(a) -> None:
         if (step + 1) % a.save_every == 0 or step + 1 == a.steps:
             name = "ckpt_final.pt" if step + 1 == a.steps else f"ckpt_{step + 1}.pt"
             state = {k: v.detach().cpu() for k, v in module.state_dict().items()}
-            torch.save({"state_dict": state, "hyper_parameters": hp, "global_step": step + 1, "run": vars(a)}, run_dir / name)
+            # Lightning's keys too, so the reranker trainer's GeoLightningModule.load_from_checkpoint takes it
+            torch.save({"state_dict": state, "hyper_parameters": hp, "global_step": step + 1, "run": vars(a),
+                        "pytorch-lightning_version": "2.0.0"}, run_dir / name)
     print(f"done in {time.time() - t0:.0f}s -> {run_dir}", flush=True)
 
 

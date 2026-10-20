@@ -207,6 +207,24 @@ def report(photo_set: str, tag: str) -> None:
     (OUT / f"recall_{photo_set}_{tag}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def compare(photo_set: str, tags: list[str]) -> None:
+    """Headline recall per retriever: image search @8 / 32 / 128, union 32 / 8 / 8 and 256 x 3, at 25 and 1 km; all photos and no own photo
+    in the (released) 32 / 8 / 8 pool, so every tag is sliced on the same photos."""
+
+    v = {k: i for i, k in enumerate(VARIANTS)}
+    base = np.load(OUT / f"recall_{photo_set}_{tags[0]}.npz")["rank"]
+    no_own = ~(base[:, :, v["own"]] < np.asarray((32, 8, 8))[None]).any(1)
+    print(f"{photo_set}: % with a right photo; slice 'no own' = no own photo in {tags[0]}'s 32 / 8 / 8 pool ({100 * no_own.mean():.1f}%)")
+    print(f"{'tag':14s} {'km':>3s} {'slice':7s} | image@8 @32 @128 | raw@32 | gps@32 | 32/8/8 | 256x3")
+    for km in ("25", "1"):
+        for tag in tags:
+            r = np.load(OUT / f"recall_{photo_set}_{tag}.npz")["rank"][:, :, v[f"r{km}"]]
+            for label, m in (("all", np.ones(len(r), bool)), ("no own", no_own)):
+                cell = lambda mi, k: 100 * np.mean(r[m, mi] < k)
+                print(f"{tag:14s} {km:>3s} {label:7s} | {cell(0, 8):5.1f} {cell(0, 32):5.1f} {cell(0, 128):5.1f} | {cell(1, 32):5.1f} | {cell(2, 32):5.1f} | "
+                      f"{100 * (r[m] < np.asarray((32, 8, 8))[None]).any(1).mean():5.1f} | {100 * (r[m] < 256).any(1).mean():5.1f}")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -215,8 +233,14 @@ def main(argv=None) -> int:
         s.add_argument("--photo-set", default="dev3k")
         s.add_argument("--tag", default="released")
     sub.choices["ranks"].add_argument("--index-dir", help="a retrained retriever's index (with PINPOINT_CONTRASTIVE_CKPT set to its checkpoint)")
+    c = sub.add_parser("compare")
+    c.add_argument("--photo-set", default="dev3k")
+    c.add_argument("tags", nargs="+")
     a = p.parse_args(argv)
-    ranks(a.photo_set, a.tag, a.index_dir) if a.cmd == "ranks" else report(a.photo_set, a.tag)
+    if a.cmd == "compare":
+        compare(a.photo_set, a.tags)
+    else:
+        ranks(a.photo_set, a.tag, a.index_dir) if a.cmd == "ranks" else report(a.photo_set, a.tag)
     return 0
 
 
