@@ -98,8 +98,8 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
   `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
 - Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
-  per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (`--live`: uploads through `live.py`, the whole
-  pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).
+  per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (cached traces only by default, no GPU; `--live`:
+  uploads through `live.py`, the whole pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).
 - Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`): `pinpoint.py` (`Pinpoint.search` with constraints), `maps.py` (OSM /
   GeoNames / Overture name search, `features_near`; `data/maps_search/osm.db`), `osm_extract.py` (`.venvs/osm`), `web.py` (Wikipedia /
   Wikivoyage via `experiment/web_search.py` + `text_search`).
