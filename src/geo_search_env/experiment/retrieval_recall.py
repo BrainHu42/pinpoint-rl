@@ -64,11 +64,22 @@ def ranks(photo_set: str, tag: str, index_dir: str | None = None, chunk: int = 1
     from .strategy_search import MP16_EMBED
 
     photos = json.loads((Path("artifacts/photo_sets") / photo_set / "photos.json").read_text(encoding="utf-8"))
-    query_rows = np.asarray([e["row"] for e in photos], dtype=np.int64)
     truth = np.asarray([e["truth"] for e in photos], dtype=np.float64)
-    mp16_author, scene = _mp16_meta(query_rows)
-    query_author = mp16_author[query_rows]
-    embeddings = np.asarray(np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)[query_rows], dtype=np.float32)
+    if "benchmark" in photos[0]:  # benchmark photos (e.g. commons26): embeddings by "index" into load_benchmark; no MP16 author (own variants empty)
+        from ..data.benchmarks import load_benchmark
+
+        bench = load_benchmark(photos[0]["benchmark"])
+        index = np.asarray([e["index"] for e in photos])
+        assert np.allclose(bench.latlon[index], truth, atol=1e-4), "photo set index does not match the benchmark order"
+        embeddings = bench.embeddings[index]
+        mp16_author, scene = _mp16_meta(np.zeros(0, dtype=np.int64))
+        scene = np.zeros((len(photos), 3), np.float32)
+        query_author = np.full(len(photos), -1, dtype=np.int64)
+    else:
+        query_rows = np.asarray([e["row"] for e in photos], dtype=np.int64)
+        mp16_author, scene = _mp16_meta(query_rows)
+        query_author = mp16_author[query_rows]
+        embeddings = np.asarray(np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)[query_rows], dtype=np.float32)
 
     model = PinpointReranker(device="cuda", index_dir=Path(index_dir) if index_dir else NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
     index_author = mp16_author[model.cache_indices]

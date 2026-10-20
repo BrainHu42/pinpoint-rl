@@ -37,5 +37,11 @@ R5. **The pipeline's misses are photos with no geography in the pixels; what loc
     upload): 69.6% vs 26% with the query's id shifted (luck), but by other photographers only 33.3% vs 27.8%: the +44-pt excess is the
     photographer's own batch, other people's same-day photos ~+5. A pixel-only "same-trip" retriever would chase the original protocol's
     own-photo effect, not geography.
+R6. **On commons26's geolocatable photos the room is large and reachable** (`scripts/commons26_room.py`; commons26 dev, tier landmark / city /
+    region, 719 photos; no own-photo effect: Commons uploaders are not MP16 authors). Pipeline 31.6% < 25 km (1 km 9.7), retrained top-1 24.3,
+    area / pool oracle 48.0 / 56.6, a right photo in the top 1,000 of some search 89.3, some text-search cluster right 58.1. Tier region is the
+    weakest (pipeline 16.0, pool 45.2). Wrong photos (68.4% of them): right place in both the text candidates and the visual top 1,000 28.1,
+    text only 3.3, visual only 29.9, neither 7.1. Retrieval misses 41.0, of which 30.6 have a right photo deeper (top 1,000). Two independent
+    sources agree on the right place for over a quarter of the photos; S3 found MP16 too sparse there to verify it.
 
 ## Search-agent track (S)
