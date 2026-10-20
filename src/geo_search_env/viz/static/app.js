@@ -536,10 +536,31 @@ function pZoom(t) {
       <div class="strip">${a.candidates.map((c, k) => candCard(c, `zoom:${s}:${k}`, `#${k + 1}`, `<div class="line"><span class="muted">${k === a.zoomed.cand_index ? "<b>zoom pick</b>" : "score"}</span><span class="rank">${c.score?.toFixed(3) ?? "–"}</span></div>${c.megaloc != null ? `<div class="line"><span class="muted">MegaLoc</span><span class="rank">${c.megaloc.toFixed(3)}</span></div>` : ""}`, k === a.zoomed.cand_index)).join("")}</div></div>`).join("")}</div>`;
 }
 
+// The gallery photo an area answers with: its zoomed pick once zoomed, else the best pool candidate inside it (an area without one answers
+// with its centre: then the top photo of its zoomed search stands in).
+function areaPhoto(t, s, zoomed) {
+  const a = t.areas[s];
+  if (zoomed && a.zoomed.cand_index != null) return [a.candidates[a.zoomed.cand_index], "zoomed pick"];
+  if (a.unzoomed.pool_index >= 0) return [t.retrained.candidates[a.unzoomed.pool_index], `pool #${a.unzoomed.pool_index + 1}`];
+  return a.candidates.length ? [a.candidates[0], "top of zoomed search"] : [null, ""];
+}
+
 function pDecide(t) {
   const ag = t.agent[S.lam], steps = ag.steps, names = t.names;
   const lams = Object.keys(t.agent);
   const kmOf = (s, zoomed) => (zoomed ? t.areas[s].zoomed.km : t.areas[s].unzoomed.km);
+  const last = steps[steps.length - 1], fin = ag.final;
+  const thumb = (s, zoomed) => { const [c] = areaPhoto(t, s, zoomed); return c?.mp16 ? `<img class="area-thumb" loading="lazy" src="${candImg(c, 96)}" alt="">` : `<span class="area-thumb"></span>`; };
+  const areaCards = t.areas.map((a, s) => {
+    if (last.answer[s] == null || (!last.read && a.source === "clue")) return "";
+    const [c, how] = areaPhoto(t, s, last.zoomed[s]);
+    if (!c) return "";
+    const right = t.err && t.err.right_slot === s;
+    return candCard({ ...c, km: kmOf(s, last.zoomed[s]) }, `area:${s} ans:${s}:${last.zoomed[s] ? "z" : "u"}`,
+      `<b style="color:${areaColor(a)}">${names[s]}</b>${s === fin.slot ? " · answer" : right ? " · right" : ""}`,
+      `<div class="line"><span class="muted">${esc(how)}</span><span class="rank">${pct(last.answer[s])}</span></div>${bar(last.answer[s], s === fin.slot ? "pick" : "")}`,
+      s === fin.slot);
+  }).join("");
   const stepCard = (st, j) => {
     const final = st.action === "answer";
     const chips = `<div class="state-chips">${st.read ? `<span class="token">read ✓</span>` : ""}${st.recognise ? `<span class="token">recognised ✓</span>` : ""}${st.zoomed.map((z, s) => (z ? `<span class="token">${names[s]} zoomed</span>` : "")).join("")}${!st.read && !st.recognise && !st.zoomed.some(Boolean) ? `<span class="token">glance only</span>` : ""}</div>`;
@@ -550,7 +571,7 @@ function pDecide(t) {
        st.read ? "" : prow("read", st.p_read, st.action === "read"), st.recognise ? "" : prow("recognise", st.p_recognise, st.action === "recognise"), prow("stop", st.p_stop, st.action === "stop")].join("");
     const ansMax = Math.max(...st.answer.map((x) => x || 0));
     const answer = st.answer.map((p, s) => (p == null || (!st.read && t.areas[s].source === "clue") ? "" :
-      `<div class="prow wide ${p === ansMax ? "chosen" : ""}" data-mark="area:${s}"><span class="l">${names[s]} ${t.truth ? kmBadge(kmOf(s, st.zoomed[s])) : ""}</span>${bar(p, p === ansMax ? "pick" : "")}<span class="v">${pct(p)}</span></div>`)).join("");
+      `<div class="prow wide ${p === ansMax ? "chosen" : ""}" data-mark="area:${s}"><span class="l">${thumb(s, st.zoomed[s])}${names[s]} ${t.truth ? kmBadge(kmOf(s, st.zoomed[s])) : ""}</span>${bar(p, p === ansMax ? "pick" : "")}<span class="v">${pct(p)}</span></div>`)).join("");
     return `<div class="step ${final ? "final" : ""}"><div class="num">${final ? "✓" : j + 1}</div>
       <div><h4>${final ? "Answer" : `Policy → <span>${esc(act)}</span>`} <span class="muted">${final ? "" : "(action probabilities)"}</span></h4>${chips}${policy}</div>
       <div><h4>Answer head <span class="muted">· which area, if it stopped now</span></h4>${answer}</div></div>`;
@@ -561,11 +582,13 @@ function pDecide(t) {
   return `<div class="flex" style="justify-content:space-between"><p class="lead" style="margin:0">A REINFORCE policy over the frozen answer head chooses tools until it stops;
     return = [answer within 25 km] − λ × cost (zoom 1, recognise 1, read 2). λ 0 is the 51.2% system on the test set, λ 0.005 the cheaper one.</p>
     ${lams.length > 1 ? `<div class="seg" id="lam">${lams.map((l) => `<button data-lam="${l}" class="${l === S.lam ? "on" : ""}">λ ${l}</button>`).join("")}</div>` : ""}</div>
+  <h3>The areas at the final step <span class="muted small">· each area's answer photo, distance from the truth, and answer-head probability</span></h3>
+  <div class="strip">${areaCards}</div>
   <div class="steps" style="margin-top:14px">${steps.map(stepCard).join("")}</div>
   <h3>Same photo, fixed tool sets (no policy)</h3>
   <p class="lead">Answer-head probabilities per area when given a fixed set of tools. Bottom row: the distance of the area it would pick.</p>
   <table class="t"><thead><tr><th>Area</th>${fixedCols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>
-  ${t.areas.map((a, s) => `<tr data-mark="area:${s}"><td><span class="area-tag"><span class="swatch" style="background:${areaColor(a)}"></span>${names[s]}</span> <span class="muted small">${esc(a.place)}</span></td>
+  ${t.areas.map((a, s) => `<tr data-mark="area:${s}"><td><span class="area-tag">${thumb(s, false)}<span class="swatch" style="background:${areaColor(a)}"></span>${names[s]}</span> <span class="muted small">${esc(a.place)}</span></td>
     ${fixedCols.map((c) => { const xs = t.fixed[c], p = xs[s]; const on = argmax(xs) === s; return `<td><div class="flex">${bar(p, on ? "pick" : "")}<span class="small" style="${on ? "font-weight:700" : ""}">${(a.source === "clue" && (c === "glance" || c === "recognise" || c === "zoom all")) ? "–" : pct(p)}</span></div></td>`; }).join("")}</tr>`).join("")}
   ${t.truth ? `<tr><td class="muted">picked area's answer</td>${fixedCols.map((c) => `<td>${kmBadge(fixedKm(c, argmax(t.fixed[c])))}</td>`).join("")}</tr>` : ""}
   </tbody></table>`;
