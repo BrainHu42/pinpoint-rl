@@ -5,7 +5,7 @@ New lessons, one entry each (2-4 lines: the claim, the deciding numbers, the mod
 update `LEARNINGS.md` too.
 
 The two tracks run in parallel sessions (2026-10-20), so each numbers its own lessons and appends only to its own section: R1, R2, ...
-for `RETRIEVAL_PLAN.md`, S1, S2, ... for `SEARCH_PLAN.md`. Later single-track work continues from 138.
+for `RETRIEVAL_PLAN.md`, S1, S2, ... for `SEARCH_PLAN.md`, V1, V2, ... for `VALUE_PLAN.md`. Later single-track work continues from 138.
 
 ## Retrieval track (R)
 
@@ -47,3 +47,5 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     Found on the way: `megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (Oct 16, before the bd2d12d path fix)
     are blank (200 photos -> 4 distinct vectors, cosine 0.99999); only the commons26dev files were redone, so the commons26 test run of
     lesson 113 had no MegaLoc signal. Also, `search_tree._fit` ran only 16-250 Adam steps on small sets (now >= 2,000); S2b re-run with it.
+
+## Value-agent track (V)

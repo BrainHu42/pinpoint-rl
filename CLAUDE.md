@@ -22,7 +22,9 @@ from the summary.**
 - **Two tracks, run in parallel sessions (user, 2026-10-20)**: `RETRIEVAL_PLAN.md` (retrain Pinpoint's retriever / index side, the largest
   loss) and `SEARCH_PLAN.md` (an RL agent whose sequential, constrained searches create candidates; closed offline 2026-10-20, lessons
   S1-S3; carried into `TOOL_USE_DESIGN.md`: verify independently proposed places with imagery at the place). Each brief has the coordination rules
-  for sharing the machine. The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
+  for sharing the machine. **Track V (2026-10-21): `VALUE_PLAN.md`**: one value network over tool actions and answers (commit = an action),
+  with a reader that re-reads text boxes at full resolution or with a larger model; commons26-scoped; a table of what past lessons rule out.
+  The previous plan (`EXPERT_PLAN.md`: contrast candidates with fetched references, closed by lessons 99-106, 128,
   131-137) is at `docs/archive/EXPERT_PLAN.md`; older plans at tag `plans-2026-10-15`.
 - Go/no-go rule learned the hard way: measure what a change adds *beyond what we already have* (the current pipeline and the pool
   oracle), not against a weaker baseline. Choose scorers and combiners on MP16 dev, never on benchmarks.
