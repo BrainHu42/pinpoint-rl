@@ -83,7 +83,8 @@ R10. **Matching commons26 photos against GLDv2 landmarks rarely finds the right 
     Rules with the threshold from the other set: the 1 km refinement is commons26-only (in-sample +0.8-1.2 at 1 km; on dev3k never above +0.07,
     the commons26 threshold -1.10 there: dev3k answers already within 1 km get moved off), the 25 km switch loses everywhere. As answer-head
     columns (per area: best match within 25 km, log hits, any, best minus top; visible in every state; 2 seeds): dev3k +0.62 fixed recipe / +0.70
-    RL (SE 0.26; 80 fixes / 49 breaks), commons26 dev (uploader folds, +commons weight 3) +0.92 / +0.67 (SE 0.43): consistent but sub-threshold,
+    RL (SE 0.26; 80 fixes / 49 breaks; seeds 2-3 again +0.63 / +0.70), commons26 dev (uploader folds, +commons weight 3) +0.92 / +0.67 (SE 0.43; a third seed +0.82 / +1.02, three-seed mean
+    +0.89 / +0.79): consistent but sub-threshold,
     the size of MegaLoc per area (lesson 93). On top of lesson 140's text columns + tokens (`gldv2_head.py --text`; that cell 27.0% vs +commons
     25.4) they add +0.00 / +0.26 (SE 0.64; 42 fixes / 39 breaks): on commons26 the text already holds what the landmark matches know. Stacked
     on dev3k with diffusion + crop views (`scripts/gldv2_stack.py`, 2 seeds): diffusion + crops +0.33 / +0.37, all three +0.77 / +0.92 (SE 0.31;

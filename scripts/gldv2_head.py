@@ -1,6 +1,6 @@
 # GLDv2 landmark matches as answer-head columns (lesson R10): per area, the best GLDv2 photo match (MegaLoc, full index) within 25 km of the
 # area's centre, the log count of the query's top-2,048 hits there, and whether there are any. Visible in every state (combined_head._with_cols).
-# Usage: PYTHONPATH=src .venv/bin/python scripts/gldv2_head.py [--seeds 3] [--cut 0.9] [--text]
+# Usage: PYTHONPATH=src .venv/bin/python scripts/gldv2_head.py [--seeds 3] [--seed0 0] [--cut 0.9] [--text | --dev3k-only | --commons-only]
 #   dev3k: the lesson-111 agent trained on MP16 train, base vs + GLDv2 columns (needs gldv2_index search --set train / dev3k)
 #   commons26 dev: uploader folds as combined_head cv (weight 3), +commons vs +commons + GLDv2 columns (needs --set commons26dev)
 #   --cut: hits more similar than this are dropped as near-duplicates (Flickr photos copied to Commons can be the query itself)
@@ -85,7 +85,7 @@ def _text_cells(a, tr, cm, x_tr, x_cm, lines) -> None:
             mix = ch._concat(ch._with_text(tr_c, None, [[] for _ in range(n_tr)]), ch._with_text(cm_c, cols, tokens))
             fit_idx = np.concatenate([np.arange(n_tr), np.repeat(n_tr + np.flatnonzero(text.fold != k), a.weight)])
             held = np.flatnonzero(text.fold == k)
-            for s in range(a.seeds):
+            for s in range(a.seed0, a.seed0 + a.seeds):
                 net, pols = ch._fit(mix, fit_idx, 7 + 100 * s + k)
                 for key, v in ch._keep(aa.evaluate(net, pols, mix, n_tr + held, cm["base_km"][held])).items():
                     out[cell].setdefault((key, s), np.zeros(n_c))[held] = v
@@ -109,6 +109,9 @@ def main() -> None:
     ap.add_argument("--cut", type=float, default=0.9)
     ap.add_argument("--weight", type=int, default=3)
     ap.add_argument("--text", action="store_true", help="commons26 only: lesson 140's +commons+text cell with and without the GLDv2 columns")
+    ap.add_argument("--seed0", type=int, default=0, help="first seed (more seeds in a later run)")
+    ap.add_argument("--dev3k-only", action="store_true")
+    ap.add_argument("--commons-only", action="store_true")
     a = ap.parse_args()
     aa.CKPT_TAG, aa.ONE_KM = ch.CKPT, 0.5
     tab = _lm_table()
@@ -125,8 +128,9 @@ def main() -> None:
         return _text_cells(a, tr, cm, x_tr, x_cm, lines)
     # dev3k: MP16 train only
     res = collections.defaultdict(dict)
-    for name, (tr_v, dv_v) in {"base": (tr, dv), "+gldv2": (ch._with_cols(tr, x_tr), ch._with_cols(dv, x_dv))}.items():
-        for s in range(a.seeds):
+    variants = {} if a.commons_only else {"base": (tr, dv), "+gldv2": (ch._with_cols(tr, x_tr), ch._with_cols(dv, x_dv))}
+    for name, (tr_v, dv_v) in variants.items():
+        for s in range(a.seed0, a.seed0 + a.seeds):
             net, pols = ch._fit(tr_v, np.arange(tr["n"]), 7 + 100 * s)
             for key, v in ch._keep(aa.evaluate(net, pols, dv_v, np.arange(dv["n"]), dv["base_km"])).items():
                 res[name].setdefault(key, []).append(v)
@@ -135,6 +139,10 @@ def main() -> None:
     for name in res:
         for key, vs in res[name].items():
             lines.append(_line(name, key, vs, np.mean([v < 25 for v in res["base"][key]], 0)))
+    if a.dev3k_only:
+        print("\n".join(lines), flush=True)
+        (p.OUT / f"head_gldv2_dev3k_cut{a.cut:g}_seeds{a.seed0}-{a.seed0 + a.seeds - 1}.txt").write_text("\n".join(lines) + "\n")
+        return
     # commons26 dev: uploader folds, MP16 train + the other folds x weight
     text = ch.Text()
     n_tr, n_c = tr["n"], cm["n"]
@@ -147,7 +155,7 @@ def main() -> None:
         for k in range(5):
             fit_idx = np.concatenate([np.arange(n_tr), np.repeat(n_tr + np.flatnonzero(text.fold != k), a.weight)])
             held = np.flatnonzero(text.fold == k)
-            for s in range(a.seeds):
+            for s in range(a.seed0, a.seed0 + a.seeds):
                 net, pols = ch._fit(mix, fit_idx, 7 + 100 * s + k)
                 for key, v in ch._keep(aa.evaluate(net, pols, mix, n_tr + held, cm["base_km"][held])).items():
                     out[cell].setdefault((key, s), np.zeros(n_c))[held] = v
@@ -162,7 +170,7 @@ def main() -> None:
             lines.append(_line(cell, key, vs, np.mean([v < 25 for v in agg["+commons"][key]], 0)))
     text_ = "\n".join(lines)
     print(text_, flush=True)
-    (p.OUT / f"head_gldv2_cut{a.cut:g}.txt").write_text(text_ + "\n")
+    (p.OUT / f"head_gldv2_cut{a.cut:g}{f'_seed0{a.seed0}' if a.seed0 else ''}.txt").write_text(text_ + "\n")
 
 
 if __name__ == "__main__":
