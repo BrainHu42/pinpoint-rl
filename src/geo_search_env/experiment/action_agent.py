@@ -21,7 +21,7 @@ from typing import Sequence
 import numpy as np
 
 from .area_model import VARIANT
-from .hypothesis_agent import CLUE_COLS, _net, _random_zoom, _right, _sub, load
+from .hypothesis_agent import _net, _random_zoom, _right, _sub, load
 
 CKPT_TAG = "setft_a"
 N_ML = 4  # megaloc columns, appended last by load(extra=("megaloc",))
@@ -98,7 +98,8 @@ def view(b, read, rec, street=None):
     import torch
 
     pre = b["pre"].clone()
-    pre[..., CLUE_COLS] = torch.where(read[:, None, None], pre[..., CLUE_COLS], b["pre_noclue"][..., CLUE_COLS])
+    # every column the read reveals (pre_noclue differs from pre only there: hypothesis_agent.CLUE_COLS, and combined_head's text columns)
+    pre[..., :-N_ML] = torch.where(read[:, None, None], pre[..., :-N_ML], b["pre_noclue"][..., :-N_ML])
     pre[..., -N_ML:] = torch.where(rec[:, None, None], pre[..., -N_ML:], torch.zeros_like(pre[..., -N_ML:]))
     flags = torch.stack([read, rec] + ([street] if STREET else []), 1).float()[:, None, :].expand(-1, pre.shape[1], -1)
     v = dict(b)
