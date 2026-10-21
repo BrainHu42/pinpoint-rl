@@ -20,8 +20,9 @@ from typing import Sequence
 
 import numpy as np
 
+from ..data.benchmarks import COMMONS
 from .area_model import VARIANT
-from .hypothesis_agent import CLUE_COLS, _net, _random_zoom, _right, _sub, load
+from .hypothesis_agent import _net, _random_zoom, _right, _sub, load
 
 CKPT_TAG = "setft_a"
 N_ML = 4  # megaloc columns, appended last by load(extra=("megaloc",))
@@ -55,7 +56,7 @@ def _data(tag: str, stats=None, ckpt: str | None = None):
         from .strategy_search import BENCHMARK_NAMES
 
         photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-        names = ("commons26",) if photos[0].get("benchmark") == "commons26" else BENCHMARK_NAMES  # the photo set's pools' order ("index")
+        names = (photos[0]["benchmark"],) if photos[0].get("benchmark") in COMMONS else BENCHMARK_NAMES  # the photo set's pools' order ("index")
         g = np.concatenate([load_benchmark(n).embeddings for n in names])[[e["index"] for e in photos]]
         g /= np.linalg.norm(g, axis=1, keepdims=True)
     d["glance"] = torch.as_tensor(g, device="cuda")
@@ -71,7 +72,8 @@ def _released_own_km(tag: str, ckpt: str) -> np.ndarray:
     from .refine_headroom import _hav
 
     photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-    z = np.load(f"artifacts/pinpoint_reference/{'commons26' if photos[0].get('benchmark') == 'commons26' else 'bench_own'}.npz")  # commons26: own = excluded
+    bench = photos[0].get("benchmark")
+    z = np.load(f"artifacts/pinpoint_reference/{bench if bench in COMMONS else 'bench_own'}.npz")  # Commons: own = excluded
     idx = np.asarray([e["index"] for e in photos])
     top = np.where(z["rows"][idx] >= 0, z["scores"][idx], -np.inf).argmax(1)
     ll = z["latlon"][idx, top]
@@ -98,7 +100,8 @@ def view(b, read, rec, street=None):
     import torch
 
     pre = b["pre"].clone()
-    pre[..., CLUE_COLS] = torch.where(read[:, None, None], pre[..., CLUE_COLS], b["pre_noclue"][..., CLUE_COLS])
+    # every column the read reveals (pre_noclue differs from pre only there: hypothesis_agent.CLUE_COLS, and combined_head's text columns)
+    pre[..., :-N_ML] = torch.where(read[:, None, None], pre[..., :-N_ML], b["pre_noclue"][..., :-N_ML])
     pre[..., -N_ML:] = torch.where(rec[:, None, None], pre[..., -N_ML:], torch.zeros_like(pre[..., -N_ML:]))
     flags = torch.stack([read, rec] + ([street] if STREET else []), 1).float()[:, None, :].expand(-1, pre.shape[1], -1)
     v = dict(b)

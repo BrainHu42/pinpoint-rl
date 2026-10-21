@@ -33,7 +33,11 @@ BENCHMARKS = {
     "wikimedia": BenchmarkSpec("wikimedia", "wikimedia/test.csv", "wikimedia/images", "artist"),
     # commons26 (5,023 Commons photos taken in 2026, built by commons_bench.py): `group` is a hashed uploader id; its own dev / test split by uploader.
     "commons26": BenchmarkSpec("commons26", "commons26/release/benchmark.csv", "commons26/release/images", "group"),
+    # commons_train: a training pool built the same way (commons_bench with COMMONS_OUT): uploaded 2026-01 to 06, before commons26's uploads, no
+    # commons26 uploader; split "train". Never an evaluation set.
+    "commons_train": BenchmarkSpec("commons_train", "commons_train/release/benchmark.csv", "commons_train/release/images", "group"),
 }
+COMMONS = ("commons26", "commons_train")  # Commons photo pools: their own pools / photo sets, uploaders never MP16 authors
 
 
 @dataclass(frozen=True)
