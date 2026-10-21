@@ -58,3 +58,12 @@ V1. **Read place names on the pipeline's wrong photos are mostly generic or not 
     misspelling 1.3 (real ones: "Gregorio Arzate" / Aznárez, 昆山门东站 / 艮山门东站, "Hanka Nevada Road" / Nevala); elsewhere 4.2; nowhere 3.8. Of the 160
     wrong commons26 dev photos whose text names the place: name near truth 62, misspelt 13, nowhere 25, elsewhere 16, text but no place name 39,
     nothing read 5. MP16-like photos: better OCR has < 1 pt to fix; commons26: re-reads alone can't reach VALUE_PLAN's 3-pt bar.
+V2. **Reverse geocoding as a check: the photo's text fuzzy-matched against each candidate area's names separates right from wrong areas
+    barely, and no switch pays** (`scripts/reverse_text_check.py`; the user's idea: per area, every OSM name within 10 km of its centre as a
+    closed vocabulary; the 4B's verbatim text + place names matched with rapidfuzz, so misreads and partial strings count; setft_own, `--one-km
+    0.5` RL lambda 0 answers). Whole-string ratio, commons26 dev (484 photos with text, 4.7 areas): AUC right vs wrong areas 0.657; a >= 90
+    match at the truth 38.4% vs another photo's truth 4.1%; on the 71 photos (7.3 pts) the pipeline gets wrong with a right area, the right area
+    outscores the answer on 39% (tied 35%); best switch with in-sample thresholds 8 fixes / 5 breaks (+0.31, upper bound). dev3k (1,175 photos):
+    AUC 0.595, truth 32.0% vs luck 7.0%, right above the answer 40% of 145 photos (4.8 pts), every switch loses (best 3 / 33, -1.00). Word-level
+    matching (>= 6 letters) is noise (AUC 0.54-0.55; luck 31-32%). The truth's names do match the photo, but wrong areas are name-dense places
+    that match too: main point 2 again, now for text; lessons 118 / 140's exact rare-name columns keep what signal there is.

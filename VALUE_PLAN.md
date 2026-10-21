@@ -42,6 +42,7 @@ Read `LEARNINGS.md` first; lesson N is in `docs/archive/LESSONS_1-137.md#lN`, le
 | A local VLM choosing / judging / scoring candidates (A/B, PMI, profiles, cue tables) | 84, 86, 106, 114, 128, 131-133, 137 |
 | VLM attributes, descriptions, cue questions (language, driving side), map feature checks | 21, 77, 85, 133 |
 | Conjunction / conditional search, rankers, overrides over the 4B's *current* reads | 79, R12 (+0.8 at best), 119-121 |
+| Reverse geocoding: each area's nearby names fuzzy-matched against the photo's text | V2 (AUC 0.60-0.66; switches +0.31 / -1.00 at best) |
 | More zooms, extra pool areas, more MegaLoc photos per area | 70-71 (2 zooms = full gain), 112, 97 |
 | New 1 km refinement features | 91, 107, 112, R10 (doesn't transfer to dev3k) |
 | RL / GRPO on the VLM's free text; the VLM as policy | 87, 96, 137 (silence, collapse); out of scope here |
