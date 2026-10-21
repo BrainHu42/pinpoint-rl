@@ -100,4 +100,16 @@ R11. **The answer head's own structure is not the lever, but it can be simpler**
     the weak part, not the area choice. 3-seed ensembles add nothing (+0.0-0.3). All within +-1: like its inputs (lessons 122-127), the head's
     form is saturated.
 
+R12. **Refining text searches with what the 4B already read doesn't rank the right place first more often: no room for an RL query agent
+    on today's reads** (`scripts/text_refine_check.py`; commons26 dev, 977 photos, 884 with phrases; every match of the 4B's 6,740 phrases and
+    their spans fetched once, 27,705 queries, 10 min on the NVMe databases). Top-1 right < 25 km of one committed place (all / geolocatable
+    tiers), with the candidate set's ceiling and lesson 120's luck (random other photo / same-country photo > 100 km away): one-shot phrases
+    (top cluster, share / log2(2 + matches)) 12.8 / 17.2%, ceiling 18.9 (luck 0.5 / 2.5; lesson 116's 19.0 reproduced); + spans 9.1%, ceiling
+    24.6 (8.9 same-country); + the 4B's country 12.8%. Conditional search ("phrase B near A's cluster", other phrases sharing no specific word,
+    support = how many match within 25 km): 11.6%; support only from phrases with <= 500 / <= 50 matches 12.4 / 13.6% (+0.8 at best). The
+    candidate sets grow to a 38.4% ceiling but same-country luck grows to 24.6, so the net ceiling falls (16.4 -> 13.8). Against the pipeline
+    (25.2%) every switch "commit when support >= k" loses or ties (best: <= 50 matches, k 3, 39 switches, 59% right, 4 fixes / 4 breaks).
+    Right text answers sit where the pipeline is already right (top-1 right on pipeline misses 4.4-4.7%). The limit is what the 4B reads,
+    not how it searches; an agent that only recombines its reads has nothing to learn.
+
 ## Search-agent track (S)
