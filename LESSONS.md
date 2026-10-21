@@ -59,3 +59,18 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     +0.23 pts (15 / 8). Why: a close-call photo looks like the chosen area's environment, so any appearance-based reading of it points there
     (below chance on tier 4 with both encoders). What's left is a reader that brings knowledge rather than look-alike appearance (a VLM
     naming species, crops, building materials), or text.
+
+140. **One answer head over areas and text places works on commons26 dev when the Commons rows are lightly weighted: +1.9 pts (SE 0.7)**
+    (`combined_head.py` cv / adapter / stack; step A of the combined-head plan; setft_own, MegaLoc on, `--one-km 0.5`, RL lambda 0, 2 seeds;
+    commons26 dev in 5 uploader folds, each scored by a head trained on MP16 train + the other 4 folds; dev3k for regressions). Text evidence
+    enters as 8 columns per area token (OSM / GeoNames names within 25 km matched <= 5 / 20 / 100 times, lesson 119's listwise ranker's mass,
+    max and top-1 within 25 km, nested out of fold) and up to 3 text-place tokens (ranker places away from every area, answered at the
+    nearest pool candidate); columns and tokens are visible only after the read action. Base head 25.0% < 25 km (released Pinpoint 20.2).
+    Commons rows x10: no text +0.10 (SE 0.49), text + tokens -0.46 (0.88; 64 fixes / 66 breaks). Commons rows x3: text columns only +1.07
+    (0.46; 27 / 11), text + tokens **+1.89 (0.66; 48 / 26)**, continent-balanced 27.8 -> 29.8, < 1 km 7.5 -> 7.9; dev3k +0.25 (0.17).
+    Frozen MP16 head + a 10-parameter text adapter (score = a logit + w . columns; tokens b + w . columns; fit on the other folds): +0.92
+    (0.56; 27 / 14); the adapter leans on names matched <= 20 / <= 100 times (+0.42 / +0.22) and ranker top here (+0.28), not <= 5. So weight 10
+    on ~780 training photos overfits them; at weight 3 the full head uses the text and the tokens add ~0.8 on top of the columns. Weight was
+    picked from two settings on these folds, so step B (a separate commons_train pool, all 977 commons26 dev photos held out) is the check.
+    Sub-threshold stacking on dev3k (3 seeds, base 47.3): MP16 kNN-graph diffusion columns +0.38 (0.24), crop-look columns +0.50 (0.23),
+    both +0.34; not adopted.
