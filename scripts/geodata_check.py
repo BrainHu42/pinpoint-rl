@@ -2,8 +2,9 @@
 scripts/geodata_grid.py) separate the right area from the chosen one on close-call errors (tiers 1, 2, 4 of viz/errors.py)?
 
 Each area is a 25 km disc around the point it would answer at; its attributes are the disc's mean and variance per channel. A photo's
-attributes are either the map values at its true location (ceiling) or predictions of a probe on its SigLIP2 embedding (realistic), trained on
-MP16 photos (map values at their GPS), dev3k photos and their photographers left out. Area score = Gaussian log-likelihood of the photo's
+attributes are either the map values at its true location (ceiling) or predictions of a probe on an image embedding (realistic): SigLIP2
+(retrieval's own embedding), MegaLoc (DINOv2 place recognition, cached for train photos and their pool candidates by lesson 112) or both;
+trained on the same MP16 photos (map values at their GPS; dev3k photographers left out). Area score = Gaussian log-likelihood of the photo's
 attributes under the disc (variance = probe residual + disc variance). Reports pairwise AUC (right area over chosen) on close calls, the same
 on correct photos (right answer over the runner-up), and the answer head re-ranked with the score (weight cross-fitted over two halves).
 
@@ -37,6 +38,8 @@ LOG = {"relief", "bio12", "coast_km"}
 N_TRAIN, N_HOLD = 400_000, 20_000
 DISC_KM, RIGHT_KM = 25.0, 25.0
 CEIL_SD = 0.2  # map error assumed for the ceiling (z units)
+FEATURES = ("siglip2", "megaloc", "both")
+MEGALOC = Path("artifacts/agent")
 
 
 def load_grid() -> np.ndarray:
@@ -99,27 +102,57 @@ def authors_by_row(mp16) -> np.ndarray:
     return np.asarray(authors, np.int64)[mp16["row_index"]]
 
 
-def train_probe(g, mp16, dev_rows):
-    """MLP from SigLIP2 embedding to the z-scored map attributes at the photo's GPS; returns (predict fn, z mean, z sd, residual sd)."""
+def megaloc_rows():
+    """MP16 positions with a cached MegaLoc embedding (train photos and their pool candidates, lesson 112) and where to read each."""
+
+    cand = np.load(MEGALOC / "local_megaloc_emb_train_setft_own.npy", mmap_mode="r")
+    q = np.load(MEGALOC / "megaloc_queries_train_setft_own.npy", mmap_mode="r")
+    qrows = np.array([p["row"] for p in json.loads(Path("artifacts/photo_sets/train_setft_own/photos.json").read_text())])
+    rows = np.concatenate([qrows, np.load(MEGALOC / "local_megaloc_keys_train_setft_own.npy")])  # keys are MP16 positions (cache[need])
+    src = np.concatenate([np.zeros(len(qrows), np.int8), np.ones(len(cand), np.int8)])
+    pos = np.concatenate([np.arange(len(qrows)), np.arange(len(cand))])
+    rows, first = np.unique(rows, return_index=True)
+    return rows, src[first], pos[first], (q, cand)
+
+
+def read_megaloc(src, pos, arrays) -> np.ndarray:
+    out = np.empty((len(src), arrays[0].shape[1]), np.float16)
+    for k, a in enumerate(arrays):
+        sel = np.flatnonzero(src == k)
+        order = np.argsort(pos[sel])
+        out[sel[order]] = a[pos[sel][order]]
+    return out
+
+
+def train_rows(g, mp16, dev_rows):
+    """Training photos shared by all probes: MP16 photos with a MegaLoc embedding, dev3k photographers out, on land; z-scored targets."""
 
     auth = authors_by_row(mp16)
-    banned = np.isin(auth, auth[dev_rows])
-    rng = np.random.default_rng(0)
-    cand = np.flatnonzero(~banned)
-    rows = np.sort(rng.choice(cand, int((N_TRAIN + N_HOLD) * 1.4), replace=False))
+    rows, src, pos, arrays = megaloc_rows()
+    keep = ~np.isin(auth[rows], auth[dev_rows])
     y = point(g, mp16["latlon"][rows, 0], mp16["latlon"][rows, 1])
-    ok = np.isfinite(y).all(1)
-    rows, y = rows[ok][: N_TRAIN + N_HOLD], y[ok][: N_TRAIN + N_HOLD]
-    print(f"probe: {len(rows)} MP16 photos ({banned.sum()} rows of dev3k photographers left out)", flush=True)
-    x = np.asarray(mp16["embeddings"][rows], np.float32)
+    keep &= np.isfinite(y).all(1)
+    rng = np.random.default_rng(0)
+    sel = np.sort(rng.choice(np.flatnonzero(keep), min(N_TRAIN + N_HOLD, keep.sum()), replace=False))
+    print(f"probe: {len(sel)} MP16 photos with MegaLoc embeddings ({(~keep).sum()} of {len(rows)} dropped: dev3k photographers or sea)", flush=True)
+    y = y[sel]
     mu, sd = y.mean(0), y.std(0) + 1e-6
-    z = (y - mu) / sd
-    perm = rng.permutation(len(rows))
+    feats = {"siglip2": np.asarray(mp16["embeddings"][rows[sel]], np.float16), "megaloc": read_megaloc(src[sel], pos[sel], arrays)}
+    return feats, (y - mu) / sd, mu, sd
+
+
+def train_probe(X, z: np.ndarray, label: str):
+    """MLP from (L2-normalised) features to the z-scored map attributes; returns (predict fn, held-out residual sd per channel). X: an array
+    or a tuple of arrays (each normalised, then concatenated)."""
+
+    rng = np.random.default_rng(0)
+    perm = rng.permutation(len(z))
     tr, ho = perm[N_HOLD:], perm[:N_HOLD]
     dev = torch.device("cuda")
-    X, Z = torch.tensor(x, device=dev), torch.tensor(z, device=dev, dtype=torch.float32)
-    X = torch.nn.functional.normalize(X, dim=1)
-    net = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 1024), torch.nn.GELU(), torch.nn.Dropout(0.1), torch.nn.Linear(1024, 1024),
+    X = [torch.tensor(x, device=dev) for x in (X if isinstance(X, tuple) else (X,))]
+    Z = torch.tensor(z, device=dev, dtype=torch.float32)
+    norm = lambda xs: torch.cat([torch.nn.functional.normalize(x.float(), dim=1) for x in xs], 1)
+    net = torch.nn.Sequential(torch.nn.Linear(sum(x.shape[1] for x in X), 1024), torch.nn.GELU(), torch.nn.Dropout(0.1), torch.nn.Linear(1024, 1024),
                               torch.nn.GELU(), torch.nn.Linear(1024, len(CH))).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-2)
     epochs, bs = 8, 1024
@@ -128,21 +161,22 @@ def train_probe(g, mp16, dev_rows):
     for ep in range(epochs):
         net.train()
         for b in trt[torch.randperm(len(trt), device=dev)].split(bs):
-            loss = torch.nn.functional.mse_loss(net(X[b]), Z[b])
+            loss = torch.nn.functional.mse_loss(net(norm([x[b] for x in X])), Z[b])
             opt.zero_grad()
             loss.backward()
             opt.step()
             sched.step()
-        net.eval()
-        with torch.no_grad():
-            res = (net(X[ho]) - Z[ho]).pow(2).mean(0).sqrt().cpu().numpy()
-        print(f"  epoch {ep + 1}: held-out residual sd (z) mean {res.mean():.3f}", flush=True)
+    net.eval()
+    with torch.no_grad():
+        res = torch.cat([net(norm([x[b] for x in X])) - Z[b] for b in torch.tensor(ho, device=dev).split(4096)]).pow(2).mean(0).sqrt().cpu().numpy()
+    print(f"{label}: held-out R^2 " + " ".join(f"{c} {1 - r * r:.2f}" for c, r in zip(CH, res)), flush=True)
+    del X
 
     def predict(e):
         with torch.no_grad():
-            return net(torch.nn.functional.normalize(torch.tensor(np.asarray(e, np.float32), device=dev), dim=1)).cpu().numpy()
+            return net(norm([torch.tensor(np.asarray(x, np.float32), device=dev) for x in (e if isinstance(e, tuple) else (e,))])).cpu().numpy()
 
-    return predict, mu, sd, res
+    return predict, res
 
 
 def loglik(x, m, v, sd):
@@ -177,12 +211,21 @@ def main() -> None:
     errs = {e["i"]: e for e in json.loads((TRACES / "errors.json").read_text())["errors"]}
     mp16 = _memmap_gallery(MP16_EMBED)
     dev_rows = np.array([t["row"] for t in photos])
-    predict, mu, sd, res = train_probe(g, mp16, dev_rows)
     groups = {"all": np.arange(len(CH))} | {k: np.array([CH.index(c) for c in v]) for k, v in GROUPS.items()}
-    print("held-out R^2 per channel:", " ".join(f"{c} {1 - r * r:.2f}" for c, r in zip(CH, res)))
-
-    pred = predict(mp16["embeddings"][np.sort(dev_rows)])[np.argsort(np.argsort(dev_rows))]
+    feats, z, mu, sd = train_rows(g, mp16, dev_rows)
+    order = np.argsort(dev_rows)
+    dev_feats = {"siglip2": np.empty((len(photos), feats["siglip2"].shape[1]), np.float32)}
+    dev_feats["siglip2"][order] = mp16["embeddings"][dev_rows[order]]
+    by_id = {p["image_id"]: k for k, p in enumerate(json.loads(Path("artifacts/photo_sets/dev3k_setft_own/photos.json").read_text()))}
+    dev_feats["megaloc"] = np.load(MEGALOC / "megaloc_queries_dev3k_setft_own.npy")[[by_id[t["image_id"]] for t in photos]].astype(np.float32)
+    feats["both"] = (feats["siglip2"], feats["megaloc"])
+    dev_feats["both"] = (dev_feats["siglip2"], dev_feats["megaloc"])
     truth = (point(g, [t["truth"]["lat"] for t in photos], [t["truth"]["lon"] for t in photos]) - mu) / sd
+    srcs = {"ceil": (truth, np.full(len(CH), CEIL_SD))}
+    for name in FEATURES:
+        predict, res = train_probe(feats[name], z, name)
+        srcs[name] = (predict(dev_feats[name]), res)
+    del feats
 
     # per photo: area scores under both photo attribute sources
     rec = []
@@ -192,11 +235,16 @@ def main() -> None:
         m = np.array([(x[0] - mu) / sd for x in d])
         v = np.array([x[1] / sd ** 2 for x in d])
         sc = {}
-        for name, idx in groups.items():
-            sc[("real", name)] = loglik(pred[k][idx], m[:, idx], v[:, idx], res[idx])
-            tr = truth[k][idx]
-            sc[("ceil", name)] = loglik(tr, m[:, idx], v[:, idx], CEIL_SD) if np.isfinite(tr).all() else np.full(len(pts), np.nan)
+        for src, (x, noise) in srcs.items():
+            for name, idx in groups.items():
+                sc[(src, name)] = loglik(x[k][idx], m[:, idx], v[:, idx], noise[idx]) if np.isfinite(x[k][idx]).all() else np.full(len(pts), np.nan)
         rec.append((t, pts, sc, k))
+
+    def table(diffs):
+        out = ["  " + " " * 11 + "".join(f"{x:>10s}" for x in srcs)]
+        for name in groups:
+            out.append(f"  {name:11s}" + "".join(f"{auc(diffs[(x, name)]):10.3f}" for x in srcs))
+        return out
 
     lines = []
     # close-call pairs: right area vs chosen (tiers 1, 2, 4)
@@ -219,14 +267,12 @@ def main() -> None:
             n += 1
             for (src, name), s in sc.items():
                 idx = groups[name]
-                x = pred[k][idx] if src == "real" else truth[k][idx]
-                noise = res[idx] if src == "real" else CEIL_SD
-                sr = loglik(x, ((mr - mu) / sd)[idx], (vr / sd ** 2)[idx], noise)
+                x, noise = srcs[src]
+                sr = loglik(x[k][idx], ((mr - mu) / sd)[idx], (vr / sd ** 2)[idx], noise[idx])
                 if np.isfinite(sr) and np.isfinite(s[c]):
                     diffs[(src, name)].append(sr - s[c])
-        lines.append(f"\n{label}: {n} photos, AUC right area over chosen (ceiling = map at truth | realistic = SigLIP2 probe)")
-        for name in groups:
-            lines.append(f"  {name:11s} ceiling {auc(diffs[('ceil', name)]):.3f}   realistic {auc(diffs[('real', name)]):.3f}")
+        lines.append(f"\n{label}: {n} photos, AUC right area over chosen (ceiling = map at truth; probes on {', '.join(FEATURES)})")
+        lines += table(diffs)
 
     # correct photos: the right answer vs the runner-up on the table
     diffs = {key: [] for key in rec[0][2]}
@@ -242,12 +288,11 @@ def main() -> None:
         for key, s in sc.items():
             if np.isfinite(s[c]) and np.isfinite(s[o]):
                 diffs[key].append(s[c] - s[o])
-    lines.append(f"\ncorrect photos: {len(diffs[('real', 'all')])} with a wrong area on the table; AUC right answer over the most likely wrong area")
-    for name in groups:
-        lines.append(f"  {name:11s} ceiling {auc(diffs[('ceil', name)]):.3f}   realistic {auc(diffs[('real', name)]):.3f}")
+    lines.append(f"\ncorrect photos: {len(diffs[('ceil', 'all')])} with a wrong area on the table; AUC right answer over the most likely wrong area")
+    lines += table(diffs)
 
     # re-rank: log p + w * score, w cross-fitted over two halves
-    def acc(subset, w, src="real", name="all"):
+    def acc(subset, w, src, name="all"):
         ok = []
         for t, pts, sc, _ in (rec[i] for i in subset):
             on = [s for s, p in enumerate(pts) if p[3]]
@@ -263,7 +308,7 @@ def main() -> None:
     ws = [0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
     halves = [np.arange(len(rec))[i::2] for i in range(2)]
     lines.append("\nanswer head re-ranked with the score (dev3k, all photos; w chosen on the other half)")
-    for src in ("real", "ceil"):
+    for src in (*FEATURES, "ceil"):
         base_all, new_all = [], []
         for h in range(2):
             fit, ev = halves[1 - h], halves[h]
