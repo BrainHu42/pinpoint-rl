@@ -67,3 +67,11 @@ V2. **Reverse geocoding as a check: the photo's text fuzzy-matched against each 
     AUC 0.595, truth 32.0% vs luck 7.0%, right above the answer 40% of 145 photos (4.8 pts), every switch loses (best 3 / 33, -1.00). Word-level
     matching (>= 6 letters) is noise (AUC 0.54-0.55; luck 31-32%). The truth's names do match the photo, but wrong areas are name-dense places
     that match too: main point 2 again, now for text; lessons 118 / 140's exact rare-name columns keep what signal there is.
+V3. **SigLIP2's text side as a place-name proposer: right names sit where the pipeline is already right** (`scripts/siglip_names_probe.py`;
+    dev3k, setft_own, `--one-km 0.5` RL lambda 0 answers; each photo's cached SigLIP2 image embedding scored against 1.39M prompts "this is a
+    photo of {name}." for 148k GeoNames towns (pop >= 1000) and 1.24M geotagged English Wikipedia pages, top names merged within 25 km; luck =
+    the same proposals vs another photo's truth > 100 km away). SigLIP2 needs lowercased prompts (20-city check: right city first 24 / 40
+    lowercased vs 4 / 40 cased). Top-1 / 5 / 10 proposal < 25 km: 14.0 / 26.9 / 31.9% (luck 0.0 / 0.6 / 1.0; Wikipedia pages are 93% of top-1s).
+    On the pipeline's misses 1.5 / 4.4 / 6.3 pts (luck 0.0 / 0.4 / 0.6); where no candidate area is right 0.3 / 1.6 / 2.5 (luck 0.0 / 0.3 / 0.5),
+    no pool candidate right 0.1 / 0.9 / 1.4. Pre-declared bar (no area right, top-5, net of luck >= 3 pts): +1.3, no-go. The text tower knows
+    the places Pinpoint's gallery already covers; it adds no new candidates where retrieval fails.
