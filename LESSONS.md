@@ -85,7 +85,9 @@ R10. **Matching commons26 photos against GLDv2 landmarks rarely finds the right 
     columns (per area: best match within 25 km, log hits, any, best minus top; visible in every state; 2 seeds): dev3k +0.62 fixed recipe / +0.70
     RL (SE 0.26; 80 fixes / 49 breaks), commons26 dev (uploader folds, +commons weight 3) +0.92 / +0.67 (SE 0.43): consistent but sub-threshold,
     the size of MegaLoc per area (lesson 93). On top of lesson 140's text columns + tokens (`gldv2_head.py --text`; that cell 27.0% vs +commons
-    25.4) they add +0.00 / +0.26 (SE 0.64; 42 fixes / 39 breaks): on commons26 the text already holds what the landmark matches know. The test
+    25.4) they add +0.00 / +0.26 (SE 0.64; 42 fixes / 39 breaks): on commons26 the text already holds what the landmark matches know. Stacked
+    on dev3k with diffusion + crop views (`scripts/gldv2_stack.py`, 2 seeds): diffusion + crops +0.33 / +0.37, all three +0.77 / +0.92 (SE 0.31;
+    107 fixes / 69 breaks): mostly overlapping, still under 1 pt. The test
     sets were not run (the pre-agreed condition, >= 1 pt on commons26 dev, wasn't met).
 
 ## Search-agent track (S)
