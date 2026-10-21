@@ -51,5 +51,9 @@ R7. **Pre-2026 Commons imagery can't pick among text places at scale: coverage d
     Only 38 photos (5.3 pts geo, 3.9 of 977) have both a fixable right text place and any reference there; at lesson 138's rates (~30% of
     covered views matched, right place ahead 50%) that's ~1 pt before breaks. The thumbnail download (~43k at upload.wikimedia.org's ~1 / s bot
     limit, ~12 h) was stopped after 16 files; embed / report are in place but never ran.
+R8. **The answer head is not data-limited** (`scripts/head_learning_curve.py`; setft_own, MegaLoc on, all areas zoomed, clues read, 3 seeds per
+    point, a different random subset per seed). dev3k < 25 km by training photos: 4.4k 47.2, 8.8k 46.9, 17.7k 47.4, all 35.4k 47.8: about +0.5
+    for 8x the data, so more MP16-style training photos won't buy 1 pt (lesson 125 said as much for near-misses). commons26 needs new evidence
+    or in-domain rows (lesson 140), not more of the same.
 
 ## Search-agent track (S)
