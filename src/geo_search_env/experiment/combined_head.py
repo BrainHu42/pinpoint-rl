@@ -19,6 +19,14 @@ Cells (each the lesson-111 action agent, --one-km 0.5, setft_own: answer head + 
 
   PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.combined_head features   (CPU, ~2 min; caches the text candidates)
   PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.combined_head cv [--weight 10] [--seeds 2]
+
+stack: the MP16 side of the plan, the earlier sub-threshold head inputs together on train / dev3k (graph diffusion mass, lesson 127; crop
+views vs each area's photos, lesson 89, `crop_look features` with CKPT_TAG setft_own), each visible in every state.
+  PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.combined_head stack [--seeds 3]
+
+adapter: the MP16-trained head frozen and ~10 parameters fit on commons26 dev (a scale on its logits, a weight per text column, a
+text-place bias), cross-fitted by uploader: whether the text evidence carries signal once estimation noise is small.
+  PYTHONPATH=src .venv/bin/python -m geo_search_env.experiment.combined_head adapter [--seeds 2]
 """
 
 from __future__ import annotations
@@ -181,7 +189,8 @@ def features() -> None:
         nm = [(qi, s["n"], cl[0], cl[1]) for qi, q in enumerate(r["queries"]) for src, s in q["src"].items() if src in NAME_SOURCES for cl in s["clusters"]]
         names += nm
         noff.append(noff[-1] + len(nm))
-    bench = {r["IMG_ID"]: r for r in csv.DictReader(open("data/pinpoint/commons26/release/benchmark.csv", encoding="utf-8"))}
+    with open("data/pinpoint/commons26/release/benchmark.csv", encoding="utf-8") as fh:
+        bench = {r["IMG_ID"]: r for r in csv.DictReader(fh)}
     groups = [bench[e["image_id"]]["group"] or e["image_id"] for e in photos]
     np.savez(CACHE, C=np.concatenate(C), X=np.concatenate(X), Y=np.concatenate(Y), coff=np.asarray(coff), names=np.asarray(names, np.float64).reshape(-1, 4),
              noff=np.asarray(noff), fold=np.asarray([int(hashlib.md5(g.encode()).hexdigest()[:8], 16) % 5 for g in groups]),
@@ -315,8 +324,8 @@ def _concat(a: dict, b: dict) -> dict:
 
     h = max(a["mask"].shape[1], b["mask"].shape[1])
     out = {}
-    for key in a:
-        va, vb = a[key], b[key]
+    for key, va in a.items():
+        vb = b[key]
         if key in SLOT_KEYS:
             fill = {"km_zoom": float("inf"), "km_zoom_set": float("inf"), "km_unzoom": float("inf"), "rank": 99.0}.get(key, 0)
             padded = []
@@ -383,7 +392,7 @@ def _keep(rows) -> dict[str, np.ndarray]:
     return {r[0]: r[1] for r in rows if r[0] in ("RL policy, lambda 0", "fixed: read 1, recognise 1, zoom all")}
 
 
-def cv(weight: int, seeds: int) -> None:
+def cv(weight: int, seeds: int, cells: tuple[str, ...] = ("+commons", "+commons+text"), tokens_on: bool = True) -> None:
     import torch
 
     aa.CKPT_TAG, aa.ONE_KM = CKPT, 0.5
@@ -410,12 +419,13 @@ def cv(weight: int, seeds: int) -> None:
         for k, v in _keep(aa.evaluate(net, pols, dv_t, np.arange(dv["n"]), dv["base_km"])).items():
             dev3k["base"].setdefault(k, []).append(v)
     print("base done", flush=True)
-    for cell in ("+commons", "+commons+text"):
+    for cell in cells:
         out = {}
         for k in range(5):
             P = text.probs((k,))
             if cell == "+commons+text":
                 cols, tokens = _text_inputs(cm_t0, text, P, photos)
+                tokens = tokens if tokens_on else [[] for _ in tokens]
                 cm_k = _with_text(cm, cols, tokens)
                 mix = _concat(_with_text(tr, None, [[] for _ in range(n_tr)]), cm_k)
             else:
@@ -434,6 +444,7 @@ def cv(weight: int, seeds: int) -> None:
         # dev3k regressions: trained on all of commons26 dev (rankers out of fold)
         if cell == "+commons+text":
             cols, tokens = _text_inputs(cm_t0, text, text.probs(()), photos)
+            tokens = tokens if tokens_on else [[] for _ in tokens]
             mix = _concat(_with_text(tr, None, [[] for _ in range(n_tr)]), _with_text(cm, cols, tokens))
             dv_k = _with_text(dv, None, [[] for _ in range(dv["n"])])
         else:
@@ -443,11 +454,11 @@ def cv(weight: int, seeds: int) -> None:
             net, pols = _fit(mix, fit_idx, 7 + 100 * s)
             for key, v in _keep(aa.evaluate(net, pols, dv_k, np.arange(dv["n"]), dv["base_km"])).items():
                 dev3k[cell].setdefault(key, []).append(v)
-    report(res, dev3k, text, cm, dv, weight, seeds)
+    report(res, dev3k, text, cm, dv, weight, seeds, "" if tokens_on else "_notokens")
 
 
-def report(res, dev3k, text, cm, dv, weight, seeds) -> None:
-    lines = [f"combined head, step A (commons26 dev CV by uploader, weight {weight}, {seeds} seed(s); km per seed averaged as accuracy)"]
+def report(res, dev3k, text, cm, dv, weight, seeds, suffix: str = "") -> None:
+    lines = [f"combined head, step A (commons26 dev CV by uploader, weight {weight}, {seeds} seed(s), text-place tokens {'off' if suffix else 'on'}; km per seed averaged as accuracy)"]
     conts = sorted(set(text.continent))
     for name, r, d in (("commons26 dev", res, cm), ("dev3k", dev3k, dv)):
         lines.append(f"\n {name}: released Pinpoint {np.mean(d['base_km'] < 25):.1%}, retrained top-1 {np.mean(d['rt_base_km'] < 25):.1%} (< 25 km)")
@@ -463,19 +474,235 @@ def report(res, dev3k, text, cm, dv, weight, seeds) -> None:
                              f"breaks {np.sum(diff < 0):.0f})  < 1 km {ok1.mean():5.1%}" + (f"  continent-balanced {bal:5.1%}" if name == "commons26 dev" else ""))
     text_ = "\n".join(lines)
     print(text_, flush=True)
-    (OUT / f"combined_head_{TAG}_w{weight}.txt").write_text(text_ + "\n")
+    (OUT / f"combined_head_{TAG}_w{weight}{suffix}.txt").write_text(text_ + "\n")
+
+
+# ---------------------------------------------------------------------------------------------------------------------------- text adapter
+
+
+def _final_options(net, pol, d: dict):
+    """The greedy lambda-0 policy's final state on every photo: answer logits over (area, unzoomed point) + (area, zoomed point) [n, 2h], their
+    km, and whether the photo was read."""
+
+    import torch
+
+    seen = []
+    orig = aa._km
+
+    def grab(net_, v, zoomed):
+        seen.append((v, zoomed))
+        return orig(net_, v, zoomed)
+
+    aa._km = grab
+    try:
+        with torch.no_grad():
+            b = aa._sub(d, torch.arange(d["n"], device="cuda"))
+            aa.rollout(net, pol, b, 0.0, "greedy")
+            v, zoomed = seen[-1]
+            logits = aa._options(net, v, zoomed)
+    finally:
+        aa._km = orig
+    km = torch.cat([v["km_unzoom"], v["km_zoom"]], 1)
+    read = v["pre"][:, 0, -2] > 0.5  # view's flag columns: read, recognise
+    return logits.cpu().numpy(), km.cpu().numpy(), read.cpu().numpy()
+
+
+def _fit_adapter(L, F, K, R, TL, TF, TK, photos, l2: float = 1e-2, steps: int = 300):
+    """A few parameters on top of the frozen head: score = a * logit + w . text columns for area options, b + w . columns for text-place
+    tokens; fit by the head's own loss (log-probability of the right options) on `photos`. Returns a function of photo indices -> chosen km."""
+
+    import torch
+
+    t = lambda x: torch.as_tensor(x, dtype=torch.float32)
+    k = F.shape[-1]
+    w = torch.zeros(k, requires_grad=True)
+    a = torch.ones(1, requires_grad=True)
+    b = torch.full((1,), -2.0, requires_grad=True)
+
+    finite = np.isfinite(L)
+    L0 = np.where(finite, L, 0.0)
+
+    def scores(idx):
+        r = t(R[idx])[:, None, None]
+        area = torch.where(torch.as_tensor(finite[idx]), a * t(L0[idx]) + (t(F[idx]) * r) @ w, -1e9)
+        tok = torch.where(torch.as_tensor((TL[idx] > 0.5) & R[idx][:, None]), b + t(TF[idx]) @ w, -1e9)
+        return torch.cat([area, tok], 1)
+
+    km = np.concatenate([K, TK], 1)
+    idx = np.asarray(photos)
+    ok = torch.as_tensor(km[idx] < CLUSTER_KM)
+    s0 = scores(idx)
+    valid = s0 > -1e8
+    use = (ok & valid).any(1) & ~((ok | ~valid).all(1))
+    opt = torch.optim.Adam([w, a, b], lr=0.05)
+    for _ in range(steps):
+        logp = scores(idx).log_softmax(1)
+        loss = -torch.logsumexp(logp.masked_fill(~ok, -1e9), 1)[use].mean() + l2 * (w ** 2).sum()
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+    def choose(sel):
+        with torch.no_grad():
+            pick = scores(np.asarray(sel)).argmax(1).numpy()
+        return km[np.asarray(sel), pick]
+
+    return choose, (w.detach().numpy(), a.item(), b.item())
+
+
+def adapter(seeds: int) -> None:
+    """The MP16-trained head frozen; a text adapter (lesson 121's override as ~10 parameters over every option) cross-fitted on commons26 dev."""
+
+    import torch
+
+    aa.CKPT_TAG, aa.ONE_KM = CKPT, 0.5
+    text = Text()
+    photos = _photos()
+    tr = aa._data("train")
+    cm = aa._data(TAG, stats=tr["stats"])
+    tr_t, cm_t0 = _with_text(tr, None, None), _with_text(cm, None, None)
+    n = cm["n"]
+    h = cm_t0["mask"].shape[1]
+    lines = [f"text adapter on the frozen MP16 head (commons26 dev, uploader folds, {seeds} seed(s)); % < 25 km"]
+    tot_base, tot_new = [], []
+    for s in range(seeds):
+        net, pols = _fit(tr_t, np.arange(tr["n"]), 7 + 100 * s)
+        L, K, R = _final_options(net, pols[0.0], cm_t0)
+        new = np.zeros(n)
+        weights = []
+        for k in range(5):
+            cols, tokens = _text_inputs(cm_t0, text, text.probs((k,)), photos)
+            F = np.concatenate([cols, cols], 1)
+            TL = np.zeros((n, N_TEXT_TOKENS))
+            TF = np.zeros((n, N_TEXT_TOKENS, len(TEXT_COLS)), np.float32)
+            TK = np.full((n, N_TEXT_TOKENS), np.inf)
+            for i, toks in enumerate(tokens):
+                for j, (_, _, km, tc) in enumerate(toks):
+                    TL[i, j], TF[i, j], TK[i, j] = 1.0, tc, km
+            assert F.shape[1] == 2 * h
+            choose, wt = _fit_adapter(L, F, K, R, TL, TF, TK, np.flatnonzero(text.fold != k))
+            held = np.flatnonzero(text.fold == k)
+            new[held] = choose(held)
+            weights.append(wt)
+        base_km = K[np.arange(n), np.nan_to_num(L, neginf=-1e9).argmax(1)]
+        tot_base.append(base_km < CLUSTER_KM)
+        tot_new.append(new < CLUSTER_KM)
+        w = np.mean([x[0] for x in weights], 0)
+        lines.append(f"  seed {s}: base {np.mean(base_km < CLUSTER_KM):.1%} -> adapter {np.mean(new < CLUSTER_KM):.1%}; read {R.mean():.0%} of photos; "
+                     f"mean weights " + ", ".join(f"{c} {x:+.2f}" for c, x in zip(TEXT_COLS, w)) + f"; a {np.mean([x[1] for x in weights]):.2f}, "
+                     f"b {np.mean([x[2] for x in weights]):+.2f}")
+        torch.cuda.empty_cache()
+    b, nw = np.mean(tot_base, 0), np.mean(tot_new, 0)
+    diff = nw - b
+    lines.append(f"  mean over seeds: {b.mean():.1%} -> {nw.mean():.1%} ({100 * diff.mean():+.2f}, SE {100 * diff.std() / math.sqrt(n):.2f}; "
+                 f"fixes {np.sum(diff > 0):.0f}, breaks {np.sum(diff < 0):.0f}); continent-balanced "
+                 f"{np.mean([b[text.continent == c].mean() for c in sorted(set(text.continent))]):.1%} -> "
+                 f"{np.mean([nw[text.continent == c].mean() for c in sorted(set(text.continent))]):.1%}")
+    text_ = "\n".join(lines)
+    print(text_, flush=True)
+    (OUT / f"combined_head_adapter_{TAG}.txt").write_text(text_ + "\n")
+
+
+# ---------------------------------------------------------------------------------------------------------------------------- stacking (dev3k)
+
+
+def _row_cols(tag: str, group: str) -> np.ndarray:
+    """Per zoom-file row of an MP16 photo set: the columns of one earlier sub-threshold head input (setft_own caches)."""
+
+    if group == "diffusion":  # lesson 127: personalised PageRank mass within 25 km of the area, diffused and seeds only
+        z = np.load(Path("artifacts/diffusion") / f"diffusion_{tag}_{CKPT}.npz")
+        return np.log(np.stack([z["mass_diff"], z["mass_seed"]], 1) + 1e-4)
+    z = np.load(OUT / f"cropcheck_{tag}_{CKPT}.npz")  # lesson 89: the full view and 9 crops vs each area's restricted-search photos
+    return z["x"][:, np.isin(z["groups"], ("global", "crop"))]
+
+
+def _slot_pad(tag: str, x: np.ndarray, d: dict) -> np.ndarray:
+    """Zoom-file rows -> the batch's [photo, slot] layout (hypothesis_agent.load's slot order: kept sources, file order within a photo)."""
+
+    from .area_model import _paths
+    from .hypothesis_agent import SOURCES as HSOURCES
+
+    zm = np.load(_paths(tag, CKPT)[1])
+    rows = np.flatnonzero(np.isin(zm["source"], HSOURCES))
+    photo = zm["photo"][rows]
+    slot = np.zeros(len(rows), int)
+    seen = collections.Counter()
+    for j, p in enumerate(photo):
+        slot[j] = seen[p]
+        seen[p] += 1
+    n, h = d["mask"].shape
+    out = np.zeros((n, h, x.shape[1]), np.float32)
+    out[photo, slot] = x[rows]
+    return out
+
+
+def _with_cols(d: dict, cols: np.ndarray) -> dict:
+    """Columns visible in every state (before and after the read), inserted before the MegaLoc columns."""
+
+    import torch
+
+    x = torch.as_tensor(cols, device="cuda")
+    e = dict(d)
+    for key in ("pre", "pre_noclue"):
+        e[key] = torch.cat([d[key][..., :-aa.N_ML], x, d[key][..., -aa.N_ML:]], -1)
+    return e
+
+
+def stack(seeds: int) -> None:
+    """The lesson-111 agent on train / dev3k with the cached sub-threshold inputs added (diffusion, lesson 127; crop views, lesson 89)."""
+
+    aa.CKPT_TAG, aa.ONE_KM = CKPT, 0.5
+    tr = aa._data("train")
+    dv = aa._data("dev3k", stats=tr["stats"])
+    raw = {g: (_slot_pad("train", _row_cols("train", g), tr), _slot_pad("dev3k", _row_cols("dev3k", g), dv)) for g in ("diffusion", "crops")}
+    mask_tr = tr["mask"].cpu().numpy()
+    norm = {}
+    for g, (a, b) in raw.items():
+        mu, sd = a[mask_tr].mean(0), a[mask_tr].std(0) + 1e-6
+        norm[g] = ((a - mu) / sd * mask_tr[..., None], (b - mu) / sd * dv["mask"].cpu().numpy()[..., None])
+    variants = {"base": (), "+diffusion": ("diffusion",), "+crops": ("crops",), "+diffusion+crops": ("diffusion", "crops")}
+    res = collections.defaultdict(dict)
+    for name, groups in variants.items():
+        if groups:
+            tr_v = _with_cols(tr, np.concatenate([norm[g][0] for g in groups], -1))
+            dv_v = _with_cols(dv, np.concatenate([norm[g][1] for g in groups], -1))
+        else:
+            tr_v, dv_v = tr, dv
+        for s in range(seeds):
+            net, pols = _fit(tr_v, np.arange(tr["n"]), 7 + 100 * s)
+            for key, v in _keep(aa.evaluate(net, pols, dv_v, np.arange(dv["n"]), dv["base_km"])).items():
+                res[name].setdefault(key, []).append(v)
+        print(f"{name} done", flush=True)
+    lines = [f"stacked sub-threshold inputs, dev3k ({seeds} seeds; accuracy averaged over seeds)"]
+    base = {k: np.mean([v < 25 for v in vs], 0) for k, vs in res["base"].items()}
+    for name in res:
+        for key, vs in res[name].items():
+            ok, ok1 = np.mean([v < 25 for v in vs], 0), np.mean([v < 1 for v in vs], 0)
+            diff = ok - base[key]
+            per_seed = ", ".join(f"{100 * np.mean(v < 25):.1f}" for v in vs)
+            lines.append(f"   {name:18s} {key:38s} < 25 km {ok.mean():6.1%} ({100 * diff.mean():+.2f}, SE {100 * diff.std() / math.sqrt(len(diff)):.2f}; "
+                         f"seeds {per_seed})  < 1 km {ok1.mean():5.1%}")
+    text_ = "\n".join(lines)
+    print(text_, flush=True)
+    (OUT / "combined_head_stack_dev3k.txt").write_text(text_ + "\n")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("features", "cv"))
+    ap.add_argument("cmd", choices=("features", "cv", "stack", "adapter"))
     ap.add_argument("--weight", type=int, default=10, help="oversampling of the commons26 dev training photos")
     ap.add_argument("--seeds", type=int, default=2)
+    ap.add_argument("--cells", nargs="*", default=("+commons", "+commons+text"))
+    ap.add_argument("--no-tokens", action="store_true", help="text columns only, no text-place tokens")
     a = ap.parse_args()
     if a.cmd == "features":
         features()
+    elif a.cmd == "stack":
+        stack(a.seeds)
+    elif a.cmd == "adapter":
+        adapter(a.seeds)
     else:
-        cv(a.weight, a.seeds)
+        cv(a.weight, a.seeds, tuple(a.cells), not a.no_tokens)
 
 
 if __name__ == "__main__":
