@@ -229,7 +229,7 @@ def report() -> None:
     tier = np.asarray([bm[e["image_id"]]["tier"] for e in photos])
     distract = np.isin(lms, keepj["distract"])
     print(f"mini-gallery: {len(lms)} landmarks ({(~distract).sum()} near a truth or an answer, {distract.sum()} random distractors), "
-          f"{len(G)} photos; queries {nq}; pipeline < 25 km {100 * np.mean(km < 25):.1f}%, < 1 km {100 * np.mean(km < 1):.1f}%")
+          f"{len(lm_of)} photos; queries {nq}; pipeline < 25 km {100 * np.mean(km < 25):.1f}%, < 1 km {100 * np.mean(km < 1):.1f}%")
 
     def run(cols, label, verbose):
         b = best[:, cols]

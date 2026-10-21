@@ -65,5 +65,17 @@ R9. **GLDv2 as a landmark gallery, ceiling without images: it passes the pre-dec
     (1 km, landmark-tier misses: 61.8 vs 41.0%; a landmark near the truth but none near the answer 6.9%): wrong picks sit in landmark-rich
     places, so proximity is no signal and only same-landmark image matching (instance retrieval, the task GLDv2 was built for, many views:
     median 30-47 photos per nearby landmark) can help. Step 2 (download ~500 GB, embed, search) tests that.
+R10. **Matching commons26 photos against GLDv2 landmarks rarely finds the right place: the photos show things the gallery doesn't**
+    (`scripts/gldv2_pilot.py`, `gldv2_recall.py`, `gldv2_selfcheck.py`; commons26 dev, 977 photos; a mini-gallery of the 8,448 landmarks within
+    1 km of a truth or of the pipeline's answer + 15,000 random distractor landmarks, <= 50 photos each, 376k photos streamed from the S3 tars
+    in 32 min; best photo per landmark). Top landmark within 25 km of the truth (pipeline 25.2%): MegaLoc 6.7% (no distractors 8.3), SigLIP2
+    12.3 (14.8), both averaged 11.4; landmark tier 14.0 / 22.3 / 21.7% (pipeline 42.3). Switching to the top landmark when > 25 km from the
+    answer never clears the bar: best +0.51 pts (both, 6 fixes / 1 break, threshold picked on these photos), MegaLoc +0.2, SigLIP2 0. A 1 km
+    refinement (move to the top landmark within 25 km of the answer when its match is confident) gives +1.0-1.5 pts at 1 km in-sample (MegaLoc
+    13 fixes / 1 break; both 17 / 2). Recall is the limit, not ranking: 37.7% have a gallery landmark within 1 km of the truth, but it's in the
+    top 10 for 7.8% (MegaLoc) / 12.7% (SigLIP2); a right landmark within 25 km is in SigLIP2's top 10 for 29.0% (16.7% of the pipeline's misses,
+    MegaLoc 7.0). The matcher works on GLDv2 itself (a held-out GLDv2 photo's own landmark is MegaLoc's top-1 photo 70.0%, top 10 80.2%), so
+    the commons26 photos show other things: a gym inside a listed hall, a procession statue, details, not the landmark's canonical views, and
+    GLDv2 categories are noisy (colour tables, door knobs). Confidence is informative (right vs wrong top landmark AUC 0.83 MegaLoc, 0.69 SigLIP2).
 
 ## Search-agent track (S)
