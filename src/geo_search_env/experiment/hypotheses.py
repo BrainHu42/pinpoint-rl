@@ -21,6 +21,8 @@ from typing import Sequence
 
 import numpy as np
 
+from ..data.benchmarks import COMMONS
+
 OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 SFT_ROOT = Path("artifacts/sft")
@@ -61,14 +63,14 @@ def photo_world(photos: list[dict]):
     from .strategy_search import load_world
 
     if "benchmark" in photos[0]:
-        return load_world(**({"benchmarks": ("commons26",)} if photos[0]["benchmark"] == "commons26" else {})), np.asarray([e["index"] for e in photos])
+        return load_world(**({"benchmarks": (photos[0]["benchmark"],)} if photos[0]["benchmark"] in COMMONS else {})), np.asarray([e["index"] for e in photos])
     return load_world(mp16_queries=_queries(photos)), np.arange(len(photos))
 
 
 def pools_name(photos: list[dict]) -> str:
     """The pinpoint_reference pool set a photo set's indices refer to."""
 
-    return photos[0].get("pools") or ((photos[0]["benchmark"] if photos[0]["benchmark"] == "commons26" else "bench") if "benchmark" in photos[0] else "mp16")
+    return photos[0].get("pools") or ((photos[0]["benchmark"] if photos[0]["benchmark"] in COMMONS else "bench") if "benchmark" in photos[0] else "mp16")
 
 
 def _queries(photos: list[dict]) -> list[dict]:
@@ -120,7 +122,7 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
     Another name (e.g. moreclue): extra clue places appended after cluehyps (also > BOX_KM from its places), up to per_photo clue places in
     total; queries: the 4B's search queries count as clues too. count_only: report how many and how often right, no search."""
 
-    from .clue_judge import _judge_path, _items
+    from .clue_judge import _items, _judge_path
     from .strategy_search import _haversine_km
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
@@ -166,8 +168,8 @@ def clue_hypotheses(tag: str, judge: str = "4b", min_p: float = 0.5, per_photo: 
 
 
 def oracle(tag: str, clues: bool = False) -> None:
-    from .pinpoint_tool import pick
     from .pinpoint_reference import load_pools
+    from .pinpoint_tool import pick
     from .strategy_search import _haversine_km
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))

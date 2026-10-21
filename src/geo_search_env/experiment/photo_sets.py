@@ -75,10 +75,10 @@ def select_bench(tag: str, n: int) -> None:
     print(f"{len(photos)} benchmark photos: " + ", ".join(f"{b} {sum(p['benchmark'] == b for p in photos)}" for b in BENCHMARK_NAMES) + f" -> {PHOTO_SETS / tag}")
 
 
-def select_commons26(tag: str) -> None:
+def select_commons26(tag: str, name: str = "commons26") -> None:
     """All 5,023 commons26 photos (user, 2026-10-16), each with the benchmark's own split (dev / test) in "split"."""
 
-    pools = load_pools("commons26")
+    pools = load_pools(name)
     queries = pools["queries"]
     photos = _entries(pools, range(len(queries)), lambda q: {"index": q} | {k: queries[q][k] for k in ("image_id", "path", "benchmark", "split")})
     _save(tag, photos)
@@ -95,10 +95,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("node", choices=("select",))
     parser.add_argument("--tag", default="dev", help="output folder under artifacts/photo_sets")
     parser.add_argument("--n", type=int, default=1000, help="number of photos")
-    parser.add_argument("--source", choices=("mp16", "bench", "commons26"), default="mp16", help="MP16 dev photos, benchmark eval-half photos or all of commons26")
+    parser.add_argument("--source", choices=("mp16", "bench", "commons26", "commons_train"), default="mp16",
+                        help="MP16 dev photos, benchmark eval-half photos, all of commons26 or of the commons_train pool")
     args = parser.parse_args(argv)
-    if args.source == "commons26":
-        select_commons26(args.tag)
+    if args.source in ("commons26", "commons_train"):
+        select_commons26(args.tag, args.source)
     else:
         (select_bench if args.source == "bench" else select)(args.tag, args.n)
     return 0

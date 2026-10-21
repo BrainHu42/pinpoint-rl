@@ -35,20 +35,21 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from collections import Counter
 from typing import Any, Iterable, Sequence
 
 from ..paths import DATA_ROOT
 
-OUT = DATA_ROOT / "commons26"
+OUT = Path(os.environ.get("COMMONS_OUT", DATA_ROOT / "commons26"))  # COMMONS_OUT: another photo pool built the same way (e.g. a training set)
 GEONAMES = DATA_ROOT / "geonames/allCountries.txt"
 TAKEN_AFTER = datetime(2026, 1, 1, tzinfo=timezone.utc)  # the release: capture dates on or after this
 API = "https://commons.wikimedia.org/w/api.php"
@@ -218,7 +219,7 @@ def _search_titles(day: str) -> list[str]:
     return list(titles)
 
 
-def search_scan(start: datetime, end: datetime, taken_after: datetime, workers: int) -> None:
+def search_scan(start: datetime, end: datetime, taken_after: datetime, workers: int, every: int = 1) -> None:
     """All geotagged JPEGs created in [start, end), day by day, through the same filters as scan. Finished days are recorded per capture-date
     cut-off, so a scan with an earlier --taken-after re-reads every day and appends only the photos the stricter scan skipped."""
     OUT.mkdir(parents=True, exist_ok=True)
@@ -230,7 +231,7 @@ def search_scan(start: datetime, end: datetime, taken_after: datetime, workers: 
     with ThreadPoolExecutor(workers) as pool:
         while day < end:
             key = day.strftime("%Y-%m-%d")
-            day += timedelta(days=1)
+            day += timedelta(days=every)
             if key in done:
                 continue
             titles = _search_titles(key)
@@ -267,7 +268,7 @@ def _unit(latlon: Any) -> Any:
 
 
 def select(target: int, per_uploader: int, min_gap_km: float, max_country_share: float, per_continent: int, seed: int,
-           taken_after: datetime) -> None:
+           taken_after: datetime, exclude_groups: Path | None = None) -> None:
     """Greedy pick over continents in turn: at most `per_uploader` photos per uploader, `min_gap_km` between any two, at most `per_continent` per
     continent (0 = no cap) and no country above `max_country_share` of that cap (of `target` without one). Commons is European and the thin
     continents run out early (Africa ~190 photos from ~120 uploaders in 2026-07 to 10), so the cap is what limits the skew; `score` reweights the rest."""
@@ -275,6 +276,15 @@ def select(target: int, per_uploader: int, min_gap_km: float, max_country_share:
     from scipy.spatial import cKDTree
 
     records = [r for line in (OUT / "candidates.jsonl").open() if (r := json.loads(line))["taken"] >= f"{taken_after:%Y-%m-%d}"]
+    if exclude_groups:  # uploaders of another release (its `group` column: sha256("commons26:" + uploader)[:12]), e.g. commons26 for a training set
+        import csv
+        import hashlib
+
+        with exclude_groups.open(encoding="utf-8") as f:
+            banned = {row["group"] for row in csv.DictReader(f)}
+        n0 = len(records)
+        records = [r for r in records if hashlib.sha256(f"commons26:{r['uploader']}".encode()).hexdigest()[:12] not in banned]
+        print(f"excluded {n0 - len(records)} candidates by {len(banned)} uploaders of {exclude_groups}")
     latlon = np.array([[r["lat"], r["lon"]] for r in records])
     vectors, codes = _places()
     countries = codes[cKDTree(vectors).query(_unit(latlon))[1]]
@@ -618,6 +628,38 @@ def release() -> None:
           f"tiers { {k: count('tier', k) for k in ('landmark', 'city', 'region', 'none')} }; groups {len({row['group'] for row in rows})}")
 
 
+def trainset() -> None:
+    """A training pool (COMMONS_OUT, e.g. commons_train): every downloaded selected photo, metadata stripped, as release/benchmark.csv
+    (IMG_ID = page id, split "train", group as in commons26) + images/, read by data/benchmarks.py; embeddings by `embed_cache benchmark`.
+    No VLM tiers, dedup or release card: never an evaluation set."""
+    import csv
+    import hashlib
+
+    records = [json.loads(line) for line in (OUT / "selected.jsonl").open()]
+    (RELEASE / "images").mkdir(parents=True, exist_ok=True)
+    rows = []
+    for r in records:
+        src = OUT / "images" / f"{r['page_id']}.jpg"
+        if not src.exists():
+            continue
+        image_id = f"{r['page_id']}.jpg"
+        try:
+            data = _strip_metadata(src.read_bytes())
+        except (AssertionError, ValueError):
+            continue
+        (RELEASE / "images" / image_id).write_bytes(data)
+        rows.append({"IMG_ID": image_id, "LAT": r["lat"], "LON": r["lon"], "split": "train",
+                     "group": hashlib.sha256(f"commons26:{r['uploader']}".encode()).hexdigest()[:12], "country": r["country"],
+                     "continent": r["continent"], "taken": r["taken"]})
+    rows.sort(key=lambda row: row["IMG_ID"])
+    with (RELEASE / "benchmark.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"{len(rows)} of {len(records)} selected photos, {len({row['group'] for row in rows})} uploaders, "
+          f"{len({row['country'] for row in rows})} countries -> {RELEASE}")
+
+
 def score(predictions: Path, split: str) -> None:
     """Metrics for a predictions CSV (IMG_ID, LAT, LON); see commons26_score.py (shipped as the release's score.py)."""
     from .commons26_score import score as score_release
@@ -675,18 +717,36 @@ def _fetch(record: dict[str, Any], folder: Path) -> str:
     return "fail"
 
 
-def download(input_path: Path, workers: int) -> None:
+def download(input_path: Path, workers: int, interval: float = 0.0) -> None:
+    """interval: at least this many seconds between requests (upload.wikimedia.org limits bulk thumbnail fetches to ~1 / s)."""
+    import threading
+
     folder = OUT / "images"
     folder.mkdir(parents=True, exist_ok=True)
     records = [json.loads(line) for line in input_path.open()]
+    lock, last = threading.Lock(), [0.0]
+
+    def paced(r):
+        if interval and not (folder / f"{r['page_id']}.jpg").exists():
+            with lock:
+                wait = last[0] + interval - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
+                last[0] = time.monotonic()
+        return _fetch(r, folder)
+
+    results = []
     with ThreadPoolExecutor(workers) as pool:
-        results = list(pool.map(lambda r: _fetch(r, folder), records))
+        for k, res in enumerate(pool.map(paced, records), 1):
+            results.append(res)
+            if k % 500 == 0:
+                print(f"{k} / {len(records)} {dict(Counter(results))}", flush=True)
     print({k: results.count(k) for k in ("ok", "skip", "fail")})
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("node", choices=("scan", "search-scan", "select", "download", "dedup", "tiers", "check", "release", "score"))
+    parser.add_argument("node", choices=("scan", "search-scan", "select", "download", "dedup", "tiers", "check", "release", "trainset", "score"))
     parser.add_argument("--start", default="2026-07-01", help="scan: oldest upload time")
     parser.add_argument("--end", default=None, help="scan: newest upload time (default now)")
     parser.add_argument("--taken-after", default=f"{TAKEN_AFTER:%Y-%m-%d}", help="scan, search-scan, select: earliest capture date")
@@ -704,6 +764,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--predictions", type=Path, help="score: CSV with IMG_ID, LAT, LON")
     parser.add_argument("--split", default="test", choices=("dev", "test", "all"), help="score: which split")
     parser.add_argument("--input", type=Path, default=OUT / "selected.jsonl", help="download: records to fetch")
+    parser.add_argument("--interval", type=float, default=0.0, help="download: seconds between requests")
+    parser.add_argument("--every", type=int, default=1, help="search-scan: read every N-th day")
+    parser.add_argument("--exclude-groups", type=Path, help="select: a benchmark.csv whose uploaders (group column) are left out")
     args = parser.parse_args(argv)
     if args.node == "scan":
         utc = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
@@ -712,14 +775,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.node == "search-scan":
         utc = lambda s: datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
         end = utc(args.end) if args.end else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        search_scan(utc(args.start), end, utc(args.taken_after), args.workers)
+        search_scan(utc(args.start), end, utc(args.taken_after), args.workers, args.every)
     elif args.node == "select":
         select(args.target, args.per_uploader, args.min_gap_km, args.max_country_share, args.per_continent, args.seed,
-               datetime.fromisoformat(args.taken_after).replace(tzinfo=timezone.utc))
+               datetime.fromisoformat(args.taken_after).replace(tzinfo=timezone.utc), args.exclude_groups)
     elif args.node == "check":
         check(args.workers)
     elif args.node == "release":
         release()
+    elif args.node == "trainset":
+        trainset()
     elif args.node == "score":
         score(args.predictions, args.split)
     elif args.node == "tiers":
@@ -727,7 +792,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.node == "dedup":
         dedup(batch_size=8, chunk=262_144)
     else:
-        download(args.input, args.workers)
+        download(args.input, args.workers, args.interval)
     return 0
 
 

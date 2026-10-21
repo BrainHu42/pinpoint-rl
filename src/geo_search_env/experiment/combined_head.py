@@ -44,9 +44,10 @@ import numpy as np
 from . import action_agent as aa
 
 OUT = Path("artifacts/agent")
-TAG, CKPT = "commons26dev", "setft_own"
-CANDS = OUT / "cands_commons26_dev.jsonl"
-CACHE = OUT / f"combined_text_{TAG}_{CKPT}.npz"
+TAG, CKPT = "commons26dev", "setft_own"  # the evaluation set
+# per Commons photo set: (cached text searches, benchmark CSV, 4B clue file); commons26 dev's searches are lesson 119's
+SETS = {"commons26dev": (OUT / "cands_commons26_dev.jsonl", Path("data/pinpoint/commons26/release/benchmark.csv"), OUT / "observe_commons26_4b.json"),
+        "commons_train": (OUT / "cands_commons_train.jsonl", Path("data/pinpoint/commons_train/release/benchmark.csv"), OUT / "observe_commons_train_4b.json")}
 SOURCES = ("GeoNames", "Overture", "Flickr", "OSM")
 NAME_SOURCES = ("GeoNames", "Overture", "OSM")
 CLUSTER_KM = 25.0
@@ -83,27 +84,31 @@ def _country_codes() -> dict[str, str]:
     return out
 
 
-def _photos() -> list[dict]:
-    return json.loads((Path("artifacts/photo_sets") / f"{TAG}_{CKPT}" / "photos.json").read_text(encoding="utf-8"))
+def _cache(tag: str) -> Path:
+    return OUT / f"combined_text_{tag}_{CKPT}.npz"
 
 
-def _context(photos: list[dict]) -> dict:
+def _photos(tag: str = TAG) -> list[dict]:
+    return json.loads((Path("artifacts/photo_sets") / f"{tag}_{CKPT}" / "photos.json").read_text(encoding="utf-8"))
+
+
+def _context(photos: list[dict], tag: str) -> dict:
     """What lesson 119's ranker features need besides the search results: Pinpoint's areas and set probabilities, the 4B's country, towns."""
 
     from scipy.spatial import cKDTree
 
     from .text_search import TextSearch
 
-    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{TAG}_{CKPT}.npz")
+    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{CKPT}.npz")
     areas = collections.defaultdict(list)
     for j in np.flatnonzero(zm["source"] == 0):
         areas[int(zm["photo"][j])].append((int(zm["rank"][j]), zm["center"][j].astype(np.float64)))
     areas = {k: np.asarray([c for _, c in sorted(v, key=lambda x: x[0])]) for k, v in areas.items()}
-    sp = np.load(Path("artifacts/pinpoint_set") / f"set_probs_{TAG}_{CKPT}.npz")
-    key = f"{TAG}_{CKPT}"
+    sp = np.load(Path("artifacts/pinpoint_set") / f"set_probs_{tag}_{CKPT}.npz")
+    key = f"{tag}_{CKPT}"
     cc_of = _country_codes()
     guess = {k: cc_of.get(str((v.get("parsed") or {}).get("country") or "").strip().lower())
-             for k, v in json.loads((OUT / "observe_commons26_4b.json").read_text(encoding="utf-8")).items()}
+             for k, v in json.loads(SETS[tag][2].read_text(encoding="utf-8")).items()}
     t = np.asarray(TextSearch().places.execute("SELECT lat, lon, pop FROM towns").fetchall(), np.float64)
     return {"areas": areas, "probs": sp[f"{key}_probs"] * sp[f"{key}_valid"], "plat": sp[f"{key}_latlon"], "guess": guess,
             "towns": (cKDTree(_xyz(t[:, 0], t[:, 1])), np.log10(1 + t[:, 2]))}
@@ -167,16 +172,17 @@ def _candidates(rec: dict, i: int, ctx: dict) -> tuple[np.ndarray, np.ndarray]:
     return C[keep], X[keep]
 
 
-def features() -> None:
-    """Text candidates, ranker features and name matches of every commons26 dev photo (photo-set order) -> CACHE."""
+def features(tag: str = TAG) -> None:
+    """Text candidates, ranker features and name matches of every photo of a Commons photo set (photo-set order) -> _cache(tag)."""
 
-    photos = _photos()
+    cands, bench_csv, _ = SETS[tag]
+    photos = _photos(tag)
     pidx = {e["image_id"]: k for k, e in enumerate(photos)}
     recs = {}
-    for line in CANDS.read_text().splitlines():
+    for line in cands.read_text().splitlines():
         r = json.loads(line)
         recs[r["image_id"]] = r
-    ctx = _context(photos)
+    ctx = _context(photos, tag)
     C, X, Y, coff = [], [], [], [0]
     names, noff = [], [0]  # (query index, match count, lat, lon) of every name-source cluster
     for i, e in enumerate(photos):
@@ -189,14 +195,177 @@ def features() -> None:
         nm = [(qi, s["n"], cl[0], cl[1]) for qi, q in enumerate(r["queries"]) for src, s in q["src"].items() if src in NAME_SOURCES for cl in s["clusters"]]
         names += nm
         noff.append(noff[-1] + len(nm))
-    with open("data/pinpoint/commons26/release/benchmark.csv", encoding="utf-8") as fh:
+    with bench_csv.open(encoding="utf-8") as fh:
         bench = {r["IMG_ID"]: r for r in csv.DictReader(fh)}
     groups = [bench[e["image_id"]]["group"] or e["image_id"] for e in photos]
-    np.savez(CACHE, C=np.concatenate(C), X=np.concatenate(X), Y=np.concatenate(Y), coff=np.asarray(coff), names=np.asarray(names, np.float64).reshape(-1, 4),
+    np.savez(_cache(tag), C=np.concatenate(C), X=np.concatenate(X), Y=np.concatenate(Y), coff=np.asarray(coff), names=np.asarray(names, np.float64).reshape(-1, 4),
              noff=np.asarray(noff), fold=np.asarray([int(hashlib.md5(g.encode()).hexdigest()[:8], 16) % 5 for g in groups]),
              continent=np.asarray([bench[e["image_id"]]["continent"] for e in photos]), ids=np.asarray([e["image_id"] for e in photos]))
     print(f"{len(photos)} photos ({len(pidx)} ids, {sum(1 for e in photos if e['image_id'] in recs)} with searches); "
-          f"candidates per photo median {np.median(np.diff(coff)):.0f}, some right {np.mean([y.any() for y in Y]):.1%} -> {CACHE}", flush=True)
+          f"candidates per photo median {np.median(np.diff(coff)):.0f}, some right {np.mean([y.any() for y in Y]):.1%} -> {_cache(tag)}", flush=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------- searching
+# lesson 119's text searches (candidate_ranker gather at 7775c85; spans from read_constrain at c9a8944): every 4B phrase and its 1-3 word spans
+# in GeoNames, Overture, Flickr titles / tags (text_search) and OSM names (tools.maps), each query's matches clustered per source
+
+TOP = 8  # clusters kept per (query, source)
+SAMPLE = 500  # matches clustered per (query, source)
+MAX_MATCHES = 10_000  # matches counted per (query, source)
+GENERIC = {"the", "of", "and", "de", "la", "le", "les", "du", "des", "del", "della", "di", "da", "do", "dos", "das", "der", "die", "und", "von", "zu", "am", "im", "an", "in", "on", "at", "by", "for", "to", "a", "monument", "museum", "station", "railway", "church", "cathedral", "chapel", "temple", "mosque", "shrine", "square", "street", "road", "avenue", "park", "garden", "bridge", "tower", "castle", "palace", "center", "centre", "shopping", "mall", "market", "hotel", "restaurant", "cafe", "bar", "school", "university", "college", "hospital", "library", "hall", "house", "building", "memorial", "statue", "fountain", "gate", "lake", "river", "mountain", "beach", "island", "port", "harbour", "harbor", "airport", "bus", "stop", "city", "town", "village", "old", "new", "north", "south", "east", "west", "central", "national", "state", "public", "main", "saint", "st", "plaza", "place", "via", "rue", "strasse", "calle", "piazza", "location", "photo", "view", "interior", "exterior", "entrance", "sign", "front", "festival", "fest", "event", "collection", "exhibition", "gallery", "theatre", "theater", "cinema", "office", "police", "fire", "community", "club"}
+
+
+def _spans(phrase: str, max_len: int = 3) -> list[str]:
+    """Contiguous word spans of a phrase (1-3 words) that aren't only generic words."""
+
+    words = [w.strip(".,;:!?()[]\"'«»“”") for w in phrase.split()]
+    words = [w for w in words if w]
+    out = []
+    for n in range(1, max_len + 1):
+        for i in range(len(words) - n + 1):
+            span = words[i:i + n]
+            if all(w.lower() in GENERIC or len(w) < 3 for w in span):
+                continue
+            out.append(" ".join(span))
+    return out
+
+
+def _greedy(lat: np.ndarray, lon: np.ndarray, w: np.ndarray, top: int = TOP) -> list[tuple[int, np.ndarray]]:
+    """text_search._cluster's greedy 25 km clustering: (centre index, member indices) by weight."""
+
+    d = _hav(lat[:, None], lon[:, None], lat[None], lon[None]) < CLUSTER_KM
+    alive, out = np.ones(len(lat), bool), []
+    while alive.any() and len(out) < top:
+        score = d @ (w * alive)
+        score[~alive] = -1
+        c = int(score.argmax())
+        members = np.flatnonzero(d[c] & alive)
+        alive[members] = False
+        out.append((c, members))
+    return out
+
+
+def _sample(n: int, key: str) -> np.ndarray:
+    if n <= SAMPLE:
+        return np.arange(n)
+    rng = np.random.default_rng(int(hashlib.md5(key.encode()).hexdigest()[:8], 16))
+    return np.sort(rng.choice(n, SAMPLE, replace=False))
+
+
+class _Searcher:
+    def __init__(self) -> None:
+        import sqlite3
+
+        from ..tools.maps import _osm_path
+        from .text_search import TextSearch
+
+        self.ts = TextSearch()
+        self.osm = sqlite3.connect(f"file:{_osm_path()}?mode=ro", uri=True, check_same_thread=False)
+
+    def _osm(self, words: list[str]) -> tuple[list, int, bool]:
+        for loose in (False, True):
+            if loose and len(words) < 2:
+                break
+            match = " ".join(words) if loose else '"' + " ".join(words) + '"'
+            try:
+                ids = [r for (r,) in self.osm.execute(f"SELECT rowid FROM names WHERE names MATCH ? LIMIT {MAX_MATCHES}", (match,)).fetchall()]
+            except Exception:  # noqa: BLE001  (FTS syntax)
+                return [], 0, False
+            if ids:
+                n = len(ids)
+                ids = [ids[i] for i in _sample(n, match)]
+                rows = []
+                for s in range(0, len(ids), 900):
+                    chunk = ids[s:s + 900]
+                    rows += self.osm.execute(f"SELECT key, lat, lon FROM places WHERE rowid IN ({','.join('?' * len(chunk))})", chunk).fetchall()
+                return rows, n, loose
+        return [], 0, False
+
+    def query(self, q: str, exclude) -> dict:
+        """Per source: match count, loose flag, top clusters [lat, lon, weight, share, rank, exact, cc]."""
+
+        from .text_search import norm
+
+        kind, places, photos, counts, hint, loose = self.ts.matches(q, None, exclude)
+        qn = norm(q)
+        out = {"kind": kind, "hint": hint, "src": {}}
+        n_places = counts.get("places", 0) or next((v for k, v in counts.items() if k.startswith("places")), 0)
+        groups = {"GeoNames": [p for p in places if not p[5]], "Overture": [p for p in places if p[5]]}
+        pts = {s: (np.asarray([p[1] for p in g], float), np.asarray([p[2] for p in g], float), np.ones(len(g)),
+                   np.asarray([norm(p[0]) == qn for p in g]), round(n_places * len(g) / max(len(places), 1)), loose) for s, g in groups.items()}
+        if photos:
+            per_user = collections.Counter(p[1] for p in photos)
+            pts["Flickr"] = (np.asarray([p[2] for p in photos], float), np.asarray([p[3] for p in photos], float),
+                             np.asarray([1.0 / per_user[p[1]] for p in photos]), np.zeros(len(photos), bool), counts.get("Flickr photos", len(photos)), loose)
+        if kind == "name" and qn:
+            rows, n, lo = self._osm(qn.split())
+            if rows:
+                pts["OSM"] = (np.asarray([r[1] for r in rows], float), np.asarray([r[2] for r in rows], float), np.ones(len(rows)),
+                              np.asarray([r[0] == qn for r in rows]), n, lo)
+        for s, (la, lon, w, exact, n, lo) in pts.items():
+            if not len(la):
+                continue
+            total, cl = w.sum(), []
+            for rank, (c, m) in enumerate(_greedy(la, lon, w)):
+                lab = self.ts.label(float(la[c]), float(lon[c]))
+                cl.append([round(float(la[c]), 5), round(float(lon[c]), 5), round(float(w[m].sum()), 3), round(float(w[m].sum() / total), 4), rank,
+                           int(exact[m].sum()), lab.rsplit(", ", 1)[-1] if ", " in lab else ""])
+            out["src"][s] = {"n": int(n), "loose": bool(lo), "clusters": cl}
+        return out
+
+
+def _work(job):
+    global _S
+    try:
+        _S  # noqa: B018
+    except NameError:
+        _S = _Searcher()
+    image_id, queries, own = job
+    return {"image_id": image_id, "queries": [{"q": q, "from": src, **_S.query(q, own)} for q, src in queries]}
+
+
+def _queries(phrases: dict[str, str]) -> list[tuple[str, str]]:
+    from .text_search import norm
+
+    out, seen = [], set()
+    for q, src in phrases.items():
+        out.append((q, src))
+        seen.add(norm(q))
+    for q in phrases:
+        for s in _spans(q):
+            if norm(s) and norm(s) not in seen:
+                seen.add(norm(s))
+                out.append((s, "span"))
+    return out
+
+
+def gather(tag: str, workers: int = 4) -> None:
+    """The text searches of every photo of a Commons photo set (its 4B clues, observe extract + queries on the base set) -> SETS[tag][0],
+    appended per photo, resumable."""
+
+    import os
+    import time
+    from concurrent.futures import ProcessPoolExecutor
+
+    from .region_evidence import _owns, _raw_phrases
+
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(var, "1")
+    photos = _photos(tag)
+    phrases = _raw_phrases(tag, "4b")
+    owns = _owns(photos)
+    dst = SETS[tag][0]
+    done = {json.loads(line)["image_id"] for line in dst.read_text().splitlines()} if dst.exists() else set()
+    jobs = [(e["image_id"], _queries(phrases.get(e["image_id"], {})), owns[e["image_id"]]) for e in photos if e["image_id"] not in done]
+    print(f"{len(jobs)} photos to search ({len(done)} done), {sum(len(j[1]) for j in jobs)} queries", flush=True)
+    t0 = time.time()
+    with dst.open("a") as f, ProcessPoolExecutor(workers) as pool:
+        for n, rec in enumerate(pool.map(_work, jobs, chunksize=2), 1):
+            f.write(json.dumps(rec) + "\n")
+            f.flush()
+            if n % 500 == 0:
+                print(f"{n} photos {time.time() - t0:.0f}s", flush=True)
+    print(f"-> {dst}", flush=True)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------- the ranker
@@ -229,8 +398,8 @@ def _fit_predict(Xtr, Mtr, Ytr, Xte, Mte, seed: int = 0, epochs: int = 400, wd: 
 class Text:
     """The cached text candidates as padded arrays, ranker probabilities that never saw given folds, and per-token text features."""
 
-    def __init__(self) -> None:
-        z = np.load(CACHE)
+    def __init__(self, tag: str = TAG) -> None:
+        z = np.load(_cache(tag))
         self.fold, self.continent, self.ids = z["fold"], z["continent"], z["ids"]
         coff, noff = z["coff"], z["noff"]
         self.n = len(coff) - 1
@@ -519,12 +688,10 @@ def _fit_adapter(L, F, K, R, TL, TF, TK, photos, l2: float = 1e-2, steps: int = 
     a = torch.ones(1, requires_grad=True)
     b = torch.full((1,), -2.0, requires_grad=True)
 
-    finite = np.isfinite(L)
-    L0 = np.where(finite, L, 0.0)
-
-    def scores(idx):
+    def scores(idx, L=L, F=F, R=R, TL=TL, TF=TF):
+        finite = np.isfinite(L[idx])
         r = t(R[idx])[:, None, None]
-        area = torch.where(torch.as_tensor(finite[idx]), a * t(L0[idx]) + (t(F[idx]) * r) @ w, -1e9)
+        area = torch.where(torch.as_tensor(finite), a * t(np.where(finite, L[idx], 0.0)) + (t(F[idx]) * r) @ w, -1e9)
         tok = torch.where(torch.as_tensor((TL[idx] > 0.5) & R[idx][:, None]), b + t(TF[idx]) @ w, -1e9)
         return torch.cat([area, tok], 1)
 
@@ -542,12 +709,27 @@ def _fit_adapter(L, F, K, R, TL, TF, TK, photos, l2: float = 1e-2, steps: int = 
         loss.backward()
         opt.step()
 
-    def choose(sel):
+    def choose(sel, other=None):
+        """Chosen km of photos `sel` of the fitted set, or of another set's (L, F, K, R, TL, TF, TK)."""
+        L_, F_, K_, R_, TL_, TF_, TK_ = other or (L, F, K, R, TL, TF, TK)
         with torch.no_grad():
-            pick = scores(np.asarray(sel)).argmax(1).numpy()
-        return km[np.asarray(sel), pick]
+            pick = scores(np.asarray(sel), L_, F_, R_, TL_, TF_).argmax(1).numpy()
+        return np.concatenate([K_, TK_], 1)[np.asarray(sel), pick]
 
     return choose, (w.detach().numpy(), a.item(), b.item())
+
+
+def _adapter_arrays(cols: np.ndarray, tokens: list) -> tuple:
+    """_text_inputs' output as the adapter's arrays: columns per (area, unzoomed / zoomed) option, text-place token flags, columns, km."""
+
+    n = len(tokens)
+    TL = np.zeros((n, N_TEXT_TOKENS))
+    TF = np.zeros((n, N_TEXT_TOKENS, len(TEXT_COLS)), np.float32)
+    TK = np.full((n, N_TEXT_TOKENS), np.inf)
+    for i, toks in enumerate(tokens):
+        for j, (_, _, km, tc) in enumerate(toks):
+            TL[i, j], TF[i, j], TK[i, j] = 1.0, tc, km
+    return np.concatenate([cols, cols], 1), TL, TF, TK
 
 
 def adapter(seeds: int) -> None:
@@ -571,14 +753,7 @@ def adapter(seeds: int) -> None:
         new = np.zeros(n)
         weights = []
         for k in range(5):
-            cols, tokens = _text_inputs(cm_t0, text, text.probs((k,)), photos)
-            F = np.concatenate([cols, cols], 1)
-            TL = np.zeros((n, N_TEXT_TOKENS))
-            TF = np.zeros((n, N_TEXT_TOKENS, len(TEXT_COLS)), np.float32)
-            TK = np.full((n, N_TEXT_TOKENS), np.inf)
-            for i, toks in enumerate(tokens):
-                for j, (_, _, km, tc) in enumerate(toks):
-                    TL[i, j], TF[i, j], TK[i, j] = 1.0, tc, km
+            F, TL, TF, TK = _adapter_arrays(*_text_inputs(cm_t0, text, text.probs((k,)), photos))
             assert F.shape[1] == 2 * h
             choose, wt = _fit_adapter(L, F, K, R, TL, TF, TK, np.flatnonzero(text.fold != k))
             held = np.flatnonzero(text.fold == k)
@@ -601,6 +776,81 @@ def adapter(seeds: int) -> None:
     text_ = "\n".join(lines)
     print(text_, flush=True)
     (OUT / f"combined_head_adapter_{TAG}.txt").write_text(text_ + "\n")
+
+
+# ---------------------------------------------------------------------------------------------------------------------------- step B
+
+
+def transfer(weight: int, seeds: int) -> None:
+    """Step B: Commons training photos from the commons_train pool (no commons26 uploader), evaluated on all of commons26 dev (no CV) and on
+    dev3k. Cells: the MP16 head (base); MP16 + commons_train rows (x weight) without and with text columns / text-place tokens; the frozen MP16
+    head with the text adapter fitted on commons_train. Text rankers: out of fold (by uploader) on commons_train, trained on all of
+    commons_train for commons26 dev."""
+
+    import torch
+
+    aa.CKPT_TAG, aa.ONE_KM = CKPT, 0.5
+    ct_text, cd_text = Text("commons_train"), Text(TAG)
+    ct_photos, cd_photos = _photos("commons_train"), _photos(TAG)
+    tr = aa._data("train")
+    ct = aa._data("commons_train", stats=tr["stats"])
+    cd = aa._data(TAG, stats=tr["stats"])
+    dv = aa._data("dev3k", stats=tr["stats"])
+    cd["base_km"] = aa._released_own_km(TAG, CKPT)
+    assert ct["n"] == ct_text.n and cd["n"] == cd_text.n
+    n_tr, n_ct, n_cd = tr["n"], ct["n"], cd["n"]
+    P_ct = ct_text.probs(())
+    P_cd = np.where(cd_text.M, _fit_predict(ct_text.X, ct_text.M, ct_text.Y, cd_text.X, cd_text.M), 0.0)
+    print(f"step B: {n_tr} MP16 train + {n_ct} commons_train photos ({len(set(ct_text.fold.tolist()))} folds), weight {weight}; "
+          f"eval {n_cd} commons26 dev, {dv['n']} dev3k; {seeds} seed(s)", flush=True)
+    for name, t, P in (("commons_train", ct_text, P_ct), ("commons26 dev", cd_text, P_cd)):
+        top = np.where(t.M.any(1), t.Y[np.arange(t.n), np.where(t.M, P, -1).argmax(1)], False)
+        print(f"  text ranker on {name}: a right candidate {t.Y.any(1).mean():.1%}, top-1 right {top.mean():.1%}", flush=True)
+    res = collections.defaultdict(dict)
+    dev3k = collections.defaultdict(dict)
+    mp16 = np.arange(n_tr)
+    ct_cols, ct_tokens = _text_inputs(_with_text(ct, None, None), ct_text, P_ct, ct_photos)
+    cd_cols, cd_tokens = _text_inputs(_with_text(cd, None, None), cd_text, P_cd, cd_photos)
+    no_tok = lambda d: [[] for _ in range(d["n"])]
+    cells = {"base": (_with_text(tr, None, None), mp16, _with_text(cd, None, None), _with_text(dv, None, None)),
+             "+ctrain": (_concat(_with_text(tr, None, None), _with_text(ct, None, None)), None, _with_text(cd, None, None), _with_text(dv, None, None)),
+             "+ctrain+text": (_concat(_with_text(tr, None, no_tok(tr)), _with_text(ct, ct_cols, ct_tokens)), None,
+                              _with_text(cd, cd_cols, cd_tokens), _with_text(dv, None, no_tok(dv)))}
+    fit_mix = np.concatenate([mp16, np.repeat(n_tr + np.arange(n_ct), weight)])
+    for s in range(seeds):
+        for cell, (train_d, idx, cd_d, dv_d) in cells.items():
+            net, pols = _fit(train_d, fit_mix if idx is None else idx, 7 + 100 * s)
+            for key, v in _keep(aa.evaluate(net, pols, cd_d, np.arange(n_cd), cd["base_km"])).items():
+                res[cell].setdefault(key, []).append(v)
+            for key, v in _keep(aa.evaluate(net, pols, dv_d, np.arange(dv["n"]), dv["base_km"])).items():
+                dev3k[cell].setdefault(key, []).append(v)
+            if cell == "base":  # the text adapter on this frozen head: fitted on commons_train's final options, applied to commons26 dev
+                L, K, R = _final_options(net, pols[0.0], _with_text(ct, None, None))
+                F, TL, TF, TK = _adapter_arrays(ct_cols, ct_tokens)
+                choose, wt = _fit_adapter(L, F, K, R, TL, TF, TK, np.arange(n_ct))
+                Lc, Kc, Rc = _final_options(net, pols[0.0], _with_text(cd, None, None))
+                Fc, TLc, TFc, TKc = _adapter_arrays(cd_cols, cd_tokens)
+                km = choose(np.arange(n_cd), (Lc, Fc, Kc, Rc, TLc, TFc, TKc))
+                res["adapter"].setdefault("RL policy, lambda 0", []).append(km)
+                print(f"  seed {s} adapter weights " + ", ".join(f"{c} {x:+.2f}" for c, x in zip(TEXT_COLS, wt[0])) + f"; a {wt[1]:.2f}, b {wt[2]:+.2f}",
+                      flush=True)
+            torch.cuda.empty_cache()
+            print(f"seed {s} {cell} done", flush=True)
+    lines = [f"combined head, step B (train MP16 + commons_train x{weight}; eval all of commons26 dev and dev3k; {seeds} seed(s); % < 25 km)"]
+    conts = sorted(set(cd_text.continent))
+    for name, r, d in (("commons26 dev", res, cd), ("dev3k", dev3k, dv)):
+        lines.append(f"\n {name}: released Pinpoint {np.mean(d['base_km'] < 25):.1%}, retrained top-1 {np.mean(d['rt_base_km'] < 25):.1%}")
+        base = {k: np.mean([v < 25 for v in vs], 0) for k, vs in r["base"].items()}
+        for cell in r:
+            for key, vs in r[cell].items():
+                ok, ok1 = np.mean([v < 25 for v in vs], 0), np.mean([v < 1 for v in vs], 0)
+                diff = ok - base[key]
+                bal = f"  continent-balanced {np.mean([ok[cd_text.continent == c].mean() for c in conts]):5.1%}" if name == "commons26 dev" else ""
+                lines.append(f"   {cell:14s} {key:38s} < 25 km {ok.mean():6.1%} ({100 * diff.mean():+.2f}, SE {100 * diff.std() / math.sqrt(len(diff)):.2f}; "
+                             f"fixes {np.sum(diff > 0):.0f}, breaks {np.sum(diff < 0):.0f})  < 1 km {ok1.mean():5.1%}{bal}")
+    text_ = "\n".join(lines)
+    print(text_, flush=True)
+    (OUT / f"combined_head_stepB_w{weight}.txt").write_text(text_ + "\n")
 
 
 # ---------------------------------------------------------------------------------------------------------------------------- stacking (dev3k)
@@ -689,18 +939,23 @@ def stack(seeds: int) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("features", "cv", "stack", "adapter"))
+    ap.add_argument("cmd", choices=("gather", "features", "cv", "stack", "adapter", "transfer"))
+    ap.add_argument("--tag", default=TAG, choices=tuple(SETS), help="gather / features: the Commons photo set")
     ap.add_argument("--weight", type=int, default=10, help="oversampling of the commons26 dev training photos")
     ap.add_argument("--seeds", type=int, default=2)
     ap.add_argument("--cells", nargs="*", default=("+commons", "+commons+text"))
     ap.add_argument("--no-tokens", action="store_true", help="text columns only, no text-place tokens")
     a = ap.parse_args()
-    if a.cmd == "features":
-        features()
+    if a.cmd == "gather":
+        gather(a.tag)
+    elif a.cmd == "features":
+        features(a.tag)
     elif a.cmd == "stack":
         stack(a.seeds)
     elif a.cmd == "adapter":
         adapter(a.seeds)
+    elif a.cmd == "transfer":
+        transfer(a.weight, a.seeds)
     else:
         cv(a.weight, a.seeds, tuple(a.cells), not a.no_tokens)
 
