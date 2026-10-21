@@ -49,3 +49,12 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     lesson 113 had no MegaLoc signal. Also, `search_tree._fit` ran only 16-250 Adam steps on small sets (now >= 2,000); S2b re-run with it.
 
 ## Value-agent track (V)
+V1. **Read place names on the pipeline's wrong photos are mostly generic or not the photo's place; misreads are few** (`scripts/name_miss_probe.py`;
+    setft_own, `--one-km 0.5` RL lambda 0 answers; each name classed with `tools.maps` (OSM + GeoNames + Overture); luck = the same names near
+    another photo's truth, lesson 120). dev3k: wrong with a read place name 196 photos (6.5 pts); some name within 25 km of the truth 2.9 pts vs
+    luck 1.4; specific names (<= 3 countries, <= 50 matches) 0.3 pts vs 0.0; a close misspelling (rapidfuzz >= 80) of an OSM name within 5 km
+    of the truth 0.3 pts (half spurious: Aarau / vaara); found only elsewhere 2.2 pts (56% of those names not in the verbatim text: inferred lists,
+    e.g. a dozen Swiss cities), found nowhere 1.2. commons26 dev: 178 photos (18.2 pts); near the truth 8.9 vs luck 1.4, specific 2.6 vs 0.1;
+    misspelling 1.3 (real ones: "Gregorio Arzate" / Aznárez, 昆山门东站 / 艮山门东站, "Hanka Nevada Road" / Nevala); elsewhere 4.2; nowhere 3.8. Of the 160
+    wrong commons26 dev photos whose text names the place: name near truth 62, misspelt 13, nowhere 25, elsewhere 16, text but no place name 39,
+    nothing read 5. MP16-like photos: better OCR has < 1 pt to fix; commons26: re-reads alone can't reach VALUE_PLAN's 3-pt bar.

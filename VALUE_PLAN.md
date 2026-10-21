@@ -27,8 +27,9 @@ Read `LEARNINGS.md` first; lesson N is in `docs/archive/LESSONS_1-137.md#lN`, le
   - Resolution: dev3k (MP16) photos are 640 px on the long side (0.31 MP), yfcc4k 500 px (0.17 MP), im2gps3k 1024 px (0.79 MP), all within
     the 4B's 0.79 MP budget, so it already sees every pixel and a crop re-read adds none (only upscaling). commons26 photos are 1280-1707 px
     (1.23 MP median), downscaled ~35% today: crops bring real pixels there.
-  - But the pool is not empty: the 4B reads a place name on 12.8% of the pipeline's wrong dev3k photos (6.7 pts of dev3k; commons26 dev
-    24.5%, 18.3 pts). Why those names don't geocode right (misread, ambiguous, or not the photo's place: brands, events) is unmeasured.
+  - Why read names don't place the wrong photos (lesson V1): on dev3k (6.5 pts of photos) the names are generic or not the photo's place.
+    A specific name (<= 3 countries) exists near the truth on 0.3 pts, misreads <= 0.3 pts, and 56% of "elsewhere" names aren't in the
+    verbatim text at all (inferred lists such as Swiss cities). On commons26 dev: specific right names 2.6 pts (luck 0.1), misreads <= 1.3.
   - This track does not target dev3k's wrong-area gap (area oracle 61.7).
 
 ## Ruled out by past lessons: not in this plan
@@ -53,31 +54,34 @@ Qwen3.5-9B / Qwen3.6-35B-A3B as readers on commons26 (the 27B was only tried on 
 at matched reader-call budget.
 
 ## Steps (cheap before expensive; each has a pre-declared bar)
-**V1. Value network on today's actions (refactor, no gain expected).** Replace the answer head + REINFORCE with one Q network on the same
+**Step 1. Value network on today's actions (refactor, no gain expected).** Replace the answer head + REINFORCE with one Q network on the same
 cached reveals (zoom k / read / recognise / commit (area, point option)); reuse the `_net` encoder with a commit output per token and an
 output per information action. Commit values by regression on outcomes; information values by fitted Q iteration (target: minus cost plus
 the max over the next state's values, from a target network). Every outcome is cached, so states are sampled freely (random partial reveal
 sets plus the network's own rollouts): no offline-RL coverage problem. Never fit targets from hindsight search over outcomes (it sees the truth).
 Bar: lambda 0 within +-0.3 of the current pipeline on dev3k (47.3 / 30.8 with `--one-km 0.5`) and commons26 dev (25.2), and a cost curve at
-or above REINFORCE's. If it fails, keep the current head; V2-V4 still run on it.
+or above REINFORCE's. If it fails, keep the current head; steps 2-4 still run on it.
 
-**V2. Do better reads exist? (the go / no-go for everything after).** commons26 dev, 977 photos (the 282 whose text names the place reported
+**Step 2. Do better reads exist? (the go / no-go for everything after).** commons26 dev, 977 photos (the 282 whose text names the place reported
 apart). Readers: the 4B (current), Qwen3.5-9B, Qwen3.6-35B-A3B FP8. Reads: (a) the full photo with a box per string (Qwen grounding JSON);
 (b) each box re-read from a full-resolution crop; (c) the 0.6-crop grid of `observe crops` as a box-free fallback. Every string goes through
 the lesson 119 four-source search unchanged. Measure, per reader and read type, right candidates (< 25 km) on pipeline-wrong photos that the
 current 4B candidate list lacks, net of luck (the same candidates against another photo's truth, lesson 120), and the lesson 119 ranker's
 top-1 on them. Bar: >= 3 pts of dev net of luck in new right candidates (lesson 121 converted a +4.2 perfect switch into +0.9, so less can't
 reach 1 pt). Also log each reader's latency per call: these become the action costs. Below the bar: stop the track and record why.
-Scope check (measure, not choose): the winning reader on dev3k's wrong photos with a read place name (6.7 pts), same metric, to test the
+Scope check (measure, not choose): the winning reader on dev3k's wrong photos with a read place name (6.5 pts), same metric, to test the
 "< 1 pt off commons26" expectation.
+Expect it to be tight (lesson V1): of the 160 wrong commons26 dev photos whose text names the place, a read name that is a close misspelling
+of a name near the truth covers <= 13 (1.3 pts), so crop re-reads alone can't reach 3 pts. The rest has to come from the 25 with names found
+nowhere (garbled or not in the gazetteers), the 39 where text was read but no place name extracted, and the larger readers.
 
-**V3. Everything at once.** Cache every V2 action on commons26 dev, the Commons training pool (`commons_train`, built by the combined-head
-session: consume, don't rebuild) and a 10k MP16 train sample (missing-indicators elsewhere). Commit values (the V1 network, or lesson 140's head
-if V1 failed) see all results. Bar: >= +1 pt < 25 km on commons26 dev over lesson 140's head (uploader folds, Commons rows x3, 3 seeds; SE
+**Step 3. Everything at once.** Cache every step 2 action on commons26 dev, the Commons training pool (`commons_train`, built by the combined-head
+session: consume, don't rebuild) and a 10k MP16 train sample (missing-indicators elsewhere). Commit values (the step 1 network, or lesson 140's head
+if step 1 failed) see all results. Bar: >= +1 pt < 25 km on commons26 dev over lesson 140's head (uploader folds, Commons rows x3, 3 seeds; SE
 ~0.6), dev3k no worse than -0.3.
 
-**V4. The outcome-dependent policy.** Actions: read (4B full photo), re-read box i (4B crop), escalate box i (the V2 winner), zoom k, recognise,
-commit; searches run automatically after every read. Costs from V2's latencies (a reader call >> a search). Policy = argmax Q, lambda swept.
+**Step 4. The outcome-dependent policy.** Actions: read (4B full photo), re-read box i (4B crop), escalate box i (the step 2 winner), zoom k, recognise,
+commit; searches run automatically after every read. Costs from step 2's latencies (a reader call >> a search). Policy = argmax Q, lambda swept.
 Compare at matched reader calls: fixed recipes (read once; read + re-read every box; everything), gates (re-read only strings with 0 or
 > 1,000 matches; escalate only when the re-read still fails), and an open-loop control (same actions chosen before seeing any result).
 Bar: >= 1 pt over the best recipe / gate at the same budget, or the same accuracy with <= 60% of its calls, on commons26 dev; and the
