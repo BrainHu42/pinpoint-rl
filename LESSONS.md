@@ -77,5 +77,13 @@ R10. **Matching commons26 photos against GLDv2 landmarks rarely finds the right 
     MegaLoc 7.0). The matcher works on GLDv2 itself (a held-out GLDv2 photo's own landmark is MegaLoc's top-1 photo 70.0%, top 10 80.2%), so
     the commons26 photos show other things: a gym inside a listed hall, a procession statue, details, not the landmark's canonical views, and
     GLDv2 categories are noisy (colour tables, door knobs). Confidence is informative (right vs wrong top landmark AUC 0.83 MegaLoc, 0.69 SigLIP2).
+    Full index (`scripts/gldv2_index.py`, `gldv2_eval.py`, `gldv2_head.py`, `gldv2_after_index.sh`): all 184k landmarks with coordinates, <= 50
+    photos each, 2.71M photos (stream 49 min, MegaLoc 4.1 h at ~210 / s with the CPUs shared, 46 GB fp16 in 28 shards; search ~6 min per set).
+    dev3k holds Flickr photos copied to Commons (top-1 similarity 0.987 at the 99.9th percentile, commons26 dev max 0.667): hits > 0.7 dropped.
+    Rules with the threshold from the other set: the 1 km refinement is commons26-only (in-sample +0.8-1.2 at 1 km; on dev3k never above +0.07,
+    the commons26 threshold -1.10 there: dev3k answers already within 1 km get moved off), the 25 km switch loses everywhere. As answer-head
+    columns (per area: best match within 25 km, log hits, any, best minus top; visible in every state; 2 seeds): dev3k +0.62 fixed recipe / +0.70
+    RL (SE 0.26; 80 fixes / 49 breaks), commons26 dev (uploader folds, +commons weight 3) +0.92 / +0.67 (SE 0.43): consistent but sub-threshold,
+    the size of MegaLoc per area (lesson 93). The test sets were not run (the pre-agreed condition, >= 1 pt on commons26 dev, wasn't met).
 
 ## Search-agent track (S)
