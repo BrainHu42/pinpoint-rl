@@ -21,9 +21,15 @@ Read `LEARNINGS.md` first; lesson N is in `docs/archive/LESSONS_1-137.md#lN`, le
   knowledge cases (out of scope). R12 concluded the limit on commons26 is what the 4B reads, not how its reads are searched. Re-reading the
   text box at full resolution when its search fails, or with a larger reader, is an action whose value depends on the last outcome: the
   setting where a policy can beat fixed recipes (main point 6).
-- **Scope:** commons26 (fresh photos). On MP16-like photos text sits where retrieval already succeeds (main point 3; lesson 123: a right
-  search result on uncovered photos 1.3% of dev3k vs 7.0% of commons26 dev), so expect ~0 on dev3k / im2gps3k / yfcc4k. This track does not
-  target dev3k's wrong-area gap (area oracle 61.7).
+- **Scope:** commons26 (fresh photos); expect small gains (< 1 pt) on dev3k / im2gps3k / yfcc4k, measured, not assumed:
+  - On MP16-like photos text sits where retrieval already succeeds (main point 3): names the 4B reads geocode within 25 km on 0.5% of
+    misses vs 10% of hits (lesson 110); a right search result on photos no area covers 1.3% of dev3k vs 7.0% of commons26 dev (lesson 123).
+  - Resolution: dev3k (MP16) photos are 640 px on the long side (0.31 MP), yfcc4k 500 px (0.17 MP), im2gps3k 1024 px (0.79 MP), all within
+    the 4B's 0.79 MP budget, so it already sees every pixel and a crop re-read adds none (only upscaling). commons26 photos are 1280-1707 px
+    (1.23 MP median), downscaled ~35% today: crops bring real pixels there.
+  - But the pool is not empty: the 4B reads a place name on 12.8% of the pipeline's wrong dev3k photos (6.7 pts of dev3k; commons26 dev
+    24.5%, 18.3 pts). Why those names don't geocode right (misread, ambiguous, or not the photo's place: brands, events) is unmeasured.
+  - This track does not target dev3k's wrong-area gap (area oracle 61.7).
 
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
@@ -62,6 +68,8 @@ the lesson 119 four-source search unchanged. Measure, per reader and read type, 
 current 4B candidate list lacks, net of luck (the same candidates against another photo's truth, lesson 120), and the lesson 119 ranker's
 top-1 on them. Bar: >= 3 pts of dev net of luck in new right candidates (lesson 121 converted a +4.2 perfect switch into +0.9, so less can't
 reach 1 pt). Also log each reader's latency per call: these become the action costs. Below the bar: stop the track and record why.
+Scope check (measure, not choose): the winning reader on dev3k's wrong photos with a read place name (6.7 pts), same metric, to test the
+"< 1 pt off commons26" expectation.
 
 **V3. Everything at once.** Cache every V2 action on commons26 dev, the Commons training pool (`commons_train`, built by the combined-head
 session: consume, don't rebuild) and a 10k MP16 train sample (missing-indicators elsewhere). Commit values (the V1 network, or lesson 140's head
