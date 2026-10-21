@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."  # repo root
 export HF_HUB_OFFLINE=1 PYTHONPATH=src COMMONS_OUT=data/pinpoint/commons_train
 ckpt=artifacts/pinpoint_train/setft_own/checkpoints/ckpt_final.pt
 py() { systemd-run --user --scope --quiet -p MemoryMax=${MEM:-20G} -p MemorySwapMax=0 env PYTHONPATH=src COMMONS_OUT=$COMMONS_OUT \
-  PINPOINT_RERANKER_CKPT=${CKPT_ENV:-} .venv/bin/python -m "$@"; }
+  ${CKPT_ENV:+PINPOINT_RERANKER_CKPT=$CKPT_ENV} .venv/bin/python -m "$@"; }  # the released reranker until CKPT_ENV is set
 need() { [ -s "$1" ] || { echo "missing $1"; exit 1; }; }
 tag=commons_train
 a=artifacts/agent
