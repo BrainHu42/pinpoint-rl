@@ -47,3 +47,12 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     Found on the way: `megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (Oct 16, before the bd2d12d path fix)
     are blank (200 photos -> 4 distinct vectors, cosine 0.99999); only the commons26dev files were redone, so the commons26 test run of
     lesson 113 had no MegaLoc signal. Also, `search_tree._fit` ran only 16-250 Adam steps on small sets (now >= 2,000); S2b re-run with it.
+
+139. **Map attributes read from the photo's SigLIP2 embedding don't separate close calls (no-go), though the attributes at the truth would**
+    (`scripts/geodata_grid.py`, `scripts/geodata_check.py`; dev3k; close calls = tiers 1, 2, 4 of `viz/errors.py`, 397 photos). 21 attributes
+    on a 2.5' grid (WorldClim elevation / relief / 6 bioclim, EarthEnv 12 land-cover classes, coast distance); an area = its 25 km disc;
+    score = Gaussian log-likelihood of the photo's attributes under the disc. Ceiling (map at the truth): AUC right over chosen 0.91 (climate
+    alone 0.98), re-ranking +8.5 pts. Realistic (MLP probe on SigLIP2, 400k MP16 photos, dev3k photographers out; held-out R^2 0.33-0.70):
+    AUC 0.47 (tier 1 0.52, tier 2 0.57, tier 4 0.41), 0.59 on correct photos; re-ranking cross-fitted +0.07 pts (14 fixes / 12 breaks).
+    Why: the probe sees the same embedding as retrieval, so it predicts the environment of the place the photo looks like, which on a close
+    call is the chosen area's. Attributes help only if read by something independent of the embedding (a VLM, text), not a probe on it.
