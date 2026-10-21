@@ -55,5 +55,15 @@ R8. **The answer head is not data-limited** (`scripts/head_learning_curve.py`; s
     point, a different random subset per seed). dev3k < 25 km by training photos: 4.4k 47.2, 8.8k 46.9, 17.7k 47.4, all 35.4k 47.8: about +0.5
     for 8x the data, so more MP16-style training photos won't buy 1 pt (lesson 125 said as much for near-misses). commons26 needs new evidence
     or in-domain rows (lesson 140), not more of the same.
+R9. **GLDv2 as a landmark gallery, ceiling without images: it passes the pre-declared bar, but it is densest where the wrong answers are**
+    (`scripts/gldv2_ceiling.py`, `scripts/gldv2_ceiling_control.py`; Google Landmarks v2 train metadata from its public S3 bucket, 203k landmarks / 4.13M Commons photos;
+    coordinates via Wikidata, P373 or the category's Commons sitelink, 13 min of SPARQL: 184k landmarks / 3.77M photos, median 8 photos per
+    landmark; commons26 dev). A landmark within 0.3 / 1 / 5 km of the truth: landmark tier 29.7 / 49.7 / 77.3%, the tier's pipeline misses
+    (173) 20.2 / 41.0 / 71.1% (bar: >= 30% within 1 km), region tier 10.9 / 24.7 / 52.9. Pipeline misses with a landmark within 1 km: 161
+    photos = 16.5 pts of all dev (0.3 km: 70 = 7.2). But GLDv2 doesn't fill MP16's gaps: wrong geolocatable photos with no MP16 photo within
+    1 km (240) have a GLDv2 landmark that close on 7.9%. And landmarks lie near the pipeline's wrong answer more often than near the truth
+    (1 km, landmark-tier misses: 61.8 vs 41.0%; a landmark near the truth but none near the answer 6.9%): wrong picks sit in landmark-rich
+    places, so proximity is no signal and only same-landmark image matching (instance retrieval, the task GLDv2 was built for, many views:
+    median 30-47 photos per nearby landmark) can help. Step 2 (download ~500 GB, embed, search) tests that.
 
 ## Search-agent track (S)
