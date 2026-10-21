@@ -112,4 +112,13 @@ R12. **Refining text searches with what the 4B already read doesn't rank the rig
     Right text answers sit where the pipeline is already right (top-1 right on pipeline misses 4.4-4.7%). The limit is what the 4B reads,
     not how it searches; an agent that only recombines its reads has nothing to learn.
 
+R13. **Dense Commons imagery doesn't verify text places either: even the true location loses to the wrong pick** (`scripts/gldv2_verify_proxy.py`;
+    lesson 138's 116 commons26 dev photos with a right text place and a wrong pipeline answer; GLDv2's 2.71M Commons landmark photos stand in
+    for a dense Commons crawl, which upload.wikimedia.org's bot limit blocks; MegaLoc, hits > 0.7 dropped). Best match among gallery photos
+    within 1 / 10 / 25 km: the right text place beats the ranker's wrong pick on 42 / 36 / 34% where both are covered, and the truth itself
+    on 42 / 36 / 34% (coverage within 1 km: right 41%, truth 44%, wrong pick 72%). Median best similarity 0.09-0.14 everywhere (a covered view
+    matches at 0.47-0.58, lesson 138): these photos' views aren't in the gallery, and denser wrong places win on chance maxima. With lessons
+    135 (YFCC Flickr), 138 (live Commons, Mapillary) and R7 (Commons coverage), imagery near a proposed place is closed as a verifier for
+    commons26. Done while choosing a live tool for an RL agent: a Flickr API key now needs a Pro subscription.
+
 ## Search-agent track (S)
