@@ -91,4 +91,13 @@ R10. **Matching commons26 photos against GLDv2 landmarks rarely finds the right 
     107 fixes / 69 breaks): mostly overlapping, still under 1 pt. The test
     sets were not run (the pre-agreed condition, >= 1 pt on commons26 dev, wasn't met).
 
+R11. **The answer head's own structure is not the lever, but it can be simpler** (`scripts/structure_probe.py`; dev3k, setft_own, read + recognise
+    + zoom all, 3 seeds, vs the current `--one-km 0.5` head at 47.4 / 30.6). Trained on the state it is used in instead of random reveals and
+    zooms: 47.6 / 30.7 (+0.26, SE 0.22), so the random-state training and the RL policy (which ties "take everything", lesson 94) can go at no
+    cost. A 25 km-only head 48.0 / 28.5 (+0.62 / -2.1): the joint 1 km loss costs ~0.6 at 25 km. Factorized (area from the 25 km head, point
+    from the 1 km head's two options in that area) 47.7 / 30.5 (+0.28 / -0.1): half the 25 km cost comes back, because the point choice inside
+    the area also moves answers across 25 km. With an oracle choice of the area's two points 48.3 / 32.4 (+0.9 / +1.8): the point picker is
+    the weak part, not the area choice. 3-seed ensembles add nothing (+0.0-0.3). All within +-1: like its inputs (lessons 122-127), the head's
+    form is saturated.
+
 ## Search-agent track (S)
