@@ -47,7 +47,8 @@ OUT = Path("artifacts/agent")
 TAG, CKPT = "commons26dev", "setft_own"  # the evaluation set
 # per Commons photo set: (cached text searches, benchmark CSV, 4B clue file); commons26 dev's searches are lesson 119's
 SETS = {"commons26dev": (OUT / "cands_commons26_dev.jsonl", Path("data/pinpoint/commons26/release/benchmark.csv"), OUT / "observe_commons26_4b.json"),
-        "commons_train": (OUT / "cands_commons_train.jsonl", Path("data/pinpoint/commons_train/release/benchmark.csv"), OUT / "observe_commons_train_4b.json")}
+        "commons_train": (OUT / "cands_commons_train.jsonl", Path("data/pinpoint/commons_train/release/benchmark.csv"), OUT / "observe_commons_train_4b.json"),
+        "dev3k": (OUT / "cands_dev3k.jsonl", None, OUT / "observe_dev3k_4b.json")}  # MP16 photos: no CSV (ranker folds by photo, no continent)
 SOURCES = ("GeoNames", "Overture", "Flickr", "OSM")
 NAME_SOURCES = ("GeoNames", "Overture", "OSM")
 CLUSTER_KM = 25.0
@@ -195,12 +196,14 @@ def features(tag: str = TAG) -> None:
         nm = [(qi, s["n"], cl[0], cl[1]) for qi, q in enumerate(r["queries"]) for src, s in q["src"].items() if src in NAME_SOURCES for cl in s["clusters"]]
         names += nm
         noff.append(noff[-1] + len(nm))
-    with bench_csv.open(encoding="utf-8") as fh:
-        bench = {r["IMG_ID"]: r for r in csv.DictReader(fh)}
-    groups = [bench[e["image_id"]]["group"] or e["image_id"] for e in photos]
+    bench = {}
+    if bench_csv:
+        with bench_csv.open(encoding="utf-8") as fh:
+            bench = {r["IMG_ID"]: r for r in csv.DictReader(fh)}
+    groups = [bench.get(e["image_id"], {}).get("group") or e["image_id"] for e in photos]
     np.savez(_cache(tag), C=np.concatenate(C), X=np.concatenate(X), Y=np.concatenate(Y), coff=np.asarray(coff), names=np.asarray(names, np.float64).reshape(-1, 4),
              noff=np.asarray(noff), fold=np.asarray([int(hashlib.md5(g.encode()).hexdigest()[:8], 16) % 5 for g in groups]),
-             continent=np.asarray([bench[e["image_id"]]["continent"] for e in photos]), ids=np.asarray([e["image_id"] for e in photos]))
+             continent=np.asarray([bench.get(e["image_id"], {}).get("continent", "") for e in photos]), ids=np.asarray([e["image_id"] for e in photos]))
     print(f"{len(photos)} photos ({len(pidx)} ids, {sum(1 for e in photos if e['image_id'] in recs)} with searches); "
           f"candidates per photo median {np.median(np.diff(coff)):.0f}, some right {np.mean([y.any() for y in Y]):.1%} -> {_cache(tag)}", flush=True)
 
@@ -804,9 +807,13 @@ def transfer(weight: int, seeds: int) -> None:
     n_tr, n_ct, n_cd = tr["n"], ct["n"], cd["n"]
     P_ct = ct_text.probs(())
     P_cd = np.where(cd_text.M, _fit_predict(ct_text.X, ct_text.M, ct_text.Y, cd_text.X, cd_text.M), 0.0)
+    dv_text = Text("dev3k") if _cache("dev3k").exists() else None  # dev3k's own text searches (else zeros: no text on dev3k)
+    if dv_text is not None:
+        assert dv_text.n == dv["n"]
+        P_dv = np.where(dv_text.M, _fit_predict(ct_text.X, ct_text.M, ct_text.Y, dv_text.X, dv_text.M), 0.0)
     print(f"step B: {n_tr} MP16 train + {n_ct} commons_train photos ({len(set(ct_text.fold.tolist()))} folds), weight {weight}; "
           f"eval {n_cd} commons26 dev, {dv['n']} dev3k; {seeds} seed(s)", flush=True)
-    for name, t, P in (("commons_train", ct_text, P_ct), ("commons26 dev", cd_text, P_cd)):
+    for name, t, P in (("commons_train", ct_text, P_ct), ("commons26 dev", cd_text, P_cd)) + ((("dev3k", dv_text, P_dv),) if dv_text else ()):
         top = np.where(t.M.any(1), t.Y[np.arange(t.n), np.where(t.M, P, -1).argmax(1)], False)
         print(f"  text ranker on {name}: a right candidate {t.Y.any(1).mean():.1%}, top-1 right {top.mean():.1%}", flush=True)
     res = collections.defaultdict(dict)
@@ -814,6 +821,8 @@ def transfer(weight: int, seeds: int) -> None:
     mp16 = np.arange(n_tr)
     ct_cols, ct_tokens = _text_inputs(_with_text(ct, None, None), ct_text, P_ct, ct_photos)
     cd_cols, cd_tokens = _text_inputs(_with_text(cd, None, None), cd_text, P_cd, cd_photos)
+    if dv_text is not None:
+        dv_cols, dv_tokens = _text_inputs(_with_text(dv, None, None), dv_text, P_dv, _photos("dev3k"))
     no_tok = lambda d: [[] for _ in range(d["n"])]
     def cell_data(cell):  # built one cell at a time (the GPU is shared)
         if cell == "base":
@@ -822,14 +831,18 @@ def transfer(weight: int, seeds: int) -> None:
             return (_concat(_with_text(tr, None, None), _with_text(ct, None, None), consume=True), None, _with_text(cd, None, None),
                     _with_text(dv, None, None))
         return (_concat(_with_text(tr, None, no_tok(tr)), _with_text(ct, ct_cols, ct_tokens), consume=True), None, _with_text(cd, cd_cols, cd_tokens),
-                _with_text(dv, None, no_tok(dv)))
+                _with_text(dv, dv_cols, dv_tokens) if dv_text else _with_text(dv, None, no_tok(dv)))
 
     fit_mix = np.concatenate([mp16, np.repeat(n_tr + np.arange(n_ct), weight)])
-    partial = OUT / f"combined_head_stepB_w{weight}_partial.pkl"  # finished cells (a rerun skips them)
-    if partial.exists():
-        import pickle
+    suffix = "_dev3ktext" if dv_text else ""
+    partial = OUT / f"combined_head_stepB_w{weight}{suffix}_partial.pkl"  # finished cells (a rerun skips them)
+    import pickle
 
+    if partial.exists():
         res, dev3k = (collections.defaultdict(dict, x) for x in pickle.loads(partial.read_bytes()))
+    elif suffix and (old := OUT / f"combined_head_stepB_w{weight}_partial.pkl").exists():  # the +ctrain cell doesn't see text: reuse it
+        r0, d0 = pickle.loads(old.read_bytes())
+        res["+ctrain"], dev3k["+ctrain"] = r0["+ctrain"], d0["+ctrain"]
     for cell in ("+ctrain+text", "+ctrain", "base"):  # the largest batch first, on a fresh allocator
         if cell in res and len(next(iter(res[cell].values()))) == seeds:
             continue
@@ -852,6 +865,10 @@ def transfer(weight: int, seeds: int) -> None:
                 Fc, TLc, TFc, TKc = _adapter_arrays(cd_cols, cd_tokens)
                 km = choose(np.arange(n_cd), (Lc, Fc, Kc, Rc, TLc, TFc, TKc))
                 res["adapter"].setdefault("RL policy, lambda 0", []).append(km)
+                if dv_text is not None:
+                    Ld, Kd, Rd = _final_options(net, pols[0.0], dv_d)
+                    Fd, TLd, TFd, TKd = _adapter_arrays(dv_cols, dv_tokens)
+                    dev3k["adapter"].setdefault("RL policy, lambda 0", []).append(choose(np.arange(dv["n"]), (Ld, Fd, Kd, Rd, TLd, TFd, TKd)))
                 print(f"  seed {s} adapter weights " + ", ".join(f"{c} {x:+.2f}" for c, x in zip(TEXT_COLS, wt[0])) + f"; a {wt[1]:.2f}, b {wt[2]:+.2f}",
                       flush=True)
             del net, pols
@@ -859,8 +876,6 @@ def transfer(weight: int, seeds: int) -> None:
             print(f"seed {s} {cell} done", flush=True)
         del train_d, cd_d, dv_d
         torch.cuda.empty_cache()
-        import pickle
-
         partial.write_bytes(pickle.dumps((dict(res), dict(dev3k))))
     lines = [f"combined head, step B (train MP16 + commons_train x{weight}; eval all of commons26 dev and dev3k; {seeds} seed(s); % < 25 km)"]
     conts = sorted(set(cd_text.continent))
@@ -876,7 +891,7 @@ def transfer(weight: int, seeds: int) -> None:
                              f"fixes {np.sum(diff > 0):.0f}, breaks {np.sum(diff < 0):.0f})  < 1 km {ok1.mean():5.1%}{bal}")
     text_ = "\n".join(lines)
     print(text_, flush=True)
-    (OUT / f"combined_head_stepB_w{weight}.txt").write_text(text_ + "\n")
+    (OUT / f"combined_head_stepB_w{weight}{suffix}.txt").write_text(text_ + "\n")
 
 
 # ---------------------------------------------------------------------------------------------------------------------------- stacking (dev3k)
