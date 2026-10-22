@@ -87,3 +87,8 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     on commons_train +1.38 (0.67; 37 / 20). dev3k flat (+0.07, SE 0.24). So lesson 140's +1.9 was not a product of training on commons26 dev
     folds or of the weight choice: in-domain photos give ~+1, the text evidence another ~+0.9-1.2 on top. Fitted on 11k photos the adapter
     now uses names matched <= 5 times too (+0.25; ~0 when fitted on commons26 dev), ranker top here +0.37.
+    On dev3k with its own text inputs (same searches, ranker trained on commons_train; a right candidate 33.1%, ranker top-1 right 24.0%
+    vs the reranker's 44.3%) the text hurts: full head -0.30 (SE 0.35; 103 fixes / 120 breaks), adapter -0.78 (0.30; 38 / 70); Commons rows
+    alone +0.20. The head learned how far to trust text only from Commons rows (MP16 training rows carry zero text columns), where the
+    reranker is weak (~20%); on Flickr photos the reranker is strong and the same trust overrides right answers. So no gain is expected on
+    im2gps3k / yfcc4k as trained; the fix is text features on MP16 training photos (gather on train, ~35k photos) so trust is learned per domain.
