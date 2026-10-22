@@ -136,4 +136,16 @@ R14. **Mapillary on dev3k: above chance, far below the head, adds nothing to it*
     tiles; `imagery.py` now falls back to the graph API's bbox search (small box first, split on errors), paces Mapillary at 0.02 s, and finds
     the repo-root `.env` from a worktree.
 
+R15. **A dedicated OCR model reads less than the 4B and adds ~1 pt of ceiling, nothing at top-1** (`scripts/ocr_commons26.py`, PaddleOCR 3 in
+    `.venvs/paddle`: PP-OCRv6 for CJK + Latin scripts, PP-OCRv5 for Cyrillic, Korean, Arabic, Devanagari, Thai, Greek; lines >= 0.5 confidence,
+    per-script lines kept only if they hold that script; 15 min on the 977 commons26 dev photos; `text_refine_check.py --source ocr|both`).
+    OCR finds text on 611 photos (4B 491) but searches worse: one-shot top-1 6.8% / ceiling 9.9% (4B 12.8 / 18.9). 4B + OCR: top-1 12.4%,
+    ceiling 20.6% (same-country luck 2.5 -> 3.2, so ~+1 net), the same 34 right answers on pipeline misses, every switch loses. Title-word
+    recall (`scripts/ocr_name_recall.py`; the 282 photos flagged as showing place text, reference = the Commons file title): a specific title
+    word in the 4B's text 44.6% (with its place names and queries 54.2%), OCR 35.8%, union 56.5% (approximate matching +3-6 for every reader).
+    Striking single cases (the 4B's "Bouche-Saint-Martin" where OCR reads Biache-Saint-Vaast, "Cabanillan" for Cabanatuan) are not the rule:
+    the 4B transcribes as well or better, and it adds recognised names and queries. With R12, the gap on commons26 sits between reading the
+    right words (~55-60% of place-text photos) and placing them (one-shot top-1 17% on geolocatable tiers): disambiguation and ranking of
+    what is read, the combined head's ground (lessons 140-141), not transcription.
+
 ## Search-agent track (S)

@@ -65,11 +65,37 @@ def _photos() -> list[dict]:
     return json.loads((Path("artifacts/photo_sets") / TAG / "photos.json").read_text(encoding="utf-8"))
 
 
+SOURCE = "4b"  # --source: the 4B's reads (text / place names / queries), dedicated OCR lines (scripts/ocr_commons26.py), or both
+OCR = Path("artifacts/agent/ocr_commons26dev_paddle.json")
+SCRIPTS = {"ru": "\u0400-\u04ff", "korean": "\uac00-\ud7af\u1100-\u11ff", "ar": "\u0600-\u06ff", "hi": "\u0900-\u097f",
+           "th": "\u0e00-\u0e7f", "el": "\u0370-\u03ff"}  # a per-script recogniser's line counts only if it holds that script
+
+
+def _ocr_phrases() -> dict[str, list[str]]:
+    import re
+
+    out = {}
+    for image_id, lines in json.loads(OCR.read_text(encoding="utf-8")).items():
+        keep = [t for t, _, lang in lines if lang not in SCRIPTS or re.search(f"[{SCRIPTS[lang]}]", t)]
+        out[image_id] = keep
+    return out
+
+
 def _queries() -> dict[str, dict[str, list[str]]]:
     """image id -> raw phrase -> [the phrase, its spans]."""
+    tables = []
+    if SOURCE in ("4b", "both"):
+        tables.append({k: list(v) for k, v in _raw_phrases(TAG, "4b").items()})
+    if SOURCE in ("ocr", "both"):
+        tables.append(_ocr_phrases())
     out = {}
-    for image_id, table in _raw_phrases(TAG, "4b").items():
-        out[image_id] = {p: list(dict.fromkeys([p] + _spans(p))) for p in table}
+    for table in tables:
+        for image_id, phrases in table.items():
+            seen = {ts.norm(q) for q in out.get(image_id, {})}
+            for ph in phrases:
+                if len(ts.norm(ph)) >= 3 and ts.norm(ph) not in seen:
+                    seen.add(ts.norm(ph))
+                    out.setdefault(image_id, {})[ph] = list(dict.fromkeys([ph] + _spans(ph)))
     return out
 
 
@@ -118,15 +144,16 @@ def _fetch_one(tool: ts.TextSearch, q: str):
 def fetch(workers: int) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     qs = _queries()
-    uniq = sorted({q for t in qs.values() for v in t.values() for q in v})
-    print(f"{len(qs)} photos with phrases, {sum(len(t) for t in qs.values())} phrases, {len(uniq)} unique queries", flush=True)
+    have = pickle.load(open(OUT / "matches.pkl", "rb")) if (OUT / "matches.pkl").exists() else {}
+    uniq = sorted({q for t in qs.values() for v in t.values() for q in v} - set(have))
+    print(f"{SOURCE}: {len(qs)} photos with phrases, {sum(len(t) for t in qs.values())} phrases, {len(uniq)} new queries", flush=True)
     tools = [ts.TextSearch() for _ in range(workers)]
     chunks = [uniq[k::workers] for k in range(workers)]
 
     def run(k):
         return {q: _fetch_one(tools[k], q) for q in chunks[k]}
 
-    res = {}
+    res = have
     with ThreadPoolExecutor(workers) as ex:
         for part in ex.map(run, range(workers)):
             res |= part
@@ -199,11 +226,11 @@ def report() -> None:
     res = pickle.load(open(OUT / "matches.pkl", "rb"))
     town = Town()
     cache = OUT / "clusters.pkl"
-    if cache.exists():
-        cl = pickle.load(open(cache, "rb"))
-    else:
-        print("clustering", flush=True)
-        cl = {q: _clusters(m, town) for q, m in res.items()}
+    cl = pickle.load(open(cache, "rb")) if cache.exists() else {}
+    todo = [q for q in res if q not in cl]
+    if todo:
+        print(f"clustering {len(todo)} queries", flush=True)
+        cl |= {q: _clusters(res[q], town) for q in todo}
         pickle.dump(cl, open(cache, "wb"))
     trees = {}
 
@@ -284,7 +311,7 @@ def report() -> None:
 
     pipe = pipe_km < 25
     geo = np.isin(tier, ("landmark", "city", "region"))
-    lines = [f"text refinement check, commons26 dev ({n} photos; {len(qs)} with phrases; pipeline {pipe.mean():.1%}, geolocatable tiers "
+    lines = [f"[{SOURCE}] text refinement check, commons26 dev ({n} photos; {len(qs)} with phrases; pipeline {pipe.mean():.1%}, geolocatable tiers "
              f"{geo.sum()} photos, pipeline {pipe[geo].mean():.1%})",
              f"photos with >= 2 independent phrases (no shared specific word): {np.mean(n_indep >= 1):.1%}; anchor commit with support >= 1: "
              f"{np.mean(support['anchor'] >= 1):.1%}, >= 2: {np.mean(support['anchor'] >= 2):.1%}",
@@ -309,14 +336,16 @@ def report() -> None:
                          f"{100 * d.mean():+.2f} pts (SE {100 * d.std() / np.sqrt(n):.2f}); geolocatable {100 * d[geo].mean():+.2f}")
     text = "\n".join(lines)
     print(text, flush=True)
-    (OUT / "report.txt").write_text(text + "\n")
+    (OUT / ("report.txt" if SOURCE == "4b" else f"report_{SOURCE}.txt")).write_text(text + "\n")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("fetch", "report"))
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--source", choices=("4b", "ocr", "both"), default="4b")
     a = ap.parse_args()
+    globals()["SOURCE"] = a.source
     fetch(a.workers) if a.cmd == "fetch" else report()
 
 
