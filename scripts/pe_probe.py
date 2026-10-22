@@ -290,6 +290,11 @@ def gate(tag: str = "dev3k", ckpt: str = "setft_own") -> None:
 
     groups = {name: columns(name) for name in FEATURES}
     groups["pooled + l47"] = np.concatenate([groups["pooled"], groups["l47"]], 1)
+    # does the probe's region prediction stack on V5's best columns (PE-G + SigLIP2 cosine to each area's photos)?
+    g.OUT = Path("artifacts/retrieval/gate")
+    cos = np.concatenate([g.columns("pe_g", tag, ckpt, zm), g.columns("siglip_final", tag, ckpt, zm)], 1)
+    groups["cosine pe_g + siglip"] = cos
+    groups["cosine + probe pooled"] = np.concatenate([cos, groups["pooled"]], 1)
     for name, c in groups.items():
         X = np.concatenate([np.where(valid, logits, 0.0)[..., None], np.where((hyp >= 0)[..., None], c[np.maximum(hyp, 0)], 0.0)], -1)
         res = g.clogit(X, valid, km)

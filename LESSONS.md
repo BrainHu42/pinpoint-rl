@@ -148,7 +148,7 @@ R15. **A dedicated OCR model reads less than the 4B and adds ~1 pt of ceiling, n
     right words (~55-60% of place-text photos) and placing them (one-shot top-1 17% on geolocatable tiers): disambiguation and ranking of
     what is read, the combined head's ground (lessons 140-141), not transcription.
 
-R16. **PE-core-G's gain is the model, not the column form or the resolution; mean-pooled middle layers compared by cosine don't help, which does not yet test the paper's claim**
+R16. **PE-core-G's gain is the model, not the column form, the resolution or a middle layer: per-layer probes, the paper's protocol, peak at the output; a region probe on the pooled output adds to the head**
     (`scripts/siglip_gate.py`, `scripts/pe_layers.py`, `PE_PLAN.md`; dev3k, the same 3,000 queries + 140,871 area photos as track V's gate,
     per-area columns stacked on the answer head's option logits, 2-fold x 3 seeds, head 47.20 / 30.77). Track V found PE-G's columns add
     +0.79 (gate) and +1.37 / +0.97 in the retrained head, +2.04 / +1.28 with SigLIP2's columns (V5). Controls here: SigLIP2's own pooled
@@ -163,5 +163,15 @@ R16. **PE-core-G's gain is the model, not the column form or the resolution; mea
     favours it by construction; mean pooling also discards the local detail middle layers are claimed to hold, and their large shared
     residual component (the global tokens from block ~33) dominates the mean. The on-claim test, a geolocation probe trained per layer on
     patch tokens, is `PE_PLAN.md` step 5b.
+    **Step 5b, the paper's protocol** (`scripts/pe_probe.py`): the same attention probe (one cross-attention block, the paper's classification
+    probe) trained per layer on PE-G 378 px patch tokens (27 x 27 average-pooled to 7 x 7) to predict 2,048 k-means GPS cells; 93,106 MP16
+    training photos (train split + 65k random, no dev3k photo or photographer), 4,900 held out for the epoch, 15 epochs; the pooled output
+    gets an MLP. dev3k, top cell within 25 / 200 / 750 / 2500 km: block 32 5.3 / 9.0 / 20.4 / 41.5, block 38 8.0 / 14.0 / 29.9 / 51.9, block 44
+    13.9 / 25.1 / 47.6 / 69.0, block 47 19.8 / 34.9 / 58.4 / 77.7, last block 25.5 / 45.6 / 68.5 / 83.2, pooled 26.4 / 46.5 / 68.1 / 83.4.
+    Geolocation behaves like the paper's ImageNet probe (best layer 50 of 50), not like its OCR / VQA tasks: with a trained readout too, the
+    middle layers hold less, by 10-35 pts at 200 km. As head columns (each area's cell log-prob, and the mass within 100 km, raw and relative to
+    the photo's other areas; gate as above): blocks 32-47 +0.06 to +0.71, last block +0.94, pooled +1.38 / +0.36. Closed for PE-G's middle
+    layers (caveats: 7 x 7 pooling and ~100k probe photos; full-resolution tokens with ImageNet-scale data were not tried). A by-product to
+    keep: the pooled output's region probe stacks on the cosine columns (PE-G + SigLIP2 +1.18 -> +1.86 / +1.03 in the gate).
 
 ## Search-agent track (S)
