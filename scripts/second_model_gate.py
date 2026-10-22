@@ -332,6 +332,9 @@ def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photo
         cfgs = [()] + [(m,) for m in models] + [("pe_g", m) for m in models if m != "pe_g" and "pe_g" in models]
         cfgs += [tuple(models)] if len(models) > 2 or (len(models) == 2 and "pe_g" not in models) else []
     for m in sorted({m for c in cfgs for m in c}):
+        if not _paths(m, "train", ckpt)[0].exists():  # column files built elsewhere (pe_probe: the retrieval session's PE-G region probe, R16)
+            assert all((OUT / f"{m}_cols_{t}_{ckpt}.npz").exists() for t in ("train",) + tuple(tags)), m
+            continue
         write(m, "train", ckpt, photos)
         for t in tags:
             write(m, t, ckpt)
