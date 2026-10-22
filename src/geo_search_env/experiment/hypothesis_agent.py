@@ -37,6 +37,8 @@ if "osv" in VARIANT:  # + OSV-5M street-search areas (osv_propose hyps, source 2
     SOURCES = (0, 1, 2)
 BOX_KM = 25.0
 CLUE_COLS = slice(12, 20)  # zoom_agent._pre_zoom columns of hypothesis_learn.CLUE_KEYS (clue evidence on each hypothesis)
+EXTRA_FILES: list[str] = []  # more column files in megaloc_gate's format ("{tag}", "{ckpt}" filled), appended after MegaLoc with all their
+# columns (second_model_gate.py: PE-Core / DINOv3 per area); action_agent.N_ML must then count them too (they are revealed by recognise)
 KERNEL_KM, KERNEL_T, GATE_KM = 10.0, 0.1, 5.0  # soft zoom rule (per-area pick accuracy on train: 4.9% < 1 km vs 4.2% for the box rule, same at 25 km)
 
 
@@ -144,13 +146,14 @@ def load(tag: str, ckpt_tag: str, device: str = "cuda", stats: dict | None = Non
     pre_noclue[:, CLUE_COLS] = 0.0  # before reading clues (read_agent)
     # extra columns aligned with these features (megaloc: megaloc_gate.py, lesson 93), appended to the pre-zoom part; the other evidence
     # groups tried this way (map / name / crop / region checks, 27B names; lessons 77-78, 85, 89, 114) are at tag pre-merge-cleanup-2026-10-16
-    for kind in ("megaloc",) if extra else ():
-        path = Path("artifacts/agent") / f"{kind}_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"
+    paths = [Path("artifacts/agent") / f"megaloc_{tag}_{ckpt_tag}{'_' + VARIANT if VARIANT else ''}.npz"] if extra else []
+    for k, path in enumerate(paths + [Path(p.format(tag=tag, ckpt=ckpt_tag)) for p in (EXTRA_FILES if extra else ())]):
         if not path.exists():
+            assert k == 0, f"missing {path}"
             continue
         mc = np.load(path)
         assert np.array_equal(mc["photo"], f["photo"]) and np.array_equal(mc["source"], f["source"])
-        cols = np.isin(mc["groups"], extra)
+        cols = np.isin(mc["groups"], extra) if k == 0 else np.ones(len(mc["groups"]), bool)
         x = mc["x"][rows][:, cols]
         pre = np.concatenate([pre, x], 1)
         pre_noclue = np.concatenate([pre_noclue, np.where(mc["groups"][cols] != "density", 0.0, x)], 1)

@@ -13,6 +13,8 @@ gate (.venv): per area the best / top-3 cosine and both relative to the photo's 
 
   PYTHONPATH=<timm>:src .venvs/sft/bin/python scripts/second_model_gate.py embed --model pe_g
   PYTHONPATH=src .venv/bin/python scripts/second_model_gate.py gate --models pe_g pe_l
+head (after embedding train with --tag train --photos artifacts/value/train_informative_setft_own.npy): see head().
+  PYTHONPATH=src .venv/bin/python scripts/second_model_gate.py head --models pe_g dino_7b
 """
 
 from __future__ import annotations
@@ -257,9 +259,62 @@ def gate(models: list[str], tag: str, ckpt: str, ks: tuple[int, ...] = (12,)) ->
               f"area AUC (best) where the head is wrong and a right area exists {auc:.3f}", flush=True)
 
 
+def write(model: str, tag: str, ckpt: str, photos: str = "") -> Path:
+    """The model's columns in megaloc_gate's format for hypothesis_agent.EXTRA_FILES -> artifacts/value/{model}_cols_{tag}_{ckpt}.npz; with
+    photos (train), the unembedded photos' rows get the embedded rows' column means (they carry no answer-head gradient; this keeps the
+    normalisation statistics those of real rows)."""
+
+    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{ckpt}.npz")
+    x = columns(model, tag, ckpt, zm)
+    if photos:
+        sel = np.isin(zm["photo"], np.flatnonzero(np.load(photos)))
+        x[~sel] = x[sel].mean(0)
+    dst = OUT / f"{model}_cols_{tag}_{ckpt}.npz"
+    np.savez(dst, photo=zm["photo"], source=zm["source"], x=x, groups=np.asarray([model] * x.shape[1]))
+    print(f"-> {dst}", flush=True)
+    return dst
+
+
+def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photos: str = "artifacts/value/train_informative_setft_own.npy") -> None:
+    """The real test: the answer head (action_agent, --one-km 0.5) trained on train with the new columns revealed with MegaLoc (recognise), every
+    tool revealed on dev3k (take-everything = the RL policy at lambda 0, lesson 98), vs the same head without them; 3 seeds each. Pre-declared bar:
+    all models together >= +1.0 pt < 25 km over the head without them, < 1 km not down by more than 0.3."""
+
+    import torch
+
+    from geo_search_env.experiment import action_agent as aa
+    from geo_search_env.experiment import hypothesis_agent as ha
+
+    for m in models:
+        write(m, "train", ckpt, photos)
+        write(m, "dev3k", ckpt)
+    aa.CKPT_TAG, aa.ONE_KM = ckpt, 0.5
+    res = {}
+    for cfg in [()] + [(m,) for m in models] + ([tuple(models)] if len(models) > 1 else []):
+        ha.EXTRA_FILES = [str(OUT / f"{m}_cols_{{tag}}_{{ckpt}}.npz") for m in cfg]
+        aa.N_ML = 4 + 4 * len(cfg)
+        tr = aa._data("train", ckpt=ckpt)
+        dv = aa._data("dev3k", stats=tr["stats"], ckpt=ckpt)
+        kms = []
+        for seed in seeds:
+            net = aa.fit_answer(tr, np.arange(tr["n"]), seed=seed)
+            kms.append(aa.rollout(net, None, dv, 0.0, "fixed", fixed=(1, 1, "all"))[0].cpu().numpy())
+        res[cfg] = np.stack(kms)
+        k = res[cfg]
+        line = f"  {'+'.join(cfg) or 'head (MegaLoc, no new columns)':32s} {np.mean(k < 25):.2%} / {np.mean(k < 1):.2%} (< 25 / 1 km; seeds " + \
+               " ".join(f"{np.mean(x < 25):.1%}" for x in k) + ")"
+        if cfg:
+            b = res[()]
+            d25, d1 = (k < 25).mean(0) - (b < 25).mean(0), (k < 1).mean(0) - (b < 1).mean(0)
+            line += f"; vs head {100 * d25.mean():+.2f} / {100 * d1.mean():+.2f} pts (paired SE {100 * d25.std() / np.sqrt(len(d25)):.2f})"
+        print(line, flush=True)
+        del tr, dv
+        torch.cuda.empty_cache()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("embed", "gate"))
+    ap.add_argument("node", choices=("embed", "gate", "head"))
     ap.add_argument("--model", default="pe_g", choices=tuple(MODELS))
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--tag", default="dev3k")
@@ -269,8 +324,10 @@ def main() -> None:
     args = ap.parse_args()
     if args.node == "embed":
         embed(args.model, args.tag, args.ckpt, photos=args.photos)
-    else:
+    elif args.node == "gate":
         gate(args.models, args.tag, args.ckpt, tuple(args.ks))
+    else:
+        head(args.models, args.ckpt)
 
 
 if __name__ == "__main__":
