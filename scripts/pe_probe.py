@@ -415,6 +415,42 @@ def crossfit(folds: int = 5, seed: int = 0, ckpt: str = "setft_own") -> None:
         print(f"-> {dst}: {x.shape}", flush=True)
 
 
+def head(ckpt: str = "setft_own", seeds: tuple[int, ...] = (7, 8, 9), tags: tuple[str, ...] = ("dev3k", "commons26dev")) -> None:
+    """Step 5c, the trained-head test: track V's second_model_gate.head loop, reading the existing column files in artifacts/value (read
+    only; pe_probe_cols_* are symlinks to this directory). Bar (track V, declared before the run): pe_probe adds >= +0.5 pt < 25 km over
+    pe_g + siglip_final on dev3k, commons26 dev not down."""
+    import torch
+
+    from geo_search_env.experiment import action_agent as aa
+    from geo_search_env.experiment import hypothesis_agent as ha
+
+    value = Path("artifacts/value")
+    aa.CKPT_TAG, aa.ONE_KM = ckpt, 0.5
+    res = {}
+    for cfg in [(), ("pe_g", "siglip_final"), ("pe_g", "siglip_final", "pe_probe")]:
+        ha.EXTRA_FILES = [str(value / f"{m}_cols_{{tag}}_{{ckpt}}.npz") for m in cfg]
+        aa.N_ML = 4 + 4 * len(cfg)
+        tr = aa._data("train", ckpt=ckpt)
+        sets = {t: aa._data(t, stats=tr["stats"], ckpt=ckpt) for t in tags}
+        kms = {t: [] for t in tags}
+        for seed in seeds:
+            net = aa.fit_answer(tr, np.arange(tr["n"]), seed=seed)
+            for t, dv in sets.items():
+                kms[t].append(aa.rollout(net, None, dv, 0.0, "fixed", fixed=(1, 1, "all"))[0].cpu().numpy())
+        for t in tags:
+            k = res[t, cfg] = np.stack(kms[t])
+            line = f"  {t:13s} {'+'.join(cfg) or 'head (no new columns)':32s} {np.mean(k < 25):.2%} / {np.mean(k < 1):.2%} (< 25 / 1 km)"
+            for ref in [(), ("pe_g", "siglip_final")]:
+                if cfg != ref and (t, ref) in res and len(ref) < len(cfg):
+                    b = res[t, ref]
+                    d25, d1 = (k < 25).mean(0) - (b < 25).mean(0), (k < 1).mean(0) - (b < 1).mean(0)
+                    line += (f"; vs {'+'.join(ref) or 'head'} {100 * d25.mean():+.2f} / {100 * d1.mean():+.2f} "
+                             f"(SE {100 * d25.std() / np.sqrt(len(d25)):.2f})")
+            print(line, flush=True)
+        del tr, sets
+        torch.cuda.empty_cache()
+
+
 def gate(tag: str = "dev3k", ckpt: str = "setft_own") -> None:
     import second_model_gate as g
 
@@ -461,9 +497,9 @@ def gate(tag: str = "dev3k", ckpt: str = "setft_own") -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("select", "embed", "train", "gate", "embed_pooled", "crossfit"))
+    ap.add_argument("node", choices=("select", "embed", "train", "gate", "embed_pooled", "crossfit", "head"))
     args = ap.parse_args()
-    {"select": select, "embed": embed, "train": train, "gate": gate, "embed_pooled": embed_pooled, "crossfit": crossfit}[args.node]()
+    {"select": select, "embed": embed, "train": train, "gate": gate, "embed_pooled": embed_pooled, "crossfit": crossfit, "head": head}[args.node]()
 
 
 if __name__ == "__main__":
