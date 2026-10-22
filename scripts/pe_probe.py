@@ -259,6 +259,162 @@ def train(epochs: int = 15, batch: int = 512, seed: int = 0) -> None:
     (OUT / "train_results.json").write_text(json.dumps(results, indent=1), encoding="utf-8")
 
 
+def embed_pooled(batch: int = 64, workers: int = 4) -> None:
+    """Step 5c: PE-G 378 px pooled output for the photos the probe set lacks: train photos by dev3k photographers (dropped from the probe
+    set) and the commons26 dev queries -> pooled_extra.npz (keys, embeddings)."""
+
+    os.environ.setdefault("HF_HOME", str(Path("data/hf").resolve()))
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    import timm
+    import torch
+    from PIL import Image
+
+    from geo_search_env.experiment import megaloc_gate
+    from geo_search_env.experiment.sft_data import MP16Images
+
+    have = set(np.load(OUT / "photos.npz")["ids"])
+    train = [p["image_id"] for p in json.loads(Path("artifacts/photo_sets/train_setft_own/photos.json").read_text(encoding="utf-8"))]
+    keys = [i for i in train if i not in have]
+    megaloc_gate.CKPT_TAG = "setft_own"
+    c26, nq, _ = megaloc_gate._image_ids("commons26dev", np.zeros(0, np.int64))  # benchmark queries: resolved file paths
+    keys += [f"commons26dev:{i}" for i in range(nq)]
+    net = timm.create_model(MODEL, pretrained=True, img_size=SIZE).cuda().eval().to(torch.bfloat16)
+    tf = timm.data.create_transform(**(timm.data.resolve_data_config(model=net) | {"input_size": (3, SIZE, SIZE)}))
+    images = MP16Images()
+
+    def load(k: str):
+        data = Path(c26[int(k.split(":")[1])]).read_bytes() if k.startswith("commons26dev:") else images.read(k)
+        return tf(Image.open(io.BytesIO(data)).convert("RGB"))
+
+    out = np.zeros((len(keys), 1280), np.float16)
+    with torch.inference_mode():
+        for s in range(0, len(keys), batch):
+            x = torch.stack([load(k) for k in keys[s:s + batch]]).cuda().to(torch.bfloat16)
+            out[s:s + batch] = net(x).float().cpu().numpy().astype(np.float16)
+    np.savez(OUT / "pooled_extra.npz", keys=np.asarray(keys), embeddings=out)
+    print(f"-> {OUT / 'pooled_extra.npz'}: {len(keys) - nq} train photos + {nq} commons26 dev queries", flush=True)
+
+
+def _fit_mlp(X, y, rows: np.ndarray, seed: int, epochs: int = 15, batch: int = 512):
+    """The pooled-output probe of train(), on rows of X (GPU fp16); 5% of rows held out for the epoch. Returns rows -> log-probs."""
+    import torch
+    import torch.nn.functional as F
+
+    rng = np.random.default_rng(seed)
+    va = rng.choice(rows, len(rows) // 20, replace=False)
+    tr = np.setdiff1d(rows, va)
+    torch.manual_seed(seed)
+    net = _probe(X.shape[-1], CELLS, False).cuda()
+    opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=0.05)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=epochs * (len(tr) // batch), pct_start=0.05)
+
+    def logp(r: np.ndarray) -> np.ndarray:
+        net.eval()
+        with torch.no_grad():
+            out = torch.cat([F.log_softmax(net(X[torch.as_tensor(r[s:s + 4096], device="cuda")].float()), 1) for s in range(0, len(r), 4096)])
+        net.train()
+        return out.cpu().numpy()
+
+    best, state = np.inf, None
+    for _ in range(epochs):
+        perm = rng.permutation(tr)
+        for s in range(0, len(perm) - batch + 1, batch):
+            b = torch.as_tensor(perm[s:s + batch], device="cuda")
+            loss = F.cross_entropy(net(X[b].float()), y[b], label_smoothing=0.1)
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            opt.step()
+            sched.step()
+        v = -logp(va)[np.arange(len(va)), y[torch.as_tensor(va, device="cuda")].cpu().numpy()].mean()
+        if v < best:
+            best, state = v, {k: t.detach().clone() for k, t in net.state_dict().items()}
+    net.load_state_dict(state)
+    return logp
+
+
+def _columns(lp: np.ndarray, zm, cent: np.ndarray) -> np.ndarray:
+    """Per zoom-file hypothesis: log-prob of the area's cell and log mass of cells within 100 km of its centre, raw and relative to the best
+    of the photo's other (non-street) areas. lp: [photos, cells] log-probs in photo-set order."""
+    photo, street = zm["photo"], zm["source"] == 2
+    cx = _xyz(cent)
+    own, mass = np.zeros(len(photo), np.float32), np.zeros(len(photo), np.float32)
+    for s in range(0, len(photo), 8192):
+        sl = slice(s, s + 8192)
+        km = 6371.0 * np.arccos(np.clip(_xyz(zm["center"][sl]) @ cx.T, -1, 1))
+        l = lp[photo[sl]]
+        own[sl] = l[np.arange(len(km)), km.argmin(1)]
+        mass[sl] = np.log(np.maximum(np.where(km < 100, np.exp(l), 0).sum(1), 1e-12))
+    cols = [own, mass]
+    order = np.argsort(photo, kind="stable")
+    bounds = np.flatnonzero(np.diff(photo[order])) + 1
+    for v in (own, mass):
+        rel = np.zeros_like(v)
+        for J in np.split(order, bounds):
+            for i, j in enumerate(J):
+                o = np.delete(v[J], i)
+                if not street[j]:
+                    o = o[~np.delete(street[J], i)]
+                rel[j] = v[j] - (o.max() if len(o) else v[j])
+        cols.append(rel)
+    return np.stack(cols, 1).astype(np.float32)
+
+
+def crossfit(folds: int = 5, seed: int = 0, ckpt: str = "setft_own") -> None:
+    """Step 5c: region-probe columns for the trained answer head (track V's head(), hypothesis_agent.EXTRA_FILES format). Train photos get
+    log-probs from a probe trained without their fold, where folds group photographers and every probe photo by a fold's photographers is
+    left out of that fold's probe; dev3k and commons26 dev get the probe trained on all probe photos (no dev3k photo or photographer)."""
+    import torch
+
+    p = np.load(OUT / "photos.npz")
+    ok, cent = np.load(OUT / "ok.npy"), np.load(OUT / "cells.npy")
+    n_p = len(p["ids"])
+    base = np.load(OUT / "pooled.npy", mmap_mode="r")
+    extra = np.load(OUT / "pooled_extra.npz")
+    ekeys = list(extra["keys"])
+    X = torch.tensor(np.concatenate([np.asarray(base), extra["embeddings"]]), device="cuda")  # probe photos, dev3k queries, extras
+    y = torch.tensor((_xyz(p["latlon"]) @ _xyz(cent).T).argmax(1), device="cuda")
+    row = {k: i for i, k in enumerate(p["ids"])} | {k: len(base) + i for i, k in enumerate(ekeys)}
+    authors = {}
+    with CSV.open(encoding="utf-8", newline="") as f:
+        r = csv.reader(f)
+        next(r)
+        for rec in r:
+            authors[rec[0]] = rec[1]
+    probe_auth = np.asarray([authors[i] for i in p["ids"]])
+    train = [e["image_id"] for e in json.loads(Path(f"artifacts/photo_sets/train_{ckpt}/photos.json").read_text(encoding="utf-8"))]
+    t_auth = np.asarray([authors[i] for i in train])
+    uniq = np.unique(t_auth)
+    fold_of = dict(zip(uniq, np.random.default_rng(seed).permutation(len(uniq)) % folds))
+    t_fold = np.asarray([fold_of[a] for a in t_auth])
+    usable = np.flatnonzero(ok[:n_p])
+    lp_train = np.zeros((len(train), CELLS), np.float32)
+    for k in range(folds):
+        held = set(uniq[[fold_of[a] == k for a in uniq]])
+        rows = usable[~np.isin(probe_auth[usable], list(held))]
+        logp = _fit_mlp(X, y, rows, seed + k)
+        J = np.flatnonzero(t_fold == k)
+        lp_train[J] = logp(np.asarray([row[train[j]] for j in J]))
+        print(f"  fold {k}: probe on {len(rows)} photos (photographers of {len(J)} train photos left out)", flush=True)
+    logp = _fit_mlp(X, y, usable, seed)
+    lp = {"train": lp_train, "dev3k": logp(n_p + np.arange(len(base) - n_p)),
+          "commons26dev": logp(np.asarray([row[k] for k in ekeys if k.startswith("commons26dev:")]))}
+    for tag, l in lp.items():
+        zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{ckpt}.npz")
+        x = _columns(l, zm, cent)
+        assert np.isfinite(x).all()
+        dst = OUT / f"pe_probe_cols_{tag}_{ckpt}.npz"
+        np.savez(dst, photo=zm["photo"], source=zm["source"], x=x, groups=np.asarray(["pe_probe"] * x.shape[1]))
+        if tag != "train":
+            truth = np.asarray([e["truth"] for e in json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text())])
+            print(f"  {tag}: top cell within 200 / 750 km {np.mean(_km(cent[l.argmax(1)], truth) < 200):.1%} / "
+                  f"{np.mean(_km(cent[l.argmax(1)], truth) < 750):.1%}", flush=True)
+        else:
+            truth = np.asarray([e["truth"] for e in json.loads(Path(f"artifacts/photo_sets/train_{ckpt}/photos.json").read_text())])
+            print(f"  train (cross-fitted): top cell within 200 / 750 km {np.mean(_km(cent[l.argmax(1)], truth) < 200):.1%} / "
+                  f"{np.mean(_km(cent[l.argmax(1)], truth) < 750):.1%}", flush=True)
+        print(f"-> {dst}: {x.shape}", flush=True)
+
+
 def gate(tag: str = "dev3k", ckpt: str = "setft_own") -> None:
     import second_model_gate as g
 
@@ -305,9 +461,9 @@ def gate(tag: str = "dev3k", ckpt: str = "setft_own") -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("select", "embed", "train", "gate"))
+    ap.add_argument("node", choices=("select", "embed", "train", "gate", "embed_pooled", "crossfit"))
     args = ap.parse_args()
-    {"select": select, "embed": embed, "train": train, "gate": gate}[args.node]()
+    {"select": select, "embed": embed, "train": train, "gate": gate, "embed_pooled": embed_pooled, "crossfit": crossfit}[args.node]()
 
 
 if __name__ == "__main__":
