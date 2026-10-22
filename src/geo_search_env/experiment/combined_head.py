@@ -399,7 +399,7 @@ class Text:
     """The cached text candidates as padded arrays, ranker probabilities that never saw given folds, and per-token text features."""
 
     def __init__(self, tag: str = TAG) -> None:
-        z = np.load(_cache(tag))
+        z = dict(np.load(_cache(tag)))  # NpzFile re-reads an array on every access
         self.fold, self.continent, self.ids = z["fold"], z["continent"], z["ids"]
         coff, noff = z["coff"], z["noff"]
         self.n = len(coff) - 1
