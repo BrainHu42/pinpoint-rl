@@ -15,7 +15,7 @@ by more than 0.3. Test set untouched.
 | 2 | Control: SigLIP2's final embedding as the same columns (no GPU, MP16 cache) | track R | done | done | SigLIP2 -0.03; SigLIP2 + PE-G +1.19 (SE 0.35): the column form adds nothing, the gain is PE-G's |
 | 3 | Each model alone: is the best-matching area right? | track R | done | done | PE-G 67.5% vs SigLIP2 63.4% (head's misses: 30.9% vs 24.6%) |
 | 4 | V5: answer head retrained on train with the columns, 3 seeds (head alone 47.17 / 30.63) | track V | done | **done, passes** | PE-G +1.37 / +0.97; DINOv3 +0.78; SigLIP2 +0.29; PE-G + DINOv3 +1.59 (pre-declared bar); **PE-G + SigLIP2 +2.04 / +1.28 (SE 0.38)**; all three +2.12 (lesson V5, worktree-value-agent 3f7d1f5) |
-| 5 | One PE-G pass at 378 px (~SigLIP2's 384): pooled output (resolution) + mean-pooled layers 32 / 38 / 44 / 47 (intermediate layers), same gate and solo check | track R | 19:40-~21:00 | running (`scripts/pe_layers.py`, log `artifacts/retrieval/gate/pe_layers.log`) | |
+| 5 | One PE-G pass at 378 px (~SigLIP2's 384): pooled output (resolution) + mean-pooled layers 32 / 38 / 44 / 47 (intermediate layers), same gate and solo check | track R | done | done (lesson R16) | 378 px pooled +0.87 (448 px +0.79; solo 67.1 vs 67.5%): resolution isn't the source, use 378 px. Layers 32 / 38 / 44 / 47 +0.34 / +0.19 / +0.39 / +0.37: no-go, the pooled output is best |
 | 6 | Commit PE-G next to SigLIP2 in the answer head; confirm on commons26 dev (below, A) | track R | after 5 | | |
 | 7 | Retrieval pre-check on a 10% MP16 gallery (below, B1) | track R | next night | | |
 | 8 | Full PE-G index as a retrieval modality next to SigLIP2 (below, B2) | track R | if 7 passes, with the user | | |
@@ -28,7 +28,7 @@ and the paper make a gain unlikely.
 ## Next steps (PE-G next to SigLIP2)
 V5 passed the bar, so PE-G stays. Each step keeps SigLIP2 and asks what PE-G adds on top of it.
 
-- **A. Answer head: PE-G per-area columns next to SigLIP2's** (V5's +2.04 / +1.28 configuration), at the resolution and layer step 5 picks.
+- **A. Answer head: PE-G per-area columns next to SigLIP2's** (V5's +2.04 / +1.28 configuration), pooled output; 448 px as in V5, or 378 px (step 5: equal within noise, cheaper).
   - Confirm on commons26 dev (977 photos; the PE-G columns need its queries + area photos embedded, ~30 min). Go: not below the current
     head there.
   - Optional simplification: the same head without MegaLoc; drop MegaLoc only if 25 km and 1 km hold.

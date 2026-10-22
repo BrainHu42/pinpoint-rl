@@ -83,9 +83,31 @@ def solo(models: list[str], tag: str, ckpt: str) -> None:
               f"{np.mean(pick[hw] < 25):.1%} where the head is wrong", flush=True)
 
 
+def pairs(models: list[str], tag: str, ckpt: str, ref: str = "siglip_final") -> None:
+    """Like the gate, but each model alone and with the reference model's columns (V5's best combination was PE-G + SigLIP2)."""
+
+    import second_model_gate as g
+
+    g.OUT = OUT
+    zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{ckpt}.npz")
+    logits, km, hyp = g.head_options(tag, ckpt)
+    valid = np.isfinite(logits)
+    base = g.clogit(np.where(valid, logits, 0.0)[..., None], valid, km)
+    print(f"{tag}: stacked head only {np.mean(base < 25):.2%} / {np.mean(base < 1):.2%} (< 25 / 1 km, 2-fold x 3 seeds)", flush=True)
+    ref_cols = g.columns(ref, tag, ckpt, zm)
+    for m in models:
+        cols = g.columns(m, tag, ckpt, zm)
+        for name, c in ((m, cols), (f"{m} + {ref}", np.concatenate([cols, ref_cols], 1))):
+            X = np.concatenate([np.where(valid, logits, 0.0)[..., None], np.where((hyp >= 0)[..., None], c[np.maximum(hyp, 0)], 0.0)], -1)
+            res = g.clogit(X, valid, km)
+            d25, d1 = (res < 25).mean(0) - (base < 25).mean(0), (res < 1).mean(0) - (base < 1).mean(0)
+            print(f"  + {name:28s}: {100 * d25.mean():+.2f} / {100 * d1.mean():+.2f} pts (paired SE {100 * d25.std() / np.sqrt(len(d25)):.2f})",
+                  flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("cached", "gate", "solo"))
+    ap.add_argument("node", choices=("cached", "gate", "solo", "pairs"))
     ap.add_argument("--models", nargs="*", default=["siglip_final", "pe_g"])
     ap.add_argument("--tag", default="dev3k")
     ap.add_argument("--ckpt", default="setft_own")
@@ -97,6 +119,8 @@ def main() -> None:
 
         g.OUT = OUT
         g.gate(args.models, args.tag, args.ckpt)
+    elif args.node == "pairs":
+        pairs(args.models, args.tag, args.ckpt)
     else:
         solo(args.models, args.tag, args.ckpt)
 
