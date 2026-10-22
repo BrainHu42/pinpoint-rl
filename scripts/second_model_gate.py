@@ -292,7 +292,8 @@ def siglip_cached(tag: str, ckpt: str) -> None:
     emb = np.memmap(embed_dir / m["files"]["embeddings"], dtype=np.float16, mode="r", shape=tuple(m["shapes"]["embeddings"]))
     pos = {k: i for i, k in enumerate((embed_dir / m["files"]["image_ids"]).read_text(encoding="utf-8").splitlines())}
     photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-    rows = np.concatenate([np.asarray([pos[p["image_id"]] for p in photos]), cache[need]])
+    bench = "benchmark" in photos[0]
+    rows = np.concatenate([np.zeros(nq, np.int64) if bench else np.asarray([pos[p["image_id"]] for p in photos]), cache[need]])
     out = np.lib.format.open_memmap(OUT / f"siglip_final_{tag}_{ckpt}.npy", mode="w+", dtype=np.float16, shape=(len(rows), emb.shape[1]))
     for a in range(0, len(rows), 100_000):
         r = rows[a: a + 100_000]
@@ -300,49 +301,62 @@ def siglip_cached(tag: str, ckpt: str) -> None:
         x = np.empty((len(r), emb.shape[1]), np.float32)
         x[o] = np.asarray(emb[r[o]], np.float32)
         out[a: a + len(r)] = (x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8)).astype(np.float16)
+    if bench:  # benchmark queries: their cached SigLIP2 embedding (the one Pinpoint queries with; action_agent._data's glance)
+        from geo_search_env.data.benchmarks import load_benchmark
+
+        names = sorted({p["benchmark"] for p in photos})
+        assert len(names) == 1, names
+        q = np.asarray(load_benchmark(names[0]).embeddings, np.float32)[[p["index"] for p in photos]]
+        out[:nq] = (q / np.linalg.norm(q, axis=1, keepdims=True)).astype(np.float16)
     out.flush()
     np.savez(OUT / f"siglip_final_{tag}_{ckpt}_keys.npz", n_queries=nq, rows=need, ok=ok)  # the pe_g file's coverage (train: informative photos)
     print(f"-> siglip_final_{tag}_{ckpt}: {nq} queries + {len(need)} area photos", flush=True)
 
 
-def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photos: str = "artifacts/value/train_informative_setft_own.npy") -> None:
+def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photos: str = "artifacts/value/train_informative_setft_own.npy",
+         tags: tuple[str, ...] = ("dev3k",), configs: list[str] | None = None) -> None:
     """The real test: the answer head (action_agent, --one-km 0.5) trained on train with the new columns revealed with MegaLoc (recognise), every
-    tool revealed on dev3k (take-everything = the RL policy at lambda 0, lesson 98), vs the same head without them; 3 seeds each. Pre-declared bar:
-    PE-G + DINOv3-7B >= +1.0 pt < 25 km over the head without them, < 1 km not down by more than 0.3. siglip_final (SigLIP2-g's own pooled
-    embedding in the same columns, from the MP16 cache; the retrieval-track session's control, which with PE-G gave +1.19 on the gate) is a
-    secondary arm, chosen after the gate. Configs: none, each model, PE-G with each other model, all together."""
+    tool revealed on each tag (take-everything = the RL policy at lambda 0, lesson 98), vs the same head without them; 3 seeds each. Pre-declared bar
+    (dev3k): PE-G + DINOv3-7B >= +1.0 pt < 25 km over the head without them, < 1 km not down by more than 0.3 (passed, lesson V5). siglip_final
+    (SigLIP2-g's own pooled embedding in the same columns; the retrieval-track session's control) was a secondary arm, chosen after the gate.
+    configs: e.g. ["none", "pe_g", "pe_g+siglip_final"]; default none, each model, PE-G with each other model, all together."""
 
     import torch
 
     from geo_search_env.experiment import action_agent as aa
     from geo_search_env.experiment import hypothesis_agent as ha
 
-    for m in models:
+    if configs:
+        cfgs = [() if c == "none" else tuple(c.split("+")) for c in configs]
+    else:
+        cfgs = [()] + [(m,) for m in models] + [("pe_g", m) for m in models if m != "pe_g" and "pe_g" in models]
+        cfgs += [tuple(models)] if len(models) > 2 or (len(models) == 2 and "pe_g" not in models) else []
+    for m in sorted({m for c in cfgs for m in c}):
         write(m, "train", ckpt, photos)
-        write(m, "dev3k", ckpt)
+        for t in tags:
+            write(m, t, ckpt)
     aa.CKPT_TAG, aa.ONE_KM = ckpt, 0.5
     res = {}
-    cfgs = [()] + [(m,) for m in models] + [("pe_g", m) for m in models if m != "pe_g" and "pe_g" in models]
-    cfgs += [tuple(models)] if len(models) > 2 or (len(models) == 2 and "pe_g" not in models) else []
     for cfg in cfgs:
         ha.EXTRA_FILES = [str(OUT / f"{m}_cols_{{tag}}_{{ckpt}}.npz") for m in cfg]
         aa.N_ML = 4 + 4 * len(cfg)
         tr = aa._data("train", ckpt=ckpt)
-        dv = aa._data("dev3k", stats=tr["stats"], ckpt=ckpt)
-        kms = []
+        sets = {t: aa._data(t, stats=tr["stats"], ckpt=ckpt) for t in tags}
+        kms = {t: [] for t in tags}
         for seed in seeds:
             net = aa.fit_answer(tr, np.arange(tr["n"]), seed=seed)
-            kms.append(aa.rollout(net, None, dv, 0.0, "fixed", fixed=(1, 1, "all"))[0].cpu().numpy())
-        res[cfg] = np.stack(kms)
-        k = res[cfg]
-        line = f"  {'+'.join(cfg) or 'head (MegaLoc, no new columns)':32s} {np.mean(k < 25):.2%} / {np.mean(k < 1):.2%} (< 25 / 1 km; seeds " + \
-               " ".join(f"{np.mean(x < 25):.1%}" for x in k) + ")"
-        if cfg:
-            b = res[()]
-            d25, d1 = (k < 25).mean(0) - (b < 25).mean(0), (k < 1).mean(0) - (b < 1).mean(0)
-            line += f"; vs head {100 * d25.mean():+.2f} / {100 * d1.mean():+.2f} pts (paired SE {100 * d25.std() / np.sqrt(len(d25)):.2f})"
-        print(line, flush=True)
-        del tr, dv
+            for t, dv in sets.items():
+                kms[t].append(aa.rollout(net, None, dv, 0.0, "fixed", fixed=(1, 1, "all"))[0].cpu().numpy())
+        for t in tags:
+            k = res[t, cfg] = np.stack(kms[t])
+            line = f"  {t:13s} {'+'.join(cfg) or 'head (MegaLoc, no new columns)':32s} {np.mean(k < 25):.2%} / {np.mean(k < 1):.2%} (< 25 / 1 km; seeds " + \
+                   " ".join(f"{np.mean(x < 25):.1%}" for x in k) + ")"
+            if cfg and (t, ()) in res:
+                b = res[t, ()]
+                d25, d1 = (k < 25).mean(0) - (b < 25).mean(0), (k < 1).mean(0) - (b < 1).mean(0)
+                line += f"; vs head {100 * d25.mean():+.2f} / {100 * d1.mean():+.2f} pts (paired SE {100 * d25.std() / np.sqrt(len(d25)):.2f})"
+            print(line, flush=True)
+        del tr, sets
         torch.cuda.empty_cache()
 
 
@@ -354,6 +368,8 @@ def main() -> None:
     ap.add_argument("--tag", default="dev3k")
     ap.add_argument("--ckpt", default="setft_own")
     ap.add_argument("--photos", default="", help="embed: boolean .npy over the photo set (only those queries and their areas)")
+    ap.add_argument("--tags", nargs="*", default=["dev3k"], help="head: photo sets to evaluate on")
+    ap.add_argument("--configs", nargs="*", default=None, help="head: e.g. none pe_g pe_g+siglip_final")
     ap.add_argument("--ks", type=int, nargs="*", default=[12], help="gate: photos per area used (first k)")
     args = ap.parse_args()
     if args.node == "embed":
@@ -363,7 +379,7 @@ def main() -> None:
     elif args.node == "siglip":
         siglip_cached(args.tag, args.ckpt)
     else:
-        head(args.models, args.ckpt)
+        head(args.models, args.ckpt, tags=tuple(args.tags), configs=args.configs)
 
 
 if __name__ == "__main__":
