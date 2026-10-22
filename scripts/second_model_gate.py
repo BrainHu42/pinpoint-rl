@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 from pathlib import Path
 
@@ -275,10 +276,41 @@ def write(model: str, tag: str, ckpt: str, photos: str = "") -> Path:
     return dst
 
 
+def siglip_cached(tag: str, ckpt: str) -> None:
+    """SigLIP2-g's final pooled embeddings (Pinpoint's own space, data/pinpoint/mp16-embed) for the rows of the pe_g file, in the same format:
+    no GPU (after the retrieval-track session's scripts/siglip_gate.py cached)."""
+
+    from geo_search_env.models.pinpoint_reranker import _discover_index
+
+    embed_dir = Path("data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384")
+    ref = np.load(OUT / f"pe_g_{tag}_{ckpt}_keys.npz")
+    nq, need, ok = int(ref["n_queries"]), ref["rows"], ref["ok"]
+    index_dir = _discover_index()
+    manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
+    cache = np.fromfile(index_dir / manifest["files"]["cache_indices"], dtype=np.int64)
+    m = json.loads((embed_dir / "manifest.json").read_text(encoding="utf-8"))
+    emb = np.memmap(embed_dir / m["files"]["embeddings"], dtype=np.float16, mode="r", shape=tuple(m["shapes"]["embeddings"]))
+    pos = {k: i for i, k in enumerate((embed_dir / m["files"]["image_ids"]).read_text(encoding="utf-8").splitlines())}
+    photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
+    rows = np.concatenate([np.asarray([pos[p["image_id"]] for p in photos]), cache[need]])
+    out = np.lib.format.open_memmap(OUT / f"siglip_final_{tag}_{ckpt}.npy", mode="w+", dtype=np.float16, shape=(len(rows), emb.shape[1]))
+    for a in range(0, len(rows), 100_000):
+        r = rows[a: a + 100_000]
+        o = np.argsort(r)
+        x = np.empty((len(r), emb.shape[1]), np.float32)
+        x[o] = np.asarray(emb[r[o]], np.float32)
+        out[a: a + len(r)] = (x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8)).astype(np.float16)
+    out.flush()
+    np.savez(OUT / f"siglip_final_{tag}_{ckpt}_keys.npz", n_queries=nq, rows=need, ok=ok)  # the pe_g file's coverage (train: informative photos)
+    print(f"-> siglip_final_{tag}_{ckpt}: {nq} queries + {len(need)} area photos", flush=True)
+
+
 def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photos: str = "artifacts/value/train_informative_setft_own.npy") -> None:
     """The real test: the answer head (action_agent, --one-km 0.5) trained on train with the new columns revealed with MegaLoc (recognise), every
     tool revealed on dev3k (take-everything = the RL policy at lambda 0, lesson 98), vs the same head without them; 3 seeds each. Pre-declared bar:
-    all models together >= +1.0 pt < 25 km over the head without them, < 1 km not down by more than 0.3."""
+    PE-G + DINOv3-7B >= +1.0 pt < 25 km over the head without them, < 1 km not down by more than 0.3. siglip_final (SigLIP2-g's own pooled
+    embedding in the same columns, from the MP16 cache; the retrieval-track session's control, which with PE-G gave +1.19 on the gate) is a
+    secondary arm, chosen after the gate. Configs: none, each model, PE-G with each other model, all together."""
 
     import torch
 
@@ -290,7 +322,9 @@ def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photo
         write(m, "dev3k", ckpt)
     aa.CKPT_TAG, aa.ONE_KM = ckpt, 0.5
     res = {}
-    for cfg in [()] + [(m,) for m in models] + ([tuple(models)] if len(models) > 1 else []):
+    cfgs = [()] + [(m,) for m in models] + [("pe_g", m) for m in models if m != "pe_g" and "pe_g" in models]
+    cfgs += [tuple(models)] if len(models) > 2 or (len(models) == 2 and "pe_g" not in models) else []
+    for cfg in cfgs:
         ha.EXTRA_FILES = [str(OUT / f"{m}_cols_{{tag}}_{{ckpt}}.npz") for m in cfg]
         aa.N_ML = 4 + 4 * len(cfg)
         tr = aa._data("train", ckpt=ckpt)
@@ -314,7 +348,7 @@ def head(models: list[str], ckpt: str, seeds: tuple[int, ...] = (7, 8, 9), photo
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("embed", "gate", "head"))
+    ap.add_argument("node", choices=("embed", "gate", "head", "siglip"))
     ap.add_argument("--model", default="pe_g", choices=tuple(MODELS))
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--tag", default="dev3k")
@@ -326,6 +360,8 @@ def main() -> None:
         embed(args.model, args.tag, args.ckpt, photos=args.photos)
     elif args.node == "gate":
         gate(args.models, args.tag, args.ckpt, tuple(args.ks))
+    elif args.node == "siglip":
+        siglip_cached(args.tag, args.ckpt)
     else:
         head(args.models, args.ckpt)
 
