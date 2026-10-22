@@ -101,5 +101,8 @@ V5. **A second image model per area: PE-Core-G adds +1.4 pts < 25 km in the trai
     +0.78 / +0.43 (SE 0.23); + SigLIP2 +0.29 / +0.26; **+ PE-G + DINOv3-7B 48.76 / 31.66 (+1.59 / +1.02, SE 0.35): pre-declared bar (>= +1.0,
     1 km >= -0.3) passed**; + PE-G + SigLIP2 49.21 / 31.91 (+2.04 / +1.28, SE 0.38), all three 49.29 / 31.94 (+2.12 / +1.31); the last two
     were chosen after the gate. DINOv3 adds +0.2 over PE-G (+0.1 over PE-G + SigLIP2): marginal. PE-G sees what SigLIP2 and MegaLoc share
-    blind spots on (look-alike townscapes); SigLIP2's cosine helps as the reference PE-G disagrees with. Not yet: commons26, the RL policy's
-    cost curve with the new columns, the test set.
+    blind spots on (look-alike townscapes); SigLIP2's cosine helps as the reference PE-G disagrees with. **commons26 dev transfers**
+    (`scripts/second_model_commons.sh`; 977 photos, 45.7k area photos, same train-fitted heads): head 25.01 / 7.68, + PE-G 26.17 / 7.64
+    (+1.16 / -0.03, SE 0.45), + PE-G + SigLIP2 26.89 / 7.78 (+1.88 / +0.10, SE 0.54); the 1 km gain is MP16-only. The retrieval session's
+    R16: PE-G at 378 px matches 448 px; intermediate layers (mean-pooled) are weaker than the pooled output. Not yet: the RL policy's cost
+    curve with the new columns, the test set.
