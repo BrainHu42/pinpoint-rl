@@ -148,7 +148,7 @@ R15. **A dedicated OCR model reads less than the 4B and adds ~1 pt of ceiling, n
     right words (~55-60% of place-text photos) and placing them (one-shot top-1 17% on geolocatable tiers): disambiguation and ranking of
     what is read, the combined head's ground (lessons 140-141), not transcription.
 
-R16. **PE-core-G's gain is the model, not the column form, the resolution or a hidden layer: its pooled output is the feature to use**
+R16. **PE-core-G's gain is the model, not the column form or the resolution; mean-pooled middle layers compared by cosine don't help, which does not yet test the paper's claim**
     (`scripts/siglip_gate.py`, `scripts/pe_layers.py`, `PE_PLAN.md`; dev3k, the same 3,000 queries + 140,871 area photos as track V's gate,
     per-area columns stacked on the answer head's option logits, 2-fold x 3 seeds, head 47.20 / 30.77). Track V found PE-G's columns add
     +0.79 (gate) and +1.37 / +0.97 in the retrained head, +2.04 / +1.28 with SigLIP2's columns (V5). Controls here: SigLIP2's own pooled
@@ -157,7 +157,11 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a h
     patches, ~SigLIP2's 384) +0.87 vs +0.79 at 448 px (with SigLIP2's columns +0.98 vs +1.18, SE ~0.33), solo 67.1%: not more pixels, and a
     re-embed can run at 378 px (~1.4x fewer tokens). Intermediate layers (Perception Encoder paper's point, arXiv 2504.13181): mean-pooled
     residual stream of blocks 32 / 38 / 44 / 47, centred and unit-normed, +0.34 / +0.19 / +0.39 / +0.37 (SE ~0.2), solo 52.9 / 54.1 / 62.5 /
-    65.4%, rising towards the output: no-go. As the paper finds for global tasks, the last (pooled) layer is best; intermediate layers help
-    local tasks (OCR, detection), which a learned probe over patch tokens, not a mean pool, would be needed to test.
+    65.4%, rising towards the output: no-go *for this readout*. It is not the paper's test: every layer result there (Fig. 8) comes from a
+    readout trained per layer on frozen features (attention probe, LLM projector, detection / depth decoders) or from patch-level matching
+    (tracking), never from the cosine of a mean-pooled vector. Only the pooled output is trained to be compared by cosine, so a cosine test
+    favours it by construction; mean pooling also discards the local detail middle layers are claimed to hold, and their large shared
+    residual component (the global tokens from block ~33) dominates the mean. The on-claim test, a geolocation probe trained per layer on
+    patch tokens, is `PE_PLAN.md` step 5b.
 
 ## Search-agent track (S)
