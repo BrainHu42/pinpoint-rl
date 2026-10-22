@@ -34,7 +34,10 @@ def _paths(model: str, tag: str, ckpt: str) -> tuple[Path, Path]:
     return OUT / f"{model}_{tag}_{ckpt}.npy", OUT / f"{model}_{tag}_{ckpt}_keys.npz"
 
 
-def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4) -> None:
+def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4, photos: str = "") -> None:
+    """photos: a boolean .npy over the photo set; only those queries and their areas' photos are embedded (train: the photos whose full-view
+    options are neither all right nor all wrong at 25 / 1 km, the only ones that move the answer head's loss)."""
+
     os.environ.setdefault("HF_HOME", str(Path("data/hf").resolve()))
     os.environ["HF_HUB_OFFLINE"] = "1"
     import torch
@@ -47,7 +50,8 @@ def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4) ->
     megaloc_gate.CKPT_TAG = ckpt
     zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{ckpt}.npz")
     rows = zm["rows"]
-    need = np.unique(rows[rows >= 0])
+    keep = np.isin(zm["photo"], np.flatnonzero(np.load(photos))) if photos else np.ones(len(rows), bool)
+    need = np.unique(rows[keep][rows[keep] >= 0])
     ids, nq, _ = megaloc_gate._image_ids(tag, need)  # queries first, then the area photos in index-row order
     if model.startswith("pe_"):
         import timm
@@ -97,22 +101,26 @@ def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4) ->
         start = 0
         np.savez(key_path, n_queries=nq, rows=need, ok=ok)
     print(f"{model} {tag}: {nq} queries + {len(need)} area photos, dim {dim}; starting at {start}", flush=True)
-    sub = torch.utils.data.Subset(Images(), range(start, len(ids)))
+    order = np.concatenate([np.flatnonzero(np.load(photos)) if photos else np.arange(nq), nq + np.arange(len(need))])  # unselected queries stay 0
+    sub = torch.utils.data.Subset(Images(), order[start:].tolist())
+    done = start
     with torch.inference_mode():
         for b, (idx, x, good) in enumerate(DataLoader(sub, batch_size=batch, num_workers=workers)):
             e = torch.nn.functional.normalize(net(x.cuda().to(torch.bfloat16)).float(), dim=-1)
             out[idx.numpy()] = e.cpu().numpy().astype(np.float16)
             ok[idx.numpy()] = good.numpy()
-            if b % 200 == 199 or int(idx[-1]) == len(ids) - 1:
+            done += len(idx)
+            if b % 200 == 199 or done == len(order):
                 out.flush()
                 np.savez(key_path, n_queries=nq, rows=need, ok=ok)
-                prog.write_text(str(int(idx[-1]) + 1))
-                print(f"  {int(idx[-1]) + 1:,} / {len(ids):,}", flush=True)
+                prog.write_text(str(done))
+                print(f"  {done:,} / {len(order):,}", flush=True)
     print(f"-> {emb_path}: {np.mean(~ok):.2%} unreadable", flush=True)
 
 
-def columns(model: str, tag: str, ckpt: str, zm) -> np.ndarray:
-    """Per zoom-file hypothesis: best, top-3 mean, and both minus the best of the photo's other non-street areas (megaloc_gate._write_columns)."""
+def columns(model: str, tag: str, ckpt: str, zm, per_area: int = 12) -> np.ndarray:
+    """Per zoom-file hypothesis: best, top-3 mean, and both minus the best of the photo's other non-street areas (megaloc_gate._write_columns);
+    per_area: only each area's first photos (Pinpoint's restricted-search order), to price a cheaper train-side embedding."""
 
     emb_path, key_path = _paths(model, tag, ckpt)
     k = np.load(key_path)
@@ -122,7 +130,7 @@ def columns(model: str, tag: str, ckpt: str, zm) -> np.ndarray:
     q = np.asarray(e[:nq], np.float32)
     sims = np.full(rows.shape, np.nan, np.float32)
     for h in range(len(photo)):
-        v = np.flatnonzero(rows[h] >= 0)
+        v = np.flatnonzero(rows[h, :per_area] >= 0)
         if len(v):
             pos = nq + np.searchsorted(need, rows[h, v])
             s = np.asarray(e[pos], np.float32) @ q[photo[h]]
@@ -216,7 +224,7 @@ def clogit(X: np.ndarray, valid: np.ndarray, km: np.ndarray, seeds: int = 3) -> 
     return out
 
 
-def gate(models: list[str], tag: str, ckpt: str) -> None:
+def gate(models: list[str], tag: str, ckpt: str, ks: tuple[int, ...] = (12,)) -> None:
     zm = np.load(Path("artifacts/pinpoint_set") / f"zoom_{tag}_{ckpt}.npz")
     logits, km, hyp = head_options(tag, ckpt)
     valid = np.isfinite(logits)
@@ -224,7 +232,9 @@ def gate(models: list[str], tag: str, ckpt: str) -> None:
     print(f"\n{tag}: head argmax (read + recognise + zoom all) {np.mean(head_km < 25):.1%} < 25 km, {np.mean(head_km < 1):.1%} < 1 km; "
           f"option oracle {np.mean((km < 25).any(1)):.1%}", flush=True)
     groups = {"MegaLoc (control)": np.load(Path("artifacts/agent") / f"megaloc_{tag}_{ckpt}.npz")["x"]}
-    groups |= {m: columns(m, tag, ckpt, zm) for m in models if _paths(m, tag, ckpt)[0].exists()}
+    groups |= {m + ("" if k == 12 else f" @{k}"): columns(m, tag, ckpt, zm, k) for m in models if _paths(m, tag, ckpt)[0].exists() for k in ks}
+    if len(models) > 1:  # all models together
+        groups["+".join(models)] = np.concatenate([columns(m, tag, ckpt, zm) for m in models if _paths(m, tag, ckpt)[0].exists()], 1)
     # per area: does the new model separate right from wrong areas where the head's pick is wrong and a right area exists?
     a_right = np.zeros(len(zm["photo"]), bool)
     for p in range(len(km)):
@@ -254,11 +264,13 @@ def main() -> None:
     ap.add_argument("--models", nargs="*", default=list(MODELS))
     ap.add_argument("--tag", default="dev3k")
     ap.add_argument("--ckpt", default="setft_own")
+    ap.add_argument("--photos", default="", help="embed: boolean .npy over the photo set (only those queries and their areas)")
+    ap.add_argument("--ks", type=int, nargs="*", default=[12], help="gate: photos per area used (first k)")
     args = ap.parse_args()
     if args.node == "embed":
-        embed(args.model, args.tag, args.ckpt)
+        embed(args.model, args.tag, args.ckpt, photos=args.photos)
     else:
-        gate(args.models, args.tag, args.ckpt)
+        gate(args.models, args.tag, args.ckpt, tuple(args.ks))
 
 
 if __name__ == "__main__":
