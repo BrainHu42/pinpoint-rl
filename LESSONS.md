@@ -121,4 +121,19 @@ R13. **Dense Commons imagery doesn't verify text places either: even the true lo
     135 (YFCC Flickr), 138 (live Commons, Mapillary) and R7 (Commons coverage), imagery near a proposed place is closed as a verifier for
     commons26. Done while choosing a live tool for an RL agent: a Flickr API key now needs a Pro subscription.
 
+R14. **Mapillary on dev3k: above chance, far below the head, adds nothing to it** (`scripts/mapillary_dev3k.py`, `mapillary_dev3k_combine.py`;
+    `tools/imagery.py` from the tool-use branch). 1,334 dev3k photos whose head top two areas (25 km head on the full state, R11) hold exactly
+    one right area; the head picks it on 86.6% (179 fixable, 1,155 breakable). Up to 20 Mapillary frames within 1 km of each area's point
+    (restricted top-1) and of the truth (control), no panoramas, <= 2 per sequence: 57,751 frames, any frame at 85-89% of places, median 20.
+    Best MegaLoc match median 0.07 everywhere (>= 0.3 on 1.6% at the head's top, 1.5% at the truth); a clear match (z >= 3 against the same
+    frames' best matches to 300 other queries) on 15.0% at the truth, 12.8% at the top, 5.7% at the second. Right area above the wrong one
+    58.3% (AUC 0.566; truth above the wrong one 60.6%) vs the head's 86.6%. Every switch rule loses (lead > 0: 76 fixes / 369 breaks; z lead
+    > 2: 17 / 61); a logistic model of the head's margin + Mapillary (5-fold CV) has AUC 0.842 vs 0.845 for the margin alone, and its 28
+    switches give 11 fixes / 17 breaks. Unlike commons26 (lesson 138) the candidates are precise (both 1 km checks around real gallery
+    photos), so the limit is the view again: old Flickr photos (people, interiors, details, 2004-14) rarely share a street-level frame's
+    view, and the few clear matches sit where the head is already right. With R12-R13: no live or offline tool tested gives an RL agent an
+    informative, costly observation. Engineering: Mapillary's coverage tiles hit a daily quota ("Not Logged In" with HTTP 200) after ~10k
+    tiles; `imagery.py` now falls back to the graph API's bbox search (small box first, split on errors), paces Mapillary at 0.02 s, and finds
+    the repo-root `.env` from a worktree.
+
 ## Search-agent track (S)
