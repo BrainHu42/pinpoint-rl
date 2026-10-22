@@ -9,7 +9,7 @@ PE-G alone +1.37).
 by more than 0.3. Test set untouched.
 
 ## Status (update as steps finish)
-| # | Step | Owner | When (UTC) | Status | Result |
+| # | Step | Owner | When (Pacific) | Status | Result |
 |---|---|---|---|---|---|
 | 1 | PE-G / PE-L / DINOv3 as per-area columns on the head (gate, CV on dev3k) | track V | done | done | PE-G +0.79 / +0.63, PE-L +0.23, DINOv3-7B +0.23, PE-G + DINOv3 +1.04 |
 | 2 | Control: SigLIP2's final embedding as the same columns (no GPU, MP16 cache) | track R | done | done | SigLIP2 -0.03; SigLIP2 + PE-G +1.19 (SE 0.35): the column form adds nothing, the gain is PE-G's |
@@ -17,7 +17,7 @@ by more than 0.3. Test set untouched.
 | 4 | V5: answer head retrained on train with the columns, 3 seeds (head alone 47.17 / 30.63) | track V | done | **done, passes** | PE-G +1.37 / +0.97; DINOv3 +0.78; SigLIP2 +0.29; PE-G + DINOv3 +1.59 (pre-declared bar); **PE-G + SigLIP2 +2.04 / +1.28 (SE 0.38)**; all three +2.12 (lesson V5, worktree-value-agent 3f7d1f5) |
 | 5 | One PE-G pass at 378 px (~SigLIP2's 384): pooled output (resolution) + mean-pooled layers 32 / 38 / 44 / 47 (intermediate layers), same gate and solo check | track R | done | done (lesson R16) | 378 px pooled +0.87 (448 px +0.79; solo 67.1 vs 67.5%): resolution isn't the source, use 378 px. Mean-pooled layers 32 / 38 / 44 / 47 by cosine +0.34 / +0.19 / +0.39 / +0.37: this readout fails, but it is not the paper's test (5b) |
 | 5b | On-claim layer test: a geolocation probe trained per layer on PE-G patch tokens (the paper's Fig. 8 protocol) | track R | done | **done, no-go (R16)** | dev3k top cell within 200 km: blocks 32 / 38 / 44 / 47 9.0 / 14.0 / 25.1 / 34.9, last 45.6, pooled 46.5: the output is best, as for the paper's ImageNet probe. By-product: the pooled region probe as head columns +1.38, on top of PE-G + SigLIP2 cosine +1.18 -> +1.86 / +1.03 (gate) |
-| 5c | Region-probe columns in the trained head (V5 setup + probe columns; train-side columns cross-fitted, the probe must not see the photo it scores). Bar (track V, declared): probe adds >= +0.5 at 25 km over pe_g + siglip_final on dev3k, commons26 dev not down | files: track R (done, `pe_probe.py crossfit`); head: track V | ~23:00-23:45 | head test running (track V) | cross-fitted train columns 44.9% top cell < 200 km vs dev3k 46.3%, commons26 dev 42.9%: no leak visible |
+| 5c | Region-probe columns in the trained head (V5 setup + probe columns; train-side columns cross-fitted, the probe must not see the photo it scores). Bar (track V, declared): probe adds >= +0.5 at 25 km over pe_g + siglip_final on dev3k, commons26 dev not down | files: track R (done, `pe_probe.py crossfit`); head: track V | ~4:00-4:45 PM | head test running (track V) | cross-fitted train columns 44.9% top cell < 200 km vs dev3k 46.3%, commons26 dev 42.9%: no leak visible |
 | 6 | Commit PE-G next to SigLIP2 in the answer head; confirm on commons26 dev (below, A) | track V (`scripts/second_model_commons.sh`, ac43ec4) | done | **done, passes** | commons26 dev (head 25.01 / 7.68): PE-G +1.16 / -0.03 (SE 0.45), **PE-G + SigLIP2 +1.88 / +0.10 (SE 0.54)**; dev3k reproduced (+1.37, +2.04); lesson V5 |
 | 7 | Retrieval pre-check on a 10% MP16 gallery (below, B1) | track R | next night | | |
 | 8 | Full PE-G index as a retrieval modality next to SigLIP2 (below, B2) | track R | if 7 passes, with the user | | |
