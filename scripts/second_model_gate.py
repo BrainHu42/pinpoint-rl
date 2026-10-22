@@ -1,7 +1,7 @@
 """A second image model on the candidate areas (VALUE_PLAN.md idea 2; user, 2026-10-22). Every Pinpoint score comes from SigLIP2 (plus MegaLoc's
 same-place columns, lesson 93, the largest evidence gain since the retrained reranker). Meta's Perception Encoder (PE-Core, 5.4B image-text
 pairs, apache-2.0; timm `vit_pe_core_{gigantic_patch14_448,large_patch14_336}.fb`) learned from other data: does it know which candidate
-area is right where SigLIP2 and MegaLoc don't? DINOv3 is gated on the Hub (needs a licence click), so PE first.
+area is right where SigLIP2 and MegaLoc don't? Also DINOv3 (self-supervised on 1.7B images; ViT-7B and its distilled ViT-L; gated: HF_TOKEN).
 
 embed (.venvs/sft, timm on PYTHONPATH): the dev3k queries and every photo of their areas' restricted searches (the zoom file's 12 per area,
         as megaloc_gate), unit-norm embeddings -> artifacts/value/pe_{model}_{tag}_{ckpt}.npy (+ _keys.npy); resumable.
@@ -25,7 +25,9 @@ from pathlib import Path
 import numpy as np
 
 OUT = Path("artifacts/value")
-MODELS = {"pe_g": "vit_pe_core_gigantic_patch14_448.fb", "pe_l": "vit_pe_core_large_patch14_336.fb"}
+MODELS = {"pe_g": "vit_pe_core_gigantic_patch14_448.fb", "pe_l": "vit_pe_core_large_patch14_336.fb",
+          "dino_7b": "facebook/dinov3-vit7b16-pretrain-lvd1689m", "dino_l": "facebook/dinov3-vitl16-pretrain-lvd1689m"}
+DINO_SIZE = 224  # the DINOv3 processor's default (square resize, ImageNet normalisation); its pooled CLS token is the embedding
 
 
 def _paths(model: str, tag: str, ckpt: str) -> tuple[Path, Path]:
@@ -35,7 +37,6 @@ def _paths(model: str, tag: str, ckpt: str) -> tuple[Path, Path]:
 def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4) -> None:
     os.environ.setdefault("HF_HOME", str(Path("data/hf").resolve()))
     os.environ["HF_HUB_OFFLINE"] = "1"
-    import timm
     import torch
     from PIL import Image
     from torch.utils.data import DataLoader, Dataset
@@ -48,10 +49,22 @@ def embed(model: str, tag: str, ckpt: str, batch: int = 64, workers: int = 4) ->
     rows = zm["rows"]
     need = np.unique(rows[rows >= 0])
     ids, nq, _ = megaloc_gate._image_ids(tag, need)  # queries first, then the area photos in index-row order
-    net = timm.create_model(MODELS[model], pretrained=True).cuda().eval().to(torch.bfloat16)
-    cfg = timm.data.resolve_data_config(model=net)
-    tf = timm.data.create_transform(**cfg)
-    size = cfg["input_size"][1]
+    if model.startswith("pe_"):
+        import timm
+
+        net = timm.create_model(MODELS[model], pretrained=True).cuda().eval().to(torch.bfloat16)
+        cfg = timm.data.resolve_data_config(model=net)
+        tf = timm.data.create_transform(**cfg)
+        size = cfg["input_size"][1]
+    else:  # DINOv3 (gated on the Hub: HF_TOKEN)
+        from torchvision import transforms as T
+        from transformers import AutoModel
+
+        dino = AutoModel.from_pretrained(MODELS[model], dtype=torch.bfloat16).cuda().eval()
+        net = lambda x: dino(pixel_values=x).pooler_output
+        size = DINO_SIZE
+        tf = T.Compose([T.Resize((size, size), interpolation=T.InterpolationMode.BICUBIC), T.ToTensor(),
+                        T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
     class Images(Dataset):
         images = None
