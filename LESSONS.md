@@ -74,3 +74,16 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     picked from two settings on these folds, so step B (a separate commons_train pool, all 977 commons26 dev photos held out) is the check.
     Sub-threshold stacking on dev3k (3 seeds, base 47.3): MP16 kNN-graph diffusion columns +0.38 (0.24), crop-look columns +0.50 (0.23),
     both +0.34; not adopted.
+
+141. **Step B: the combined head trained on a separate Commons pool keeps the gain on all of commons26 dev, +1.8 (SE 0.8) RL / +2.2 fixed recipe**
+    (`combined_head.py transfer --weight 3`, `scripts/commons_train_pipeline.sh`; setft_own, MegaLoc on, `--one-km 0.5`, 2 seeds; all 977
+    commons26 dev photos held out, no CV). Training pool `commons_train` (`commons_bench` with `COMMONS_OUT`): geotagged Commons JPEGs uploaded
+    2026-01 to 06 (every day read; commons26 is uploaded from 07), taken in 2026, commons26's 2,345 uploaders excluded (they own 77% of the
+    candidates), <= 20 per uploader, >= 50 m apart: 11,282 photos, 3,556 uploaders, 155 countries; retrained top-1 21.1% / pool oracle 50.9%
+    (commons26 dev 19.7 / 48.2), so the same difficulty. Whole pipeline on it (~3.5 h after a 3 h paced download). Text ranker trained on
+    commons_train: top-1 right on commons26 dev 20.8% (lesson 119's in-domain CV 20.7). Results on commons26 dev, % < 25 km (base 25.0):
+    MP16 + commons_train x3 without text +0.97 (0.52; 39 fixes / 25 breaks); with text columns + text-place tokens **+1.84 (0.76; 54 / 33)**
+    under the lambda-0 policy, +2.20 (0.77) with the fixed read-everything recipe, < 1 km 7.5 -> 8.2; frozen MP16 head + text adapter fitted
+    on commons_train +1.38 (0.67; 37 / 20). dev3k flat (+0.07, SE 0.24). So lesson 140's +1.9 was not a product of training on commons26 dev
+    folds or of the weight choice: in-domain photos give ~+1, the text evidence another ~+0.9-1.2 on top. Fitted on 11k photos the adapter
+    now uses names matched <= 5 times too (+0.25; ~0 when fitted on commons26 dev), ranker top here +0.37.

@@ -486,22 +486,25 @@ def _with_text(d: dict, cols: np.ndarray | None, tokens: list[list[tuple]] | Non
     return e
 
 
-def _concat(a: dict, b: dict) -> dict:
-    """Two batch dicts as one (slot dimension padded to the larger)."""
+def _concat(a: dict, b: dict, consume: bool = False) -> dict:
+    """Two batch dicts as one (slot dimension padded to the larger). consume: pop each key from a and b as it is joined (temporaries; lower
+    peak GPU memory)."""
 
     import torch
 
     h = max(a["mask"].shape[1], b["mask"].shape[1])
     out = {}
-    for key, va in a.items():
-        vb = b[key]
+    for key in list(a):
+        va, vb = (a.pop(key), b.pop(key)) if consume else (a[key], b[key])
         if key in SLOT_KEYS:
             fill = {"km_zoom": float("inf"), "km_zoom_set": float("inf"), "km_unzoom": float("inf"), "rank": 99.0}.get(key, 0)
             padded = []
             for v in (va, vb):
                 p = torch.full((v.shape[0], h - v.shape[1]) + tuple(v.shape[2:]), fill, dtype=v.dtype, device=v.device)
-                padded.append(torch.cat([v, p], 1))
+                padded.append(torch.cat([v, p], 1) if h > v.shape[1] else v)
+            del va, vb
             out[key] = torch.cat(padded, 0)
+            del padded
         elif torch.is_tensor(va):
             out[key] = torch.cat([va, vb], 0)
         elif isinstance(va, np.ndarray):
@@ -812,13 +815,30 @@ def transfer(weight: int, seeds: int) -> None:
     ct_cols, ct_tokens = _text_inputs(_with_text(ct, None, None), ct_text, P_ct, ct_photos)
     cd_cols, cd_tokens = _text_inputs(_with_text(cd, None, None), cd_text, P_cd, cd_photos)
     no_tok = lambda d: [[] for _ in range(d["n"])]
-    cells = {"base": (_with_text(tr, None, None), mp16, _with_text(cd, None, None), _with_text(dv, None, None)),
-             "+ctrain": (_concat(_with_text(tr, None, None), _with_text(ct, None, None)), None, _with_text(cd, None, None), _with_text(dv, None, None)),
-             "+ctrain+text": (_concat(_with_text(tr, None, no_tok(tr)), _with_text(ct, ct_cols, ct_tokens)), None,
-                              _with_text(cd, cd_cols, cd_tokens), _with_text(dv, None, no_tok(dv)))}
+    def cell_data(cell):  # built one cell at a time (the GPU is shared)
+        if cell == "base":
+            return _with_text(tr, None, None), mp16, _with_text(cd, None, None), _with_text(dv, None, None)
+        if cell == "+ctrain":
+            return (_concat(_with_text(tr, None, None), _with_text(ct, None, None), consume=True), None, _with_text(cd, None, None),
+                    _with_text(dv, None, None))
+        return (_concat(_with_text(tr, None, no_tok(tr)), _with_text(ct, ct_cols, ct_tokens), consume=True), None, _with_text(cd, cd_cols, cd_tokens),
+                _with_text(dv, None, no_tok(dv)))
+
     fit_mix = np.concatenate([mp16, np.repeat(n_tr + np.arange(n_ct), weight)])
-    for s in range(seeds):
-        for cell, (train_d, idx, cd_d, dv_d) in cells.items():
+    partial = OUT / f"combined_head_stepB_w{weight}_partial.pkl"  # finished cells (a rerun skips them)
+    if partial.exists():
+        import pickle
+
+        res, dev3k = (collections.defaultdict(dict, x) for x in pickle.loads(partial.read_bytes()))
+    for cell in ("+ctrain+text", "+ctrain", "base"):  # the largest batch first, on a fresh allocator
+        if cell in res and len(next(iter(res[cell].values()))) == seeds:
+            continue
+        res.pop(cell, None)
+        dev3k.pop(cell, None)
+        if cell == "base":
+            res.pop("adapter", None)
+        train_d, idx, cd_d, dv_d = cell_data(cell)
+        for s in range(seeds):
             net, pols = _fit(train_d, fit_mix if idx is None else idx, 7 + 100 * s)
             for key, v in _keep(aa.evaluate(net, pols, cd_d, np.arange(n_cd), cd["base_km"])).items():
                 res[cell].setdefault(key, []).append(v)
@@ -828,20 +848,26 @@ def transfer(weight: int, seeds: int) -> None:
                 L, K, R = _final_options(net, pols[0.0], _with_text(ct, None, None))
                 F, TL, TF, TK = _adapter_arrays(ct_cols, ct_tokens)
                 choose, wt = _fit_adapter(L, F, K, R, TL, TF, TK, np.arange(n_ct))
-                Lc, Kc, Rc = _final_options(net, pols[0.0], _with_text(cd, None, None))
+                Lc, Kc, Rc = _final_options(net, pols[0.0], cd_d)
                 Fc, TLc, TFc, TKc = _adapter_arrays(cd_cols, cd_tokens)
                 km = choose(np.arange(n_cd), (Lc, Fc, Kc, Rc, TLc, TFc, TKc))
                 res["adapter"].setdefault("RL policy, lambda 0", []).append(km)
                 print(f"  seed {s} adapter weights " + ", ".join(f"{c} {x:+.2f}" for c, x in zip(TEXT_COLS, wt[0])) + f"; a {wt[1]:.2f}, b {wt[2]:+.2f}",
                       flush=True)
+            del net, pols
             torch.cuda.empty_cache()
             print(f"seed {s} {cell} done", flush=True)
+        del train_d, cd_d, dv_d
+        torch.cuda.empty_cache()
+        import pickle
+
+        partial.write_bytes(pickle.dumps((dict(res), dict(dev3k))))
     lines = [f"combined head, step B (train MP16 + commons_train x{weight}; eval all of commons26 dev and dev3k; {seeds} seed(s); % < 25 km)"]
     conts = sorted(set(cd_text.continent))
     for name, r, d in (("commons26 dev", res, cd), ("dev3k", dev3k, dv)):
         lines.append(f"\n {name}: released Pinpoint {np.mean(d['base_km'] < 25):.1%}, retrained top-1 {np.mean(d['rt_base_km'] < 25):.1%}")
         base = {k: np.mean([v < 25 for v in vs], 0) for k, vs in r["base"].items()}
-        for cell in r:
+        for cell in [c for c in ("base", "+ctrain", "+ctrain+text", "adapter") if c in r]:
             for key, vs in r[cell].items():
                 ok, ok1 = np.mean([v < 25 for v in vs], 0), np.mean([v < 1 for v in vs], 0)
                 diff = ok - base[key]
