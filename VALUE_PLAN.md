@@ -44,6 +44,7 @@ Read `LEARNINGS.md` first; lesson N is in `docs/archive/LESSONS_1-137.md#lN`, le
 | Conjunction / conditional search, rankers, overrides over the 4B's *current* reads | 79, R12 (+0.8 at best), 119-121 |
 | Reverse geocoding: each area's nearby names fuzzy-matched against the photo's text | V2 (AUC 0.60-0.66; switches +0.31 / -1.00 at best) |
 | SigLIP2 text-side place names as candidate proposals | V3 (new right places net of luck +1.3 pts top-5, bar 3) |
+| Text visible in the index photos (OCR of each area's photos) matched to the photo's text | V4 (AUC 0.65; best switch -0.03, bar +1) |
 | More zooms, extra pool areas, more MegaLoc photos per area | 70-71 (2 zooms = full gain), 112, 97 |
 | New 1 km refinement features | 91, 107, 112, R10 (doesn't transfer to dev3k) |
 | RL / GRPO on the VLM's free text; the VLM as policy | 87, 96, 137 (silence, collapse); out of scope here |

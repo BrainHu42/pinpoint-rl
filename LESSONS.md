@@ -75,3 +75,14 @@ V3. **SigLIP2's text side as a place-name proposer: right names sit where the pi
     On the pipeline's misses 1.5 / 4.4 / 6.3 pts (luck 0.0 / 0.4 / 0.6); where no candidate area is right 0.3 / 1.6 / 2.5 (luck 0.0 / 0.3 / 0.5),
     no pool candidate right 0.1 / 0.9 / 1.4. Pre-declared bar (no area right, top-5, net of luck >= 3 pts): +1.3, no-go. The text tower knows
     the places Pinpoint's gallery already covers; it adds no new candidates where retrieval fails.
+V4. **Text visible in the index photos as area evidence: the right area's photos show the query's text only 14% of the time where it would
+    matter, and no switch pays** (`scripts/gallery_text_check.py`, `scripts/gallery_text.sh`; the user picked it from a list of sources of new
+    information: the strings people actually see at a place (shop fronts, posters, brands) rather than gazetteer names; dev3k, setft_own,
+    `--one-km 0.5` RL lambda 0 answers). The base 4B read all visible text in the 12 index photos of every candidate area of the 1,117 dev3k
+    photos with read text (50,209 photos, 48,885 answered, 88% with some text; ~1 h on the L40S); the query's verbatim text + place names
+    (>= 5 letters) fuzzy-matched per area (rapidfuzz ratio). AUC right vs wrong areas 0.650 (673 / 2,324); a >= 90 match in right areas 25.7%,
+    wrong 7.4%, another photo's area 0.4%. On the 141 photos (4.7 pts) the pipeline gets wrong with a right area: right area above the answer's
+    area 48%, tied 17%; a >= 90 match in the right area only 14% (the answer's area 10%), with the answer's area < 85 on 11 photos, vs 26 of 656
+    pipeline-right photos where a wrong area matches >= 90 and the answer's doesn't. Best in-sample switch 1 fix / 2 breaks (-0.03 pts, bar +1).
+    Matching text concentrates where the pipeline is already right (32% of its right answers vs 10% of its wrong ones; main point 3 again):
+    the index's text sits where retrieval succeeds.
