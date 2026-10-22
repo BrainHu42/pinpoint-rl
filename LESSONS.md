@@ -86,3 +86,20 @@ V4. **Text visible in the index photos as area evidence: the right area's photos
     pipeline-right photos where a wrong area matches >= 90 and the answer's doesn't. Best in-sample switch 1 fix / 2 breaks (-0.03 pts, bar +1).
     Matching text concentrates where the pipeline is already right (32% of its right answers vs 10% of its wrong ones; main point 3 again):
     the index's text sits where retrieval succeeds.
+V5. **A second image model per area: PE-Core-G adds +1.4 pts < 25 km in the trained answer head, +2.0 with SigLIP2's own cosine columns
+    beside it; the first gain over the head since lesson 140** (`scripts/second_model_gate.py`, `second_model_where.py`; dev3k, setft_own,
+    `--one-km 0.5` head, every tool revealed). Meta's Perception Encoder (PE-Core-G 448 px / L 336 px, timm) and DINOv3 (ViT-7B / L, CLS at
+    224 px) embed each query and its areas' 12 restricted-search photos; per area the best / top-3 cosine and both relative to the other areas
+    (MegaLoc's columns, lesson 93). Gate (dev3k CV stack on the head's option logits; head 47.20 / 30.77, MegaLoc re-added +0.04): PE-L +0.23,
+    PE-G +0.79 / +0.63 (SE 0.32), DINOv3-L +0.02, DINOv3-7B +0.23, PE-G + DINOv3-7B +1.04; fewer photos per area costs (PE-G at 6 / 4 / 3:
+    +0.58 / +0.40 / +0.37). The retrieval-track session's control: SigLIP2-g's own pooled embedding in the same columns -0.03 alone, +1.19 with
+    PE-G; PE-G's top area is right on 30.9% of the head's misses with a right area vs SigLIP2 24.6% (DINOv3-7B 31.2%). The gain is switches
+    to another area on cross-region misses (200-750 km +1.01), mostly urban (+0.72), not near-duplicates (cosine > 0.9: +0.14), not the
+    photographer's photos (dropping them from the columns: +1.23). **Trained head** (train-side columns for the 19,321 train photos whose
+    options are neither all right nor all wrong, the only ones with answer-head gradient, 746k area photos, PE-G ~7 h + DINOv3-7B ~4 h on the
+    L40S; others mean-filled; 3 seeds; % < 25 / 1 km): head 47.17 / 30.63; + PE-G 48.53 / 31.60 (+1.37 / +0.97, SE 0.34); + DINOv3-7B
+    +0.78 / +0.43 (SE 0.23); + SigLIP2 +0.29 / +0.26; **+ PE-G + DINOv3-7B 48.76 / 31.66 (+1.59 / +1.02, SE 0.35): pre-declared bar (>= +1.0,
+    1 km >= -0.3) passed**; + PE-G + SigLIP2 49.21 / 31.91 (+2.04 / +1.28, SE 0.38), all three 49.29 / 31.94 (+2.12 / +1.31); the last two
+    were chosen after the gate. DINOv3 adds +0.2 over PE-G (+0.1 over PE-G + SigLIP2): marginal. PE-G sees what SigLIP2 and MegaLoc share
+    blind spots on (look-alike townscapes); SigLIP2's cosine helps as the reference PE-G disagrees with. Not yet: commons26, the RL policy's
+    cost curve with the new columns, the test set.
