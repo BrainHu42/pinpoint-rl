@@ -367,6 +367,7 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
         pe_all, pe_done = np.load(b2 / "pe_g378.npy", mmap_mode="r"), np.load(b2 / "done.npy")
         q_raw = S["queries"]["pe_g"].float()
         q_tr = S["queries"]["pe_g_trained"].float()
+        q_sig_tr = S["queries"]["siglip2_trained"].float()
         lams = np.asarray([0, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128])
         fold = np.arange(len(idx)) % 2
 
@@ -378,10 +379,15 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
             with torch.no_grad():
                 e_tr = F.normalize(mods["pe_g"](e), dim=-1)
             inv = torch.as_tensor(inv.reshape(rows.shape), device=dev)
-            cos = {"raw": (q_raw[:, None] * e[inv]).sum(-1).cpu().numpy(), "trained": (q_tr[:, None] * e_tr[inv]).sum(-1).cpu().numpy()}
+            with torch.no_grad():  # control: the same projection trained on SigLIP2 (index vectors exist for every row)
+                e_sig = F.normalize(mods["siglip2"](rr._dequantize(0, rows=u).float()), dim=-1)
+            cos = {"raw": (q_raw[:, None] * e[inv]).sum(-1).cpu().numpy(), "trained": (q_tr[:, None] * e_tr[inv]).sum(-1).cpu().numpy(),
+                   "siglip2 trained": (q_sig_tr[:, None] * e_sig[inv]).sum(-1).cpu().numpy()}
+            cos["trained + siglip2 trained"] = cos["trained"] + cos["siglip2 trained"]
             out = []
             for kind, c in cos.items():
-                c = np.where(have, c, np.nanmean(np.where(have, c, np.nan), 1, keepdims=True))  # a candidate without PE-G: the pool mean
+                if "raw" in kind or kind.startswith("trained"):  # a candidate without PE-G: the pool mean
+                    c = np.where(have, c, np.nanmean(np.where(have, c, np.nan), 1, keepdims=True))
                 d = np.stack([km(rows, np.where(v, s + lam * c, -np.inf).argmax(1)) for lam in lams])  # [L, Q]
                 pick, chosen = np.zeros(len(idx)), []
                 for f in (0, 1):

@@ -207,4 +207,18 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     SigLIP2 trained +1.7 / +1.3, **PE-G trained +3.8 / +3.0** (1 km +3.0 / +1.5); top 16 +2.3 / +1.9 vs **+5.5 / +4.5**; top 32 +3.9 / +3.3
     vs **+7.2 / +6.3**. Net of the contrastive control, ~+2-3 pts more photos with a right candidate from a gallery a tenth of the index.
 
+- **R18. The reranker can't use PE-G's extra candidates, but adding a trained PE-G similarity to its score lifts its top-1 by +3.2 at
+    25 km on dev3k (+3.9 with PE-G candidates added); the same projection on SigLIP2 adds +0.3** (`pe_retrieval.py rerank [--combo]`, Oct 23;
+    `artifacts/retrieval/b1/{rerank,combo,combo_control}.log`). dev3k's setft_own pool (the pipeline's, photographer kept: 41% of pools hold a
+    photo by the query's photographer; rescoring it reproduces the stored top-1 for 99.9%), top-1 44.30 / 28.33 (25 / 1 km). (1) Each search's
+    top K from the 10% gallery added, scored by the setft_own reranker with rank 1 / not-in-shortlist features (as its wide lists' extra hits):
+    contrastive top 8 +0.03, SigLIP2 trained -0.07, PE-G trained +0.10 / +0.13 (an added photo is the top-1 for 1.7%), although the pool oracle
+    rises +3.8 (R17): the reranker sees only SigLIP2-based features. (2) Score = reranker score + lambda x the query's cosine to each candidate
+    (lambda by 2-fold CV on dev3k, folds by parity; candidate PE-G embeddings from B2, the dev3k pools' 133k rows embedded first), today's
+    pool: raw PE-G +1.23 / +0.97, **trained PE-G (R17's projection) +3.20 +- 0.55 / +2.77 (47.50 / 31.10)**, SigLIP2 trained (same recipe)
+    +0.27 +- 0.33, PE-G + SigLIP2 trained summed +2.20. With PE-G trained top 16 added: **48.23 / 31.20 (+3.93 / +2.87)**; contrastive top 16
+    added instead: +3.20 (no extra). So most of the gain is picking within today's pool, and PE-G's own candidates add ~+0.7 more. For scale,
+    the answer head is 47.17 and 49.82 with V5 + probe columns; whether the trained PE-G similarity adds to that head is the next test.
+    Caveats: one projection seed; lambda chosen on dev3k (one parameter, cross-fitted); commons26 not yet checked.
+
 ## Search-agent track (S)
