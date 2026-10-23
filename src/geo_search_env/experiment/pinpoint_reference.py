@@ -99,10 +99,11 @@ def bench_own(root: Path) -> None:
     _rank(load_world(), root, "bench_own", exclude_own=False)
 
 
-def commons26(root: Path) -> None:
-    """commons26 (user, 2026-10-16): Commons uploaders are never MP16 authors, so the own / excluded pools are the same."""
+def commons26(root: Path, name: str = "commons26") -> None:
+    """commons26 (user, 2026-10-16) or another Commons pool (commons_train): Commons uploaders are never MP16 authors, so the own / excluded
+    pools are the same."""
 
-    _rank(load_world(benchmarks=("commons26",)), root, "commons26", show=False)
+    _rank(load_world(benchmarks=(name,)), root, name, show=False)
 
 
 def mp16(root: Path) -> None:
@@ -187,10 +188,11 @@ def report(root: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("bench", "bench-own", "commons26", "mp16", "extra", "report"))
+    parser.add_argument("command", choices=("bench", "bench-own", "commons26", "commons_train", "mp16", "extra", "report"))
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
-    {"bench": bench, "bench-own": bench_own, "commons26": commons26, "mp16": mp16, "extra": extra, "report": report}[args.command](args.root)
+    {"bench": bench, "bench-own": bench_own, "commons26": commons26, "commons_train": lambda r: commons26(r, "commons_train"), "mp16": mp16,
+     "extra": extra, "report": report}[args.command](args.root)
     return 0
 
 

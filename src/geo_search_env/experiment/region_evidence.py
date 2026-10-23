@@ -22,6 +22,8 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from ..data.benchmarks import COMMONS
+
 OUT = Path("artifacts/agent")
 PHOTO_SETS = Path("artifacts/photo_sets")
 LABELS_NPZ = Path("artifacts/place_labels/mp16_country_region.npz")
@@ -146,7 +148,7 @@ def _owns(photos: list[dict]) -> dict[str, tuple[int, str]]:
     lookup = []
     for e in bench:
         parts = e["image_id"].rsplit(".", 1)[0].split("_")
-        if e["benchmark"] == "commons26":  # Commons photos taken in 2026: not in YFCC100M
+        if e["benchmark"] in COMMONS:  # Commons photos taken in 2026: not in YFCC100M
             out[e["image_id"]] = (-1, "")
         elif len(parts) >= 4:
             out[e["image_id"]] = (int(parts[0]), parts[-1])

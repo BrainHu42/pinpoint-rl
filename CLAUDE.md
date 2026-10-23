@@ -101,7 +101,9 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
   `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
 - Pipeline viewer (`viz/`): `agent.py` saves the lesson 109 answer head + RL policies (reproduces 51.2 / 29.1 on test), `traces.py` writes
   per-photo stage traces (`artifacts/viz/traces/{full,dev3k}`), `server.py` the web app (cached traces only by default, no GPU; `--live`:
-  uploads through `live.py`, the whole pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`).
+  uploads through `live.py`, the whole pipeline on one photo, ~1 min; clue reading needs `scripts/viz_vlm.sh`). `errors.py`: error triage
+  (the app's default "Triage errors" mode): each wrong photo in a fixability tier (policy close call, coin flip, near miss, right area ranked
+  low, in pool not an area, retrieval miss), most fixable first; `errors.json` per trace set, rebuilt when the traces change.
 - Agent tools, `tools/` (lesson 81; contract in `tools/__init__.py`): `pinpoint.py` (`Pinpoint.search` with constraints), `maps.py` (OSM /
   GeoNames / Overture name search, `features_near`; `data/maps_search/osm.db`), `osm_extract.py` (`.venvs/osm`), `web.py` (Wikipedia /
   Wikivoyage via `experiment/web_search.py` + `text_search`).

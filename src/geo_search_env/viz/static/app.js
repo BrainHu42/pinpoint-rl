@@ -6,7 +6,17 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const css = (v) => getComputedStyle(document.body).getPropertyValue(v).trim();
 const pct = (p) => (p == null ? "–" : p >= 0.995 ? "100%" : p < 0.005 && p > 0 ? "<1%" : `${Math.round(p * 100)}%`);
 
-const S = { sets: [], set: null, index: [], featured: [], filter: "all", q: "", trace: null, stage: "decide", lam: "0", map: null, layers: {}, marks: {}, hidden: new Set() };
+const S = { sets: [], set: null, index: [], featured: [], filter: "all", q: "", trace: null, stage: "decide", lam: "0", map: null, layers: {}, marks: {}, hidden: new Set(),
+  mode: "triage", errors: {}, tier: "all", bench: "all" };
+const TRIAGE_SETS = ["full", "dev3k"];  // sets with error triage (viz.errors)
+const TIER_HELP = {  // tier names and one-line definitions (viz/errors.py)
+  1: ["Policy close call", "Another tool choice (the other λ, or a fixed tool set) already answers within 25 km"],
+  2: ["Coin flip", "A right area is on the table with at least half the chosen area's answer-head probability"],
+  3: ["Near miss", "Answer 25–50 km off: right region, wrong point"],
+  4: ["Right area ranked low", "A right area is on the table, with under half the chosen area's probability"],
+  5: ["In pool, not an area", "A retrieval candidate lies within 25 km, but no area answers there"],
+  6: ["Retrieval miss", "No candidate within 25 km anywhere"],
+};
 
 // ---------- formatting ----------
 function fmtKm(km) {
@@ -55,11 +65,19 @@ async function init() {
   const saved = localStorage.getItem("viz-theme");
   if (saved) document.documentElement.dataset.theme = saved;
   [S.sets, S.featured] = await Promise.all([api("/api/sets"), api("/api/featured")]);
-  const tabs = [{ name: "featured", title: "Featured", n: S.featured.length }, ...S.sets];
-  $("#set-tabs").innerHTML = tabs
-    .map((t) => `<button class="tab" data-set="${t.name}" title="${esc(t.title)}">${esc({ featured: "Featured", full: "Test", dev3k: "Dev", upload: "Your photos" }[t.name] || t.name)}<span class="n">${t.n}</span></button>`)
-    .join("");
   $("#set-tabs").onclick = (e) => { const b = e.target.closest(".tab"); if (b) selectSet(b.dataset.set); };
+  $("#mode").onclick = (e) => { const b = e.target.closest("[data-m]"); if (b) setMode(b.dataset.m); };
+  $("#bench-chips").onclick = (e) => {
+    const b = e.target.closest(".chip");
+    if (!b) return;
+    if (b.dataset.reg) S.regress = !S.regress;
+    else S.bench = b.dataset.b;
+    renderList();
+  };
+  $("#tierbar").onclick = $("#tierlist").onclick = (e) => {
+    const b = e.target.closest("[data-tier]");
+    if (b) { S.tier = S.tier === b.dataset.tier ? "all" : b.dataset.tier; renderList(); }
+  };
   $("#filters").onclick = (e) => {
     const b = e.target.closest(".chip");
     if (!b) return;
@@ -71,14 +89,54 @@ async function init() {
   $("#theme-btn").onclick = toggleTheme;
   setupUpload();
   const [set, i] = location.hash.slice(1).split("/");
+  if (set && !TRIAGE_SETS.includes(set)) S.mode = "browse";
+  await Promise.all(TRIAGE_SETS.filter((n) => S.sets.some((s) => s.name === n)).map(async (n) => {  // error counts for the tabs
+    S.errors[n] = await api(`/api/errors/${n}`).catch(() => null);
+    if (S.errors[n]) S.errors[n].byI = Object.fromEntries(S.errors[n].errors.map((r) => [String(r.i), r]));
+  }));
+  renderTabs();
+  if (S.mode === "triage") {
+    await selectSet(set || "full");
+    const first = filteredErrors()[0];
+    if (set && i != null) openTrace(set, i);
+    else if (first) openTrace(S.set, first.i);
+    return;
+  }
   await selectSet(S.featured.length && !set ? "featured" : set || "full");
   if (set && i != null) openTrace(set, i);
   else if (S.featured.length) openTrace(S.featured[0].set, S.featured[0].i);
 }
 
+function renderTabs() {
+  const all = [{ name: "featured", title: "Featured", n: S.featured.length }, ...S.sets];
+  const tabs = S.mode === "triage" ? S.sets.filter((t) => TRIAGE_SETS.includes(t.name)) : all;
+  const label = { featured: "Featured", full: "Test", dev3k: "Dev", upload: "Your photos" };
+  $("#set-tabs").innerHTML = tabs
+    .map((t) => `<button class="tab" data-set="${t.name}" title="${esc(t.title)}">${esc(label[t.name] || t.name)}<span class="n">${S.mode === "triage" && S.errors[t.name] ? `${S.errors[t.name].n_errors} errors` : t.n}</span></button>`)
+    .join("");
+  document.querySelectorAll("#set-tabs .tab").forEach((t) => t.classList.toggle("on", t.dataset.set === S.set));
+  document.querySelectorAll("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.m === S.mode));
+  $("#triage").hidden = S.mode !== "triage";
+  $("#filters").hidden = S.mode === "triage";
+}
+
+async function setMode(m) {
+  S.mode = m;
+  if (m === "triage" && !TRIAGE_SETS.includes(S.set)) S.set = "full";
+  renderTabs();
+  await selectSet(S.set || "full");
+  if (S.trace) renderHero();
+}
+
 async function selectSet(name) {
   S.set = name;
   document.querySelectorAll("#set-tabs .tab").forEach((t) => t.classList.toggle("on", t.dataset.set === name));
+  if (TRIAGE_SETS.includes(name) && !S.errors[name]) {
+    S.errors[name] = await api(`/api/errors/${name}`).catch(() => null);
+    if (S.errors[name]) S.errors[name].byI = Object.fromEntries(S.errors[name].errors.map((r) => [String(r.i), r]));
+    renderTabs();
+  }
+  if (S.mode === "triage") return renderList();
   if (name === "featured") {
     const idx = {};
     for (const f of S.featured) idx[f.set] ??= await api(`/api/index/${f.set}`).catch(() => []);
@@ -96,7 +154,55 @@ function passes(r) {
   return { all: true, fixed: !rel && fin, broke: rel && !fin, right: rel && fin, wrong: r.released_km != null && !rel && !fin }[S.filter];
 }
 
+// ---------- error triage ----------
+const tierColor = (k) => `var(--tier-${k})`;
+function filteredErrors(ignoreTier = false) {
+  const E = S.errors[S.set];
+  if (!E) return [];
+  const q = S.q;
+  return E.errors.filter((r) => (S.bench === "all" || r.benchmark === S.bench) && (ignoreTier || S.tier === "all" || String(r.tier) === S.tier) &&
+    (!S.regress || r.regression) &&
+    (!q || `${r.image_id} ${r.truth_place} ${r.final_place} ${r.why}`.toLowerCase().includes(q)));
+}
+function renderTriage() {
+  const E = S.errors[S.set];
+  if (!E) {
+    $("#tierbar").innerHTML = "";
+    $("#tierlist").innerHTML = `<div class="muted small" style="padding:6px">No error triage for this set.</div>`;
+    return [];
+  }
+  const benches = [...new Set(E.errors.map((r) => r.benchmark))].sort();
+  const nReg = E.errors.filter((r) => r.regression && (S.bench === "all" || r.benchmark === S.bench)).length;
+  $("#bench-chips").innerHTML = ["all", ...benches].map((b) => `<button data-b="${b}" class="chip ${S.bench === b ? "on" : ""}">${b === "all" ? "All benchmarks" : esc(b)}</button>`).join("") +
+    `<button data-reg="1" class="chip ${S.regress ? "on" : ""}" data-tip="Errors where the released Pinpoint's or the retrained reranker's top-1 was within 25 km">Regressions only · ${nReg}</button>`;
+  const base = filteredErrors(true);
+  const nPhotos = S.bench === "all" ? E.n_photos : null;
+  const counts = Object.keys(TIER_HELP).map((k) => [k, base.filter((r) => String(r.tier) === k).length]);
+  $("#tierbar").innerHTML = counts.map(([k, n]) => (n ? `<div data-tier="${k}" class="${S.tier !== "all" && S.tier !== k ? "dim" : ""}" style="flex:${n};background:${tierColor(k)}" data-tip="<b>${esc(TIER_HELP[k][0])}</b>: ${n.toLocaleString()} errors<br>${esc(TIER_HELP[k][1])}"></div>` : "")).join("");
+  $("#tierlist").innerHTML = counts.map(([k, n]) => `<button data-tier="${k}" class="${S.tier === k ? "on" : ""}" data-tip="${esc(TIER_HELP[k][1])}">
+      <span class="tier-dot" style="background:${tierColor(k)}"></span><span>${k}. ${esc(TIER_HELP[k][0])}</span>
+      <span class="n">${n.toLocaleString()}${nPhotos ? ` · ${(100 * n / nPhotos).toFixed(1)}%` : ""}</span></button>`).join("");
+  return filteredErrors();
+}
+function renderTriageList() {
+  const rows = renderTriage();
+  const E = S.errors[S.set];
+  $("#count").textContent = E ? `${rows.length.toLocaleString()} error${rows.length === 1 ? "" : "s"}, most fixable first${S.bench === "all" && S.tier === "all" && !S.q ? ` · ${(100 * (1 - E.n_errors / E.n_photos)).toFixed(1)}% of ${E.n_photos.toLocaleString()} photos right` : ""}` : "";
+  const shown = rows.slice(0, 400);
+  $("#list").innerHTML =
+    shown.map((r) => {
+      const thumb = S.set === "dev3k" ? `/img/mp16/${encodeURIComponent(r.image_id)}?s=120` : `/img/bench/${r.benchmark}/${encodeURIComponent(r.image_id)}?s=120`;
+      return `<div class="item" data-set="${S.set}" data-i="${r.i}"><img loading="lazy" src="${thumb}" alt="">
+        <div><div class="t" title="${esc(r.truth_place)}">${esc(r.truth_place || r.image_id)}</div>
+        <div class="b"><span class="tier-badge"><span class="tier-dot" style="background:${tierColor(r.tier)}"></span>${esc(TIER_HELP[r.tier][0])}</span>${kmBadge(r.final_km, "Agent")}</div>
+        <div class="why">${esc(r.why)}</div></div></div>`;
+    }).join("") + (rows.length > shown.length ? `<div class="muted small" style="padding:8px">Showing the 400 most fixable — pick a tier or search to narrow.</div>` : "");
+  $("#list").onclick = (e) => { const it = e.target.closest(".item"); if (it) openTrace(it.dataset.set, it.dataset.i); };
+  markActive();
+}
+
 function renderList() {
+  if (S.mode === "triage") return renderTriageList();
   const rows = S.index.filter(passes);
   $("#count").textContent = `${rows.length.toLocaleString()} photo${rows.length === 1 ? "" : "s"}`;
   const shown = rows.slice(0, 400);
@@ -120,12 +226,18 @@ function markActive() {
 // ---------- trace ----------
 async function openTrace(set, i) {
   const t = await api(`/api/trace/${set}/${i}`);
+  if (TRIAGE_SETS.includes(set) && !S.errors[set]) {
+    S.errors[set] = await api(`/api/errors/${set}`).catch(() => null);
+    if (S.errors[set]) S.errors[set].byI = Object.fromEntries(S.errors[set].errors.map((r) => [String(r.i), r]));
+  }
+  t.err = S.errors[set]?.byI?.[String(i)] || null;
   S.trace = t;
   history.replaceState(null, "", `#${set}/${i}`);
   $("#empty").hidden = true;
   $("#view").hidden = false;
   t.names = areaNames(t.areas);
   if (!t.agent[S.lam]) S.lam = Object.keys(t.agent)[0];
+  if (S.mode === "triage" && t.err) S.stage = { 1: "decide", 2: "decide", 3: "zoom", 4: "decide", 5: "retrieve", 6: "retrieve" }[t.err.tier];  // where the miss shows
   renderHero();
   renderMapBase();
   renderStages();
@@ -138,6 +250,16 @@ function renderHero() {
   $("#photo-id").textContent = `${{ full: "test set", dev3k: "dev set", upload: "uploaded" }[t.set] || t.set} · ${t.benchmark} · ${t.image_id}`;
   $("#truth-place").textContent = t.truth ? t.truth.place || "Unknown place" : "Location unknown";
   $("#truth-coord").textContent = t.truth ? `True location ${t.truth.lat.toFixed(4)}, ${t.truth.lon.toFixed(4)}` : "No true location given — distances are not shown.";
+  const note = $("#triage-note"), er = t.err;
+  note.hidden = !er;
+  if (er) {
+    note.style.borderLeftColor = tierColor(er.tier);
+    const pos = S.errors[t.set]?.errors.indexOf(er);
+    note.innerHTML = `<div class="h"><span class="tier-dot" style="background:${tierColor(er.tier)}"></span>Error tier ${er.tier}: ${esc(TIER_HELP[er.tier][0])}
+        <span class="muted small" style="font-weight:400">#${(pos ?? 0) + 1} of ${S.errors[t.set]?.n_errors ?? "?"} by fixability · λ 0 answer</span></div>
+      <div>${esc(er.why)}</div>${er.flags.length ? `<ul>${er.flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+      <div class="muted small">${esc(TIER_HELP[er.tier][1])}.</div>`;
+  }
   const fin = t.agent[S.lam].final;
   const rel = t.released.candidates[0] || {}, rt = t.retrained.candidates[0] || {};
   const tile = (k, sw, km, place, cls = "") =>
@@ -235,6 +357,16 @@ function renderMapBase() {
       .bindTooltip(`<b>True location</b><br>${esc(t.truth.place)}`, { direction: "top" }));
     if (fin.lat != null) S.fixedLayer.addLayer(L.polyline([[t.truth.lat, t.truth.lon], [fin.lat, fin.lon]], { color: css("--text-primary"), weight: 1.5, dashArray: "4 4", opacity: 0.7 }));
   }
+  const er = t.err;  // error triage: ring the right area, or mark the right pool candidate
+  if (er && er.right_slot != null && t.areas[er.right_slot]) {
+    const a = t.areas[er.right_slot];
+    S.fixedLayer.addLayer(L.circleMarker([a.center[0], a.center[1]], { radius: 18, color: css("--good"), weight: 3, dashArray: "5 4", fill: false })
+      .bindTooltip(`<b>${t.names[er.right_slot]}</b> was right (${esc(a.place || "")})<br>answer head ${pct(er.p_right)} vs ${pct(er.p_chosen)} for ${esc(er.chosen)}`, { direction: "top" }));
+  } else if (er && er.pool_right_rank) {
+    const c = t.retrained.candidates[er.pool_right_rank - 1];
+    S.fixedLayer.addLayer(L.circleMarker([c.lat, c.lon], { radius: 14, color: css("--good"), weight: 3, dashArray: "5 4", fill: false })
+      .bindTooltip(`<b>Right pool candidate</b> #${er.pool_right_rank}<br>${esc(c.place || "")} · ${fmtKm(c.km)} from truth · set prob. ${pct(c.p)}`, { direction: "top" }));
+  }
   if (fin.lat != null)
     S.fixedLayer.addLayer(L.marker([fin.lat, fin.lon], { icon: L.divIcon({ className: "", html: `<div class="mk-answer"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 900 })
       .bindTooltip(`<b>Agent answer</b> (${t.names[fin.slot]})<br>${esc(fin.place || "")}${fin.km != null ? `<br>${fmtKm(fin.km)} from truth` : ""}`, { direction: "top" }));
@@ -271,6 +403,8 @@ function fitStage(stage) {
   if (t.truth) pts.push([t.truth.lat, t.truth.lon]);
   const fin = t.agent[S.lam].final;
   if (fin.lat != null) pts.push([fin.lat, fin.lon]);
+  if (t.err?.right_slot != null && t.areas[t.err.right_slot]) pts.push(t.areas[t.err.right_slot].center);
+  else if (t.err?.pool_right_rank) { const c = t.retrained.candidates[t.err.pool_right_rank - 1]; pts.push([c.lat, c.lon]); }
   if (stage === "retrieve") { t.released.candidates.slice(0, 3).forEach((c) => pts.push([c.lat, c.lon])); t.retrained.candidates.slice(0, 5).forEach((c) => pts.push([c.lat, c.lon])); }
   else if (stage === "read") { (t.clues.evidence || []).filter((e) => e.lat != null && e.used).forEach((e) => pts.push([e.lat, e.lon])); t.areas.forEach((a) => pts.push(a.center)); }
   else if (stage === "zoom" && S.zoomFocus != null && t.areas[S.zoomFocus]) { t.areas[S.zoomFocus].candidates.forEach((c) => pts.push([c.lat, c.lon])); }
@@ -402,10 +536,31 @@ function pZoom(t) {
       <div class="strip">${a.candidates.map((c, k) => candCard(c, `zoom:${s}:${k}`, `#${k + 1}`, `<div class="line"><span class="muted">${k === a.zoomed.cand_index ? "<b>zoom pick</b>" : "score"}</span><span class="rank">${c.score?.toFixed(3) ?? "–"}</span></div>${c.megaloc != null ? `<div class="line"><span class="muted">MegaLoc</span><span class="rank">${c.megaloc.toFixed(3)}</span></div>` : ""}`, k === a.zoomed.cand_index)).join("")}</div></div>`).join("")}</div>`;
 }
 
+// The gallery photo an area answers with: its zoomed pick once zoomed, else the best pool candidate inside it (an area without one answers
+// with its centre: then the top photo of its zoomed search stands in).
+function areaPhoto(t, s, zoomed) {
+  const a = t.areas[s];
+  if (zoomed && a.zoomed.cand_index != null) return [a.candidates[a.zoomed.cand_index], "zoomed pick"];
+  if (a.unzoomed.pool_index >= 0) return [t.retrained.candidates[a.unzoomed.pool_index], `pool #${a.unzoomed.pool_index + 1}`];
+  return a.candidates.length ? [a.candidates[0], "top of zoomed search"] : [null, ""];
+}
+
 function pDecide(t) {
   const ag = t.agent[S.lam], steps = ag.steps, names = t.names;
   const lams = Object.keys(t.agent);
   const kmOf = (s, zoomed) => (zoomed ? t.areas[s].zoomed.km : t.areas[s].unzoomed.km);
+  const last = steps[steps.length - 1], fin = ag.final;
+  const thumb = (s, zoomed) => { const [c] = areaPhoto(t, s, zoomed); return c?.mp16 ? `<img class="area-thumb" loading="lazy" src="${candImg(c, 96)}" alt="">` : `<span class="area-thumb"></span>`; };
+  const areaCards = t.areas.map((a, s) => {
+    if (last.answer[s] == null || (!last.read && a.source === "clue")) return "";
+    const [c, how] = areaPhoto(t, s, last.zoomed[s]);
+    if (!c) return "";
+    const right = t.err && t.err.right_slot === s;
+    return candCard({ ...c, km: kmOf(s, last.zoomed[s]) }, `area:${s} ans:${s}:${last.zoomed[s] ? "z" : "u"}`,
+      `<b style="color:${areaColor(a)}">${names[s]}</b>${s === fin.slot ? " · answer" : right ? " · right" : ""}`,
+      `<div class="line"><span class="muted">${esc(how)}</span><span class="rank">${pct(last.answer[s])}</span></div>${bar(last.answer[s], s === fin.slot ? "pick" : "")}`,
+      s === fin.slot);
+  }).join("");
   const stepCard = (st, j) => {
     const final = st.action === "answer";
     const chips = `<div class="state-chips">${st.read ? `<span class="token">read ✓</span>` : ""}${st.recognise ? `<span class="token">recognised ✓</span>` : ""}${st.zoomed.map((z, s) => (z ? `<span class="token">${names[s]} zoomed</span>` : "")).join("")}${!st.read && !st.recognise && !st.zoomed.some(Boolean) ? `<span class="token">glance only</span>` : ""}</div>`;
@@ -416,7 +571,7 @@ function pDecide(t) {
        st.read ? "" : prow("read", st.p_read, st.action === "read"), st.recognise ? "" : prow("recognise", st.p_recognise, st.action === "recognise"), prow("stop", st.p_stop, st.action === "stop")].join("");
     const ansMax = Math.max(...st.answer.map((x) => x || 0));
     const answer = st.answer.map((p, s) => (p == null || (!st.read && t.areas[s].source === "clue") ? "" :
-      `<div class="prow wide ${p === ansMax ? "chosen" : ""}" data-mark="area:${s}"><span class="l">${names[s]} ${t.truth ? kmBadge(kmOf(s, st.zoomed[s])) : ""}</span>${bar(p, p === ansMax ? "pick" : "")}<span class="v">${pct(p)}</span></div>`)).join("");
+      `<div class="prow wide ${p === ansMax ? "chosen" : ""}" data-mark="area:${s}"><span class="l">${thumb(s, st.zoomed[s])}${names[s]} ${t.truth ? kmBadge(kmOf(s, st.zoomed[s])) : ""}</span>${bar(p, p === ansMax ? "pick" : "")}<span class="v">${pct(p)}</span></div>`)).join("");
     return `<div class="step ${final ? "final" : ""}"><div class="num">${final ? "✓" : j + 1}</div>
       <div><h4>${final ? "Answer" : `Policy → <span>${esc(act)}</span>`} <span class="muted">${final ? "" : "(action probabilities)"}</span></h4>${chips}${policy}</div>
       <div><h4>Answer head <span class="muted">· which area, if it stopped now</span></h4>${answer}</div></div>`;
@@ -427,11 +582,13 @@ function pDecide(t) {
   return `<div class="flex" style="justify-content:space-between"><p class="lead" style="margin:0">A REINFORCE policy over the frozen answer head chooses tools until it stops;
     return = [answer within 25 km] − λ × cost (zoom 1, recognise 1, read 2). λ 0 is the 51.2% system on the test set, λ 0.005 the cheaper one.</p>
     ${lams.length > 1 ? `<div class="seg" id="lam">${lams.map((l) => `<button data-lam="${l}" class="${l === S.lam ? "on" : ""}">λ ${l}</button>`).join("")}</div>` : ""}</div>
+  <h3>The areas at the final step <span class="muted small">· each area's answer photo, distance from the truth, and answer-head probability</span></h3>
+  <div class="strip">${areaCards}</div>
   <div class="steps" style="margin-top:14px">${steps.map(stepCard).join("")}</div>
   <h3>Same photo, fixed tool sets (no policy)</h3>
   <p class="lead">Answer-head probabilities per area when given a fixed set of tools. Bottom row: the distance of the area it would pick.</p>
   <table class="t"><thead><tr><th>Area</th>${fixedCols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>
-  ${t.areas.map((a, s) => `<tr data-mark="area:${s}"><td><span class="area-tag"><span class="swatch" style="background:${areaColor(a)}"></span>${names[s]}</span> <span class="muted small">${esc(a.place)}</span></td>
+  ${t.areas.map((a, s) => `<tr data-mark="area:${s}"><td><span class="area-tag">${thumb(s, false)}<span class="swatch" style="background:${areaColor(a)}"></span>${names[s]}</span> <span class="muted small">${esc(a.place)}</span></td>
     ${fixedCols.map((c) => { const xs = t.fixed[c], p = xs[s]; const on = argmax(xs) === s; return `<td><div class="flex">${bar(p, on ? "pick" : "")}<span class="small" style="${on ? "font-weight:700" : ""}">${(a.source === "clue" && (c === "glance" || c === "recognise" || c === "zoom all")) ? "–" : pct(p)}</span></div></td>`; }).join("")}</tr>`).join("")}
   ${t.truth ? `<tr><td class="muted">picked area's answer</td>${fixedCols.map((c) => `<td>${kmBadge(fixedKm(c, argmax(t.fixed[c])))}</td>`).join("")}</tr>` : ""}
   </tbody></table>`;
