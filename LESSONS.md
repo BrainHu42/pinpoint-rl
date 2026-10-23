@@ -195,5 +195,16 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     it is a fair stand-in, and swapping the backbone to PE-G is worth ~5 pts of recall at every K. B1's declared bar (vs contrastive: union
     +2 at K = 32, or PE-G recovering >= 3% of contrastive's misses) passed only on its weak second clause; the trained result is the case for
     B2. Caveats: recall, not the reranker's top-1; half a 10% gallery (density differs from the full index); one seed.
+    **Follow-ups (Oct 23, before B2; `b1_scaling.sh`, logs in `artifacts/retrieval/b1*/`).** Gallery density (nested shares of the eval half,
+    K = 32 at 25 km, contrastive -> PE-G trained): 1.25% of the index 53.5 -> 58.7, 2.5% 55.7 -> 60.8, 5% 57.2 -> 62.7 (gap +5.2 / +5.1 /
+    +5.5; photographer excluded +5.4 / +5.0 / +4.5, drifting down ~0.4 per doubling, so maybe +2.5-3 at the full index). Training data
+    (photos of the train half, same steps): 48k 60.7, 96k 62.0, 191k 62.7 (+1.3, +0.7 per doubling): all of MP16 would add ~+1, so B2's
+    value is the searchable index, not more training data. Both models as input (SigLIP2 + PE-G concatenated): 63.3 vs 62.7 (+0.6; excluded
+    +1.1), small. **224 px is a no-go**: PE-G trained 40.3, raw 33.4 (vs 62.7 / 49.3 at 378 px); queries and gallery shift alike (same-photo
+    cosine 378 vs 224 median 0.786 for both, so no bug) but the embeddings crowd (mean pairwise cosine 0.59 vs 0.43); 224 px ran ~100
+    photos/s vs ~28, but B2 stays at 378 px. **Pool oracle** (dev3k, today's setft_own pool of ~46 candidates: 73.1% with one within 25 km,
+    52.1% within 1 km), adding each search's top K from the 10% gallery, photographer kept / excluded: contrastive top 8 +1.1 / +1.0,
+    SigLIP2 trained +1.7 / +1.3, **PE-G trained +3.8 / +3.0** (1 km +3.0 / +1.5); top 16 +2.3 / +1.9 vs **+5.5 / +4.5**; top 32 +3.9 / +3.3
+    vs **+7.2 / +6.3**. Net of the contrastive control, ~+2-3 pts more photos with a right candidate from a gallery a tenth of the index.
 
 ## Search-agent track (S)
