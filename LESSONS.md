@@ -224,4 +224,16 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     **22.62 (+2.97 +- 0.99) / 7.27 (+1.23)**; SigLIP2 trained -0.31 +- 0.45; raw PE-G cosine adds nothing (lambda 0 chosen in both folds).
     Caveats: one projection seed; lambda cross-fitted within each set (one parameter).
 
+- **R19. The trained PE-G similarity as per-area columns adds to the best head: dev3k 49.82 -> 50.87 (+1.05 / +0.67 at 25 / 1 km),
+    commons26 dev 27.70 -> 28.18 (+0.48 / +0.13); total over today's head +3.70 / +2.06 and +3.17 / +0.38** (`scripts/pe_trained_cols.py`,
+    `artifacts/retrieval/pe_gtr/head.log`, Oct 23). R17's projection (trained on B1's gallery at 378 px) applied to track V's 448 px PE-G
+    embeddings of each set's queries and area photos (same photos at both sizes: projected vectors agree at median cosine 0.977,
+    query-photo similarities correlate 0.95), written as a 4th column model "pe_gtr" (best / top-3 over each area's 12 photos, both relative
+    to the photo's other areas; train columns for the informative photos only, as V5), then track V's trained-head loop (3 seeds, every tool
+    revealed). Configs: head 47.17 / 30.63, 25.01 / 7.68; pe_g + siglip_final + pe_probe 49.82 / 32.02, 27.70 / 7.92 (reproduces R16);
+    **+ pe_gtr 50.87 / 32.69 (seeds 50.9 / 50.8 / 50.9), 28.18 / 8.05**; paired SE vs head 0.44 / 0.69. dev3k clears PE_PLAN's +1.0 bar over
+    what we have; commons26 dev is positive but within noise. One PE-G embedding now feeds three kinds of head column: raw similarity to each
+    area's photos, the trained (location-tuned) similarity, and the region prior. Caveats: one projection seed, trained on 191k photos (R17:
+    more data adds ~+1 recall); 448 px inputs to a 378 px projection.
+
 ## Search-agent track (S)
