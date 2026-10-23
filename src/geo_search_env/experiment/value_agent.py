@@ -574,6 +574,7 @@ def _hedges(d, name: str, stats=None):
 
 HEDGE_NAMES = ("probe cell 1", "probe cell 2", "probe cell 3", "probe cell 4", "probe cell 5", "probe mass", "pool mass")
 SWITCH_FRACS = (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+WEIGHT_SWEEP = [(w1, wc) for w1 in (0.5, 1.0, 2.0, 3.0) for wc in (0.25, 0.5, 1.0)]  # (1 km weight, weight of each of 200 / 750 / 2500 km)
 
 
 def evaluate_multi(net, d) -> dict:
@@ -610,7 +611,10 @@ def evaluate_multi(net, d) -> dict:
             valid = _valid(v, zoomed)
             kmo = torch.cat([v["km_unzoom"], v["km_zoom"], v["hedge_km"]], 1)
             units = (aa.UNITS["zoom"] * zoomed.sum(1) + aa.UNITS["read"] * read + sum(u * rec[:, g] for g, (_, u) in enumerate(GROUPS))).float()
-            for wname, wv, hedges in (("W_OLD", W_OLD, False), ("W_TABLE", W_TABLE, True), ("W_TABLE, no hedges", W_TABLE, False)):
+            weightings = [("W_OLD", W_OLD, False), ("W_TABLE", W_TABLE, True), ("W_TABLE, no hedges", W_TABLE, False)]
+            if sname == "everything":  # the 1 km / coarse trade-off from the same outputs (weights are an inference-time choice)
+                weightings += [(f"w1 {w1:g}, coarse {wc:g}", (w1, 1.0, wc, wc, wc), True) for w1, wc in WEIGHT_SWEEP]
+            for wname, wv, hedges in weightings:
                 val = (p * torch.as_tensor(wv, device="cuda")).sum(-1).masked_fill(~valid, float("-inf"))
                 if not hedges:
                     val[:, 2 * h:] = float("-inf")

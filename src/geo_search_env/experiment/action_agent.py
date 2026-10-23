@@ -48,14 +48,19 @@ def _data(tag: str, stats=None, ckpt: str | None = None):
     # the free glance: the photo's own SigLIP2 embedding (crop_look view 0 = the full image, unit norm), as read_agent found it decides
     # whether reading pays; benchmark photos (no crop file): their cached SigLIP2 embedding, the same full view
     crops = Path(f"artifacts/agent/crops_{tag}_{ckpt}.npy")
+    photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
     if crops.exists():
         g = np.asarray(np.load(crops, mmap_mode="r")[:, 0], np.float32)
+    elif "row" in photos[0]:  # MP16 photos without a crop file: their cached SigLIP2 embedding (cosine >= 0.998 to view 0 on dev3k)
+        from .strategy_search import load_world
+
+        g = np.asarray(load_world().mp16["embeddings"][np.asarray([int(e["row"]) for e in photos])], np.float32)
+        g /= np.linalg.norm(g, axis=1, keepdims=True)
     else:
         from ..data.benchmarks import load_benchmark
         from .strategy_search import BENCHMARK_NAMES
 
-        photos = json.loads((Path("artifacts/photo_sets") / f"{tag}_{ckpt}" / "photos.json").read_text(encoding="utf-8"))
-        names = ("commons26",) if photos[0].get("benchmark") == "commons26" else BENCHMARK_NAMES  # the photo set's pools' order ("index")
+        names =("commons26",) if photos[0].get("benchmark") == "commons26" else BENCHMARK_NAMES  # the photo set's pools' order ("index")
         g = np.concatenate([load_benchmark(n).embeddings for n in names])[[e["index"] for e in photos]]
         g /= np.linalg.norm(g, axis=1, keepdims=True)
     d["glance"] = torch.as_tensor(g, device="cuda")
