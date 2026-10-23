@@ -8,6 +8,15 @@ PE-G alone +1.37).
 **Measure.** dev3k, original protocol, % < 25 / 1 km over the current answer head (47.2 / 30.8). Bar: >= +1.0 pt at 25 km, 1 km not down
 by more than 0.3. Test set untouched.
 
+## Workstreams (user, 2026-10-23: two in parallel; the user monitors only the track R session)
+| Workstream | Owner | Scope | Reports to |
+|---|---|---|---|
+| R: PE-G retrieval | track R session (this plan) | B2 full-index embed (nightly), a PE-G-aware picker for the added candidates, PE-G candidate files (extra pool rows for train / dev3k / commons26 dev) | the user |
+| V: value network | track V session (`VALUE_PLAN.md`, `VALUE_HANDOFF.md`, branch `worktree-value-agent`), delegated by track R | finish step 1 (lesson V6), then step 1 with the V5 columns; run the V5 answer head on track R's candidate files | track R, which relays |
+
+Not started without the user's go-ahead: the regime checks (separate < 25 km / > 25 km models; VALUE_HANDOFF "Pending"), and VALUE_PLAN step 2's
+vLLM readers (~35 GB GPU, conflicts with B2). Track V asks track R before runs over ~2 h. B2 has GPU priority; track V stays under 20 GB.
+
 ## Status (update as steps finish)
 | # | Step | Owner | When (Pacific) | Status | Result |
 |---|---|---|---|---|---|
