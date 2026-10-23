@@ -150,3 +150,18 @@ V7. **Coarse distances: the right region is in the pool on ~90% of unsure photos
     The head is trained only for 25 / 1 km, so on photos without a right area its choice is untrained for coarse scales; one confidence
     threshold captures < 1/5 of the oracle room. Next (VALUE_PLAN 3b): P(< r) commit heads for r in 1 / 25 / 200 / 750 / 2500 km plus hedge
     commits (probe cells, pool-mass point), answer = argmax sum_r w_r P(< r).
+V8. **Multi-scale answers in the value network: with hedge answers and the table's weights, +3.6 / +4.0 pts at 750 km (+2.9 / +4.7 at
+    200 km) on dev3k / commons26 dev with 25 km unchanged; bars of step 3b met** (`value_agent --multi --gain --mc --listwise 2`; 3 seeds,
+    train-fitted, everything revealed; % < 1 / 25 / 200 / 750 / 2500 km). Commit outputs P(< r) for r in 1 / 25 / 200 / 750 / 2500 on every
+    area's unzoomed / zoomed point and on 7 hedge answers per photo (the region probe's top 5 cells, the probe-mass and pool-mass points within
+    500 km; features: cell log-prob, probe and pool mass within 200 / 750 / 2500 km, type, log distance to the top / nearest area; probe log-probs
+    cross-fitted by photographer on train, `multiscale_headroom probe`); plain logistic, the listwise term only on the 1 / 25 km outputs of area
+    answers; reward and commit values sum_r w_r P(< r), trained with W_TABLE = (0.5, 1, 1, 1, 1), fixed before any result. Answer re-chosen at
+    the same final state under W_OLD (step 1's [< 25] + 0.5 [< 1]): dev3k 30.46 / 47.38 / 58.03 / 72.64 / 84.40, commons26 dev 7.61 / 24.77 /
+    45.21 / 70.62 / 85.70 (step 1: 47.40, 25.08 at 25 km). Under W_TABLE: 28.44 / 47.30 / 60.97 / 76.23 / 86.99 (-2.01 / -0.08 / +2.93 /
+    +3.59 / +2.59) and 6.89 / 25.18 / 49.91 / 74.65 / 87.07 (-0.72 / +0.41 / +4.71 / +4.03 / +1.36); the lambda 0 policy (6.0 / 7.0 units):
+    +3.76 / +4.20 at 750 km. Hedges answer 44-49% of photos; without them W_TABLE gives +0.47 / +0.85 at 750 km: the gain is the hedges,
+    chosen per photo. Lesson V7's gated switch to the probe-mass point, fraction chosen on the other set: +1.02 / +0.89 at 750 km, 25 km
+    -0.53 / -0.07. The price is 1 km (-2.0 / -0.7; weight 0.5 in W_TABLE); weights are an inference-time choice. Calibration of the W_TABLE
+    answer's P(< r): dev3k mean predicted vs observed within 0.03-0.04 (ECE 0.03-0.04) at every r; commons26 dev overconfident (ECE 0.06-0.13;
+    25 km 0.38 vs 0.25), trained on MP16 only. Not yet: test set (original protocol, on request), Commons training states, other weightings.

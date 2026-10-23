@@ -40,6 +40,9 @@ track go in `LESSONS.md` as V6, V7, ... The 2026-10-21 version of this plan (rea
 - Step 3a done (lesson V7): the gated switch to the region probe passes on commons26 dev (net +1.84 at 750 km) and misses on dev3k
   (+0.83); the right region is in the pool on ~90% of unsure photos vs 52-61% for the answer (oracle room +11-12 pts at 750 km). 3b next.
 
+- Step 3b done (lesson V8): P(< r) outputs + hedge answers; under the table's weights +3.6 / +4.0 at 750 km, +2.9 / +4.7 at 200 km
+  (dev3k / commons26 dev), 25 km -0.08 / +0.41, 1 km -2.0 / -0.7; bars met. Calibrated on dev3k, overconfident on commons26 dev.
+
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
 |---|---|
