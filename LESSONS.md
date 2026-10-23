@@ -181,4 +181,19 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     dev3k, commons26 dev not down) passes. One image model (PE-G pooled output, 378 px for the probe) feeds two kinds of head column:
     similarity to each area's photos and a learned region prior.
 
+- **R17. PE-G as a search: raw cosine adds ~0 to Pinpoint's contrastive search, but the same small trained projection on PE-G beats it by
+    +5.5 at 25 km (K = 32), and +5.0 over SigLIP2 with the same recipe** (`scripts/pe_retrieval.py`, PE_PLAN step 7 = B1; Oct 22-23).
+    Gallery: a random 10% of the released index (408,092 photos, seed 0; no dev3k photos in it), PE-G 378 px pooled output; queries dev3k;
+    % with a gallery photo within 1 / 25 / 200 km among the top K. **Raw** (`recall.log`, original protocol, K = 32): contrastive 35.4 / 61.1 /
+    81.2, raw SigLIP2 29.2 / 52.6 / 76.3, raw PE-G 31.9 / 54.7 / 76.5; contrastive + raw PE-G at K/2 each 61.3 (+0.2; photographer excluded
+    -1.2). PE-G finds a photo within 25 km for 18.6% of contrastive's 1,168 misses, but the half of K it takes costs about as much. **Trained**
+    (`trained.log`): an MLP 1280/1536 -> 2048 -> 256, InfoNCE, positives another photo of the same ~22 km cell (distance only), batch pairs
+    within 25 km masked as negatives, 20 epochs, trained on half the gallery (photographers split by hash, dev3k photographers out; 191k
+    photos), evaluated on the other half (203k). K = 32 at 25 km, original / photographer excluded: contrastive 57.2 / 53.7, SigLIP2 trained
+    57.7 / 53.7, **PE-G trained 62.7 / 58.2**; at K = 8 43.8 -> 49.2, K = 256 76.5 -> 80.3; union with contrastive at K/2 each 62.7 / 58.5
+    (contrastive adds nothing once PE-G is trained). The recipe on SigLIP2 matches Pinpoint's contrastive search (trained on all of MP16), so
+    it is a fair stand-in, and swapping the backbone to PE-G is worth ~5 pts of recall at every K. B1's declared bar (vs contrastive: union
+    +2 at K = 32, or PE-G recovering >= 3% of contrastive's misses) passed only on its weak second clause; the trained result is the case for
+    B2. Caveats: recall, not the reranker's top-1; half a 10% gallery (density differs from the full index); one seed.
+
 ## Search-agent track (S)
