@@ -104,5 +104,9 @@ V5. **A second image model per area: PE-Core-G adds +1.4 pts < 25 km in the trai
     blind spots on (look-alike townscapes); SigLIP2's cosine helps as the reference PE-G disagrees with. **commons26 dev transfers**
     (`scripts/second_model_commons.sh`; 977 photos, 45.7k area photos, same train-fitted heads): head 25.01 / 7.68, + PE-G 26.17 / 7.64
     (+1.16 / -0.03, SE 0.45), + PE-G + SigLIP2 26.89 / 7.78 (+1.88 / +0.10, SE 0.54); the 1 km gain is MP16-only. The retrieval session's
-    R16: PE-G at 378 px matches 448 px; intermediate layers (mean-pooled) are weaker than the pooled output. Not yet: the RL policy's cost
-    curve with the new columns, the test set.
+    R16: PE-G at 378 px matches 448 px; intermediate layers (mean-pooled) are weaker than the pooled output. **+ a PE-G region probe** (R16 steps 5b-5c,
+    worktree-retrieval-track 7fcbc65: an MLP on PE-G's pooled output over 2,048 GPS cells, trained on 98k MP16 photos without dev3k photos or
+    photographers; train columns cross-fitted in 5 photographer-grouped folds; per area the cell log-prob and log mass within 100 km, raw and
+    relative): dev3k 49.82 / 32.02 (+0.61 / +0.11 over PE-G + SigLIP2, SE 0.26; +2.66 / +1.39 over the head), commons26 dev 27.70 / 7.92
+    (+0.82 / +0.14, SE 0.48; +2.70 over the head): bar (>= +0.5 on dev3k, commons26 not down) passed. Not yet: the RL policy's cost curve
+    with the new columns, the test set.
