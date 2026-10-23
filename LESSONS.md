@@ -110,3 +110,27 @@ V5. **A second image model per area: PE-Core-G adds +1.4 pts < 25 km in the trai
     relative): dev3k 49.82 / 32.02 (+0.61 / +0.11 over PE-G + SigLIP2, SE 0.26; +2.66 / +1.39 over the head), commons26 dev 27.70 / 7.92
     (+0.82 / +0.14, SE 0.48; +2.70 over the head): bar (>= +0.5 on dev3k, commons26 not down) passed. Not yet: the RL policy's cost curve
     with the new columns, the test set.
+V6. **One value network matches the answer head + REINFORCE (step 1), but over per-model recognise actions the learned policy only ties a
+    simple gate, and loses to it on commons26 (step 2)** (`value_agent.py`; setft_own, `--one-km 0.5`, 3 seeds 7-9, train-fitted, REINFORCE
+    at the same seeds; % < 25 / 1 km). The network: the `_net` encoder, per token logistic P(< 25) / P(< 1 km) for the unzoomed and zoomed
+    points (commit value P25 + 0.5 P1), lambda-conditioned values for zoom k / read / recognise, states from random reveals plus its own
+    epsilon-greedy rollouts. Plain fitted Q iteration (double Q, target network) matches REINFORCE at 25 km (dev3k 47.89 vs 47.23) but the
+    policy never cuts tool use (6.7 units at lambda 0.015 vs 0.6): the max over noisy next-state values overestimates by more than the tool
+    costs (~0.01 per unit). The advantage form (`--gain`) alone barely helps (6.0 units). **Paired Monte Carlo targets (`--mc`)** fix it: an
+    action's target is the network's own greedy rollout return from s' minus the reward of its greedy commit at s (no max over estimates; the
+    choices never see the truth; mostly exactly 0), and spend falls with lambda like REINFORCE's. dev3k 1 km stays 0.5-0.85 low with
+    per-option logistic commits; writing the zoomed point as the unzoomed one + a difference (`--delta`) doesn't help (-0.85); the old
+    listwise loss on log commit values does (`--listwise 1`: -0.15, `2`: -0.25). Confirmation (`--gain --mc --listwise 2`, lambdas to 0.03):
+    lambda 0 dev3k 47.40 / 30.56 vs 47.23 / 30.67 (+0.17, SE 0.21 / -0.11), commons26 dev 25.08 / 7.68 vs 24.97 / 7.68: bar met. Reward
+    ([< 25] + 0.5 [< 1]) at REINFORCE's spend, Q - RL: dev3k +0.31 (5.0 units), -0.15 (2.2-2.5), -0.6 (0.6-0.9); commons26 dev +0.20 (6.3),
+    -0.2 (3.7), 0.0 (1.8), +1.8 (0.7): level within noise, not above. **Step 2** (`--split`: MegaLoc / PE-G / SigLIP2 cosine / PE-G region
+    probe as four actions, V5 columns; units from measured L40S latency, nothing pre-embedded but Pinpoint's SigLIP2 index: PE-G 50.7 ms/image
+    vs MegaLoc 5.5, ~56 images per photo, so MegaLoc 1, PE-G 9, SigLIP2 0.05 (query already embedded), probe 0.17; zoom 1 and read 2 kept from
+    action_agent, not latency-based). Everything revealed: dev3k 50.09 / 31.90 (V5 head 49.82 / 32.02), commons26 dev 27.33 / 7.74 (27.70 /
+    7.92); the lambda 0 policy reveals less (PE-G 78%, MegaLoc 59%; 9 actions vs MAX_STEPS 8): 49.60 / 31.61, 26.61 / 7.88. Gate (read +
+    MegaLoc + SigLIP2 + probe, PE-G only where the top two commit values are within t, no zoom): dev3k 48.73-49.12 at 3.6-5.7 units, the
+    policy at matched cost +0.0 to +0.3 (bar +0.5; same accuracy at ~65% of the cost, bar 60%); commons26 dev 26.85-27.47 at 3.8-6.5 units,
+    the policy 1.4-2.2 pts lower: it keeps 3-4 zooms (learned on MP16, where zooms pay; on commons26 zoom-all rows are 1-2 pts below
+    zoom-0). Open-loop control (actions chosen at the empty state): dev3k <= 0.2 below the policy at matched cost, commons26 dev level or
+    above: the order barely matters with these cached tools. Bars (b), (c) not met. A cheap fixed rule nearly matches the controller here;
+    for the policy to add something it needs tools whose outcome changes the next choice, and training states like the target photos.

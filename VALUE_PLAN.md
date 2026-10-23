@@ -28,9 +28,14 @@ track go in `LESSONS.md` as V6, V7, ... The 2026-10-21 version of this plan (rea
 ## Where it stands (2026-10-23)
 - V1-V4: text probes (misreads, reverse geocoding, SigLIP2 names, gallery OCR): no-go; reads on MP16-like photos have < 1 pt to fix.
 - V5: a second image model per area passes (PE-G + SigLIP2 + region probe columns, +2.66 dev3k / +2.70 commons26 dev over the head).
-- Step 1 below in progress (`value_agent.py`): 25 km matches REINFORCE; dev3k 1 km ~0.4-0.6 low; plain fitted Q iteration overestimates by
-  more than the tool costs (~0.01), so the policy never cuts tool use. `--mc` (realised gain of acting: the network's own greedy rollout from
-  s' minus its greedy commit at s, paired) fixes the cost response in a smoke test. Handoff record: `VALUE_HANDOFF.md`.
+- Step 1 done (lesson V6, `value_agent.py --gain --mc --listwise 2`): lambda 0 matches REINFORCE (dev3k 47.40 / 30.56 vs 47.23 / 30.67,
+  commons26 dev 25.08 / 7.68 vs 24.97 / 7.68); the cost curve is level with REINFORCE's within noise (dev3k -0.6 at the cheapest end,
+  commons26 dev +1.8 there), not above it. The value network replaces the head + REINFORCE at no loss; it adds no accuracy by itself.
+- Step 2 run once (lesson V6, `--split`): the policy only ties a simple gate on dev3k (<= +0.3 at matched cost, bar 0.5) and loses 1.4-2.2
+  pts to it on commons26 dev (it keeps MP16's zoom habit; zooms hurt on commons26); open-loop control about equal (sequence barely matters).
+  The gate "read + MegaLoc + SigLIP2 + probe, PE-G only where the top two commit values are within 0.02-0.2, no zoom" is the cheap recipe to
+  beat: commons26 dev 26.85-27.47% at 3.8-6.5 units vs 27.33% for everything at 17.1. Open: Commons training states, a step cap above the
+  number of actions.
 
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
