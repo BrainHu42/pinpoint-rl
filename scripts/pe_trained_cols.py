@@ -55,10 +55,19 @@ def head() -> None:
              configs=["none", "pe_g+siglip_final+pe_probe", "pe_g+siglip_final+pe_probe+pe_gtr"])
 
 
+def single() -> None:
+    """Each image model's columns alone in the same head (the user's question: PE-G only vs SigLIP2 only), and PE-G's three column kinds
+    without SigLIP2."""
+    import second_model_gate as smg
+
+    smg.head(["pe_g", "siglip_final", "pe_probe", "pe_gtr"], CKPT, tags=("dev3k", "commons26dev"),
+             configs=["siglip_final", "pe_g", "pe_gtr", "pe_g+pe_probe+pe_gtr"])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("cols", "head"))
-    {"cols": cols, "head": head}[ap.parse_args().node]()
+    ap.add_argument("node", choices=("cols", "head", "single"))
+    {"cols": cols, "head": head, "single": single}[ap.parse_args().node]()
 
 
 if __name__ == "__main__":

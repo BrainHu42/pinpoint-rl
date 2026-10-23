@@ -235,5 +235,10 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     what we have; commons26 dev is positive but within noise. One PE-G embedding now feeds three kinds of head column: raw similarity to each
     area's photos, the trained (location-tuned) similarity, and the region prior. Caveats: one projection seed, trained on 191k photos (R17:
     more data adds ~+1 recall); 448 px inputs to a 378 px projection.
+    **Each model alone** (same head and seeds, `pe_trained_cols.py single`, `single.log`), dev3k / commons26 dev at 25 km: SigLIP2 columns
+    47.46 (+0.29) / 25.01 (+0.00); raw PE-G 48.53 (+1.36) / 26.17 (+1.16); **trained PE-G alone 50.38 (+3.21) / 27.43 (+2.42)**; all PE-G
+    columns (raw + trained + probe) 50.66 (+3.49) / 28.08 (+3.07) vs + SigLIP2 50.87 / 28.18: once PE-G is in, SigLIP2's columns add
+    +0.21 / +0.10 (noise). PE-G only beats SigLIP2 only by ~+3 in the head; the rest of the pipeline (retrieval, reranker, head base
+    features) is still SigLIP2.
 
 ## Search-agent track (S)
