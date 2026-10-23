@@ -219,6 +219,9 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     +0.27 +- 0.33, PE-G + SigLIP2 trained summed +2.20. With PE-G trained top 16 added: **48.23 / 31.20 (+3.93 / +2.87)**; contrastive top 16
     added instead: +3.20 (no extra). So most of the gain is picking within today's pool, and PE-G's own candidates add ~+0.7 more. For scale,
     the answer head is 47.17 and 49.82 with V5 + probe columns; whether the trained PE-G similarity adds to that head is the next test.
-    Caveats: one projection seed; lambda chosen on dev3k (one parameter, cross-fitted); commons26 not yet checked.
+    **commons26 dev transfers** (`--set commons26dev`, `combo_commons26dev.log`; its pools' 41k rows embedded into B2; queries at 378 px
+    from step 5c): reranker top-1 19.65 / 6.04; + trained PE-G cosine **21.80 (+2.15 +- 0.91) / 6.45**; with PE-G trained top 16 added
+    **22.62 (+2.97 +- 0.99) / 7.27 (+1.23)**; SigLIP2 trained -0.31 +- 0.45; raw PE-G cosine adds nothing (lambda 0 chosen in both folds).
+    Caveats: one projection seed; lambda cross-fitted within each set (one parameter).
 
 ## Search-agent track (S)
