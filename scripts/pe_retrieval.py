@@ -29,6 +29,9 @@ import numpy as np
 OUT = Path("artifacts/retrieval/b1")
 MODEL, SIZE = "vit_pe_core_gigantic_patch14_448.fb", 378
 FRACTION = 0.10
+QSET = "dev3k"  # query set: dev3k (MP16) or commons26dev (rerank / recall / trained queries; --set)
+SETS = {"dev3k": ("dev3k_setft_own", "artifacts/pinpoint_set/mp16_32_8_8_setft_own.npz"),
+        "commons26dev": ("commons26dev_setft_own", "artifacts/pinpoint_set/commons26_32_8_8_setft_own.npz")}
 
 
 def select(seed: int = 0, fraction: float = FRACTION) -> None:
@@ -142,25 +145,38 @@ def _setup(kmax: int = 256) -> dict:
     ok = np.load(OUT / "ok.npy") & (np.load(OUT / "done.npy") if (OUT / "done.npy").exists()
                                     else np.arange(len(g["rows"])) < int((OUT / "embed.progress").read_text()))
     use = np.flatnonzero(ok)
-    photos = json.loads(Path("artifacts/photo_sets/dev3k_setft_own/photos.json").read_text(encoding="utf-8"))
+    photos = json.loads(Path(f"artifacts/photo_sets/{SETS[QSET][0]}/photos.json").read_text(encoding="utf-8"))
     qids = [p["image_id"] for p in photos]
     truth = np.asarray([p["truth"] for p in photos], np.float64)
-    need = set(qids)
-    qauth = {}
-    with MP16_CSV.open(encoding="utf-8", newline="") as f:
-        r = csv.reader(f)
-        next(r)
-        for rec in r:
-            if rec[0] in need:
-                qauth[rec[0]] = rec[1]
-    qauth = np.asarray([qauth[i] for i in qids])
+    if QSET == "dev3k":
+        need = set(qids)
+        qauth = {}
+        with MP16_CSV.open(encoding="utf-8", newline="") as f:
+            r = csv.reader(f)
+            next(r)
+            for rec in r:
+                if rec[0] in need:
+                    qauth[rec[0]] = rec[1]
+        qauth = np.asarray([qauth[i] for i in qids])
+    else:  # benchmark queries carry no MP16 photographer
+        qauth = np.asarray([f"query:{i}" for i in range(len(qids))])
     # queries: raw SigLIP2 from the MP16 cache, PE-G 378 px from step 5b's embed (same model and size, dev3k rows last)
     em = Path("data/pinpoint/mp16-embed/siglip2-giant-opt-patch16-384")
     m = json.loads((em / "manifest.json").read_text(encoding="utf-8"))
     pos = {k: i for i, k in enumerate((em / m["files"]["image_ids"]).read_text(encoding="utf-8").splitlines())}
     sig = np.memmap(em / m["files"]["embeddings"], dtype=np.float16, mode="r", shape=tuple(m["shapes"]["embeddings"]))
-    q_sig = np.asarray(sig[np.asarray([pos[i] for i in qids])], np.float32)
-    if SIZE == 378:
+    if QSET == "dev3k":
+        q_sig = np.asarray(sig[np.asarray([pos[i] for i in qids])], np.float32)
+    else:
+        from geo_search_env.data.benchmarks import load_benchmark
+
+        q_sig = np.asarray(load_benchmark("commons26").embeddings, np.float32)[np.asarray([e["index"] for e in photos])]
+    if QSET != "dev3k":  # commons26 dev queries at 378 px from pe_probe embed_pooled
+        assert SIZE == 378
+        extra = np.load("artifacts/retrieval/probe/pooled_extra.npz")
+        at = {k: i for i, k in enumerate(extra["keys"])}
+        q_pe = extra["embeddings"][np.asarray([at[f"commons26dev:{i}"] for i in range(len(qids))])].astype(np.float32)
+    elif SIZE == 378:
         probe = Path("artifacts/retrieval/probe")
         n_p = len(np.load(probe / "photos.npz")["ids"])
         q_pe = np.asarray(np.load(probe / "pooled.npy", mmap_mode="r")[n_p:n_p + len(qids)], np.float32)
@@ -338,9 +354,9 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
         with torch.no_grad():
             S["galleries"][f"{name}_trained"] = torch.cat([F.normalize(head(X[i:i + 65536]), dim=-1) for i in range(0, len(X), 65536)]).half()
             S["queries"][f"{name}_trained"] = F.normalize(head(S["queries"][name].float()), dim=-1).half()
-    photos = json.loads(Path("artifacts/photo_sets/dev3k_setft_own/photos.json").read_text(encoding="utf-8"))
+    photos = json.loads(Path(f"artifacts/photo_sets/{SETS[QSET][0]}/photos.json").read_text(encoding="utf-8"))
     idx = np.asarray([e["index"] for e in photos])
-    z = np.load("artifacts/pinpoint_set/mp16_32_8_8_setft_own.npz")
+    z = np.load(SETS[QSET][1])
     rows0, feats0, scores0 = z["rows"][idx], z["features"][idx].astype(np.float32), z["scores"][idx]
     truth = np.asarray([e["truth"] for e in photos], np.float64)
     raw, con = S["raw_q"], S["con_q"]
@@ -358,7 +374,7 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
     s_base = rescore(rows0, feats0[..., 3:6], feats0[..., 6:9])
     v0 = rows0 >= 0
     agree = np.mean(np.where(v0, s_base, -np.inf).argmax(1) == np.where(v0, scores0, -np.inf).argmax(1))
-    print(f"rerank: dev3k {len(idx)} photos, pool {v0.sum(1).mean():.1f} candidates; rescoring the stored pool reproduces its top-1 for "
+    print(f"rerank: {QSET} {len(idx)} photos, pool {v0.sum(1).mean():.1f} candidates; rescoring the stored pool reproduces its top-1 for "
           f"{100 * agree:.1f}% (max |score diff| {np.nanmax(np.abs(np.where(v0, s_base - scores0, 0))):.3f})", flush=True)
     base = km(rows0, np.where(v0, s_base, -np.inf).argmax(1))
     print(f"  reranker top-1, today's pool: 25 km {100 * np.mean(base < 25):.2f}  1 km {100 * np.mean(base < 1):.2f}", flush=True)
@@ -424,7 +440,7 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
 
 
 def main() -> None:
-    global OUT, SIZE
+    global OUT, SIZE, QSET
     ap = argparse.ArgumentParser()
     ap.add_argument("node", choices=("select", "embed", "recall", "trained", "rerank"))
     ap.add_argument("--out", default=str(OUT), help="gallery directory (B1 artifacts/retrieval/b1, B2 artifacts/retrieval/b2)")
@@ -436,11 +452,12 @@ def main() -> None:
     ap.add_argument("--backbones", default="pe_g,siglip2", help="trained: comma list of pe_g / siglip2 / concat")
     ap.add_argument("--train-frac", type=float, default=1.0, help="trained: share of the train half (same number of steps)")
     ap.add_argument("--eval-fracs", default="1", help="trained: comma list of nested shares of the eval half (gallery density)")
+    ap.add_argument("--set", default="dev3k", choices=tuple(SETS), help="query set (rerank, recall, trained)")
     ap.add_argument("--combo", action="store_true", help="rerank: also reranker score + lambda x PE-G cosine (2-fold lambda)")
     ap.add_argument("--names", default="contrastive,siglip2_trained,pe_g_trained", help="rerank: searches whose top K are added")
     ap.add_argument("--tag", default="", help="trained: suffix of the saved heads file")
     args = ap.parse_args()
-    OUT, SIZE = Path(args.out), args.size
+    OUT, SIZE, QSET = Path(args.out), args.size, args.set
     tr = lambda: trained(backbones=tuple(args.backbones.split(",")), train_frac=args.train_frac,  # noqa: E731
                          eval_fracs=tuple(float(f) for f in args.eval_fracs.split(",")), tag=args.tag)
     first = tuple(f for f in args.first.split(",") if f)
