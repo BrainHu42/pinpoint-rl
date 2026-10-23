@@ -37,9 +37,12 @@ def _km(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return 6371.0 * np.arccos(np.clip((_xyz(a) * _xyz(b)).sum(-1), -1, 1))
 
 
-def probe(seed: int = 0) -> None:
-    """Full 2,048-cell log-probs for dev3k and commons26 dev from the probe trained on all probe photos (pe_probe.crossfit's last fit, same
-    seed and rows; the columns of lesson V5 came from it) -> artifacts/value/probe_logp_{tag}.npy."""
+def probe(seed: int = 0, folds: int = 5) -> None:
+    """Full 2,048-cell log-probs, as pe_probe.crossfit computes them (same seeds, rows and photographer folds; the columns of lesson V5 came
+    from it): train photos from the probe trained without their fold's photographers, dev3k and commons26 dev from the probe trained on all
+    probe photos -> artifacts/value/probe_logp_{train,dev3k,commons26dev}.npy (photo-set order)."""
+
+    import csv
 
     import torch
 
@@ -54,9 +57,30 @@ def probe(seed: int = 0) -> None:
     ekeys = list(extra["keys"])
     X = torch.tensor(np.concatenate([np.asarray(base), extra["embeddings"]]), device="cuda")
     y = torch.tensor((pp._xyz(p["latlon"]) @ pp._xyz(cent).T).argmax(1), device="cuda")
-    logp = pp._fit_mlp(X, y, np.flatnonzero(ok[:n_p]), seed)
-    lp = {"dev3k": logp(n_p + np.arange(len(base) - n_p)),
-          "commons26dev": logp(np.asarray([len(base) + i for i, k in enumerate(ekeys) if k.startswith("commons26dev:")]))}
+    row = {k: i for i, k in enumerate(p["ids"])} | {k: len(base) + i for i, k in enumerate(ekeys)}
+    authors = {}
+    with pp.CSV.open(encoding="utf-8", newline="") as f:
+        r = csv.reader(f)
+        next(r)
+        for rec in r:
+            authors[rec[0]] = rec[1]
+    probe_auth = np.asarray([authors[i] for i in p["ids"]])
+    train = [e["image_id"] for e in json.loads(Path("artifacts/photo_sets/train_setft_own/photos.json").read_text(encoding="utf-8"))]
+    t_auth = np.asarray([authors[i] for i in train])
+    uniq = np.unique(t_auth)
+    fold_of = dict(zip(uniq, np.random.default_rng(seed).permutation(len(uniq)) % folds))
+    t_fold = np.asarray([fold_of[a] for a in t_auth])
+    usable = np.flatnonzero(ok[:n_p])
+    lp_train = np.zeros((len(train), pp.CELLS), np.float32)
+    for k in range(folds):
+        held = set(uniq[[fold_of[a] == k for a in uniq]])
+        logp = pp._fit_mlp(X, y, usable[~np.isin(probe_auth[usable], list(held))], seed + k)
+        J = np.flatnonzero(t_fold == k)
+        lp_train[J] = logp(np.asarray([row[train[j]] for j in J]))
+        print(f"  fold {k}: {len(J)} train photos", flush=True)
+    logp = pp._fit_mlp(X, y, usable, seed)
+    lp = {"train": lp_train, "dev3k": logp(n_p + np.arange(len(base) - n_p)),
+          "commons26dev": logp(np.asarray([row[k] for k in ekeys if k.startswith("commons26dev:")]))}
     for tag, x in lp.items():
         np.save(OUT / f"probe_logp_{tag}.npy", x.astype(np.float16))
         print(f"-> {OUT / f'probe_logp_{tag}.npy'} {x.shape}", flush=True)
