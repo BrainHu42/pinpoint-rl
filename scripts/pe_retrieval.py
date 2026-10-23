@@ -122,7 +122,8 @@ def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
     print(f"-> {path}: {np.mean(~ok):.2%} unreadable", flush=True)
 
 
-def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 25.0, 200.0)) -> None:
+def _setup(kmax: int = 256) -> dict:
+    """dev3k queries and the embedded gallery for every search, plus top-K / distance helpers (recall, trained)."""
     import torch
 
     from geo_search_env.experiment.strategy_search import MP16_CSV
@@ -163,47 +164,138 @@ def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 
                "pe_g": torch.nn.functional.normalize(torch.as_tensor(q_pe, device=dev), dim=-1).half()}
     glat = g["latlon"][use].astype(np.float64)
     same = qauth[:, None] == g["authors"][use][None, :]  # [Q, G] the photographer's own photos (original protocol keeps them)
-    kmax = max(ks)
 
-    def top(name: str, exclude_own: bool) -> np.ndarray:
-        s = (queries[name] @ galleries[name].T).float()
+    def top(name: str, exclude_own: bool, cols: np.ndarray | None = None) -> np.ndarray:
+        """Top-kmax gallery positions (into use) per query; cols restricts the gallery to those positions."""
+        gal = galleries[name] if cols is None else galleries[name][torch.as_tensor(cols, device=dev)]
+        s = (queries[name] @ gal.T).float()
         if exclude_own:
-            s.masked_fill_(torch.as_tensor(same, device=dev), -9.0)
-        return s.topk(kmax, dim=1).indices.cpu().numpy()
+            s.masked_fill_(torch.as_tensor(same if cols is None else same[:, cols], device=dev), -9.0)
+        i = s.topk(kmax, dim=1).indices.cpu().numpy()
+        return i if cols is None else cols[i]
 
     def dist(idx: np.ndarray) -> np.ndarray:
         a, b = np.radians(truth[:, None, :]), np.radians(glat[idx])
         h = np.sin((b[..., 0] - a[..., 0]) / 2) ** 2 + np.cos(a[..., 0]) * np.cos(b[..., 0]) * np.sin((b[..., 1] - a[..., 1]) / 2) ** 2
         return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
 
-    print(f"b1 recall: {len(use):,} of {len(ok):,} gallery photos embedded; dev3k {len(qids)} queries; % with a gallery photo within "
-          f"{' / '.join(f'{r:g}' for r in radii)} km among the top K", flush=True)
+    return dict(g=g, ok=ok, use=use, qids=qids, qauth=qauth, rr=rr, dev=dev, galleries=galleries, queries=queries, glat=glat,
+                top=top, dist=dist)
+
+
+def _report(d: dict, ks: tuple[int, ...], radii: tuple[float, ...], pairs: list[tuple[str, str]], new: str) -> None:
+    """d: search -> [Q, kmax] km of each top-K photo. Recall@K per search, K/2 + K/2 unions, and what `new` adds to contrastive's misses."""
+    for k in ks:
+        arms = {name: d[name][:, :k].min(1) for name in d}
+        h = k // 2
+        for x, y in pairs:
+            arms[f"{x} + {y} (K/2 each)"] = np.minimum(d[x][:, :h].min(1), d[y][:, :h].min(1))
+        for name, v in arms.items():
+            print(f"  K={k:3d} {name:40s} " + " / ".join(f"{100 * np.mean(v < r):5.1f}" for r in radii), flush=True)
+        miss = arms["contrastive"] >= 25
+        print(f"  K={k:3d} of the {miss.sum()} photos the contrastive top-K misses at 25 km, {new}'s top-K finds one for "
+              f"{100 * np.mean(arms[new][miss] < 25):.1f}% ({100 * np.mean(miss & (arms[new] < 25)):.1f} pts of all photos)", flush=True)
+
+
+def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 25.0, 200.0)) -> None:
+    S = _setup(max(ks))
+    print(f"b1 recall: {len(S['use']):,} of {len(S['ok']):,} gallery photos embedded; dev3k {len(S['qids'])} queries; % with a gallery photo "
+          f"within {' / '.join(f'{r:g}' for r in radii)} km among the top K", flush=True)
     for exclude_own in (False, True):
         print(f"\n{'photographer excluded' if exclude_own else 'original protocol (photographer kept)'}:", flush=True)
-        d = {name: dist(top(name, exclude_own)) for name in galleries}
-        for k in ks:
-            arms = {name: d[name][:, :k].min(1) for name in d}
-            h = k // 2
-            arms["contrastive + pe_g (K/2 each)"] = np.minimum(d["contrastive"][:, :h].min(1), d["pe_g"][:, :h].min(1))
-            arms["siglip2 + pe_g (K/2 each)"] = np.minimum(d["siglip2"][:, :h].min(1), d["pe_g"][:, :h].min(1))
-            arms["contrastive + siglip2 (K/2 each)"] = np.minimum(d["contrastive"][:, :h].min(1), d["siglip2"][:, :h].min(1))
-            for name, v in arms.items():
-                print(f"  K={k:3d} {name:34s} " + " / ".join(f"{100 * np.mean(v < r):5.1f}" for r in radii), flush=True)
-            miss = arms["contrastive"] >= 25
-            print(f"  K={k:3d} of the {miss.sum()} photos the contrastive top-K misses at 25 km, PE-G's top-K finds one for "
-                  f"{100 * np.mean(arms['pe_g'][miss] < 25):.1f}% ({100 * np.mean(miss & (arms['pe_g'] < 25)):.1f} pts of all photos)", flush=True)
+        d = {name: S["dist"](S["top"](name, exclude_own)) for name in S["galleries"]}
+        _report(d, ks, radii, [("contrastive", "pe_g"), ("siglip2", "pe_g"), ("contrastive", "siglip2")], "pe_g")
+
+
+def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float = 0.2, ks: tuple[int, ...] = (8, 32, 256),
+            radii: tuple[float, ...] = (1.0, 25.0, 200.0), seed: int = 0) -> None:
+    """B1 fallback (PE_PLAN, Oct 22 decisions): is PE-G a better *trainable* search backbone than SigLIP2? The same small projection
+    (MLP -> 256-d, InfoNCE) trained on each backbone's raw embedding of one half of the gallery (photographers split by hash; dev3k
+    photographers kept out of training), positives by distance only (another photo in the same ~22 km cell), batch pairs within 25 km
+    masked as negatives. Evaluated on the other half with dev3k queries, next to Pinpoint's contrastive search (trained on all of MP16)."""
+    import hashlib
+
+    import torch
+    import torch.nn.functional as F
+
+    S = _setup(max(ks))
+    g, use, dev = S["g"], S["use"], S["dev"]
+    auth = g["authors"][use]
+    half = np.asarray([hashlib.md5(a.encode()).digest()[0] & 1 for a in auth], bool)
+    tr = np.flatnonzero(half & ~np.isin(auth, np.unique(S["qauth"])))
+    ev = np.flatnonzero(~half)
+    lat = S["glat"]
+    cell = np.floor(lat[:, 0] / cell_deg).astype(np.int64) * 100000 + np.floor(
+        lat[:, 1] * np.cos(np.radians(lat[:, 0])) / cell_deg).astype(np.int64)
+    _, inv, cnt = np.unique(cell[tr], return_inverse=True, return_counts=True)
+    order = np.argsort(inv, kind="stable")
+    starts = np.concatenate([[0], np.cumsum(cnt)[:-1]])
+    anchors = np.flatnonzero(cnt[inv] > 1)  # positions in tr with a same-cell partner
+    print(f"trained: train half {len(tr):,} photos ({len(anchors):,} anchors with a same-cell positive), eval half {len(ev):,}", flush=True)
+    rng = np.random.default_rng(seed)
+    lat_t = torch.as_tensor(np.radians(lat), device=dev, dtype=torch.float32)
+
+    def km(i: torch.Tensor, j: torch.Tensor) -> torch.Tensor:
+        a, b = lat_t[i][:, None], lat_t[j][None]
+        h = torch.sin((b[..., 0] - a[..., 0]) / 2) ** 2 + torch.cos(a[..., 0]) * torch.cos(b[..., 0]) * torch.sin((b[..., 1] - a[..., 1]) / 2) ** 2
+        return 2 * 6371.0 * torch.asin(h.clamp(0, 1).sqrt())
+
+    out = {}
+    for name in ("pe_g", "siglip2"):
+        torch.manual_seed(seed)
+        X = S["galleries"][name].float()
+        head = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 2048), torch.nn.GELU(), torch.nn.Linear(2048, dim)).to(dev)
+        logit_scale = torch.nn.Parameter(torch.tensor(np.log(1 / 0.07), device=dev, dtype=torch.float32))
+        opt = torch.optim.AdamW([*head.parameters(), logit_scale], lr=1e-3, weight_decay=0.01)
+        steps = epochs * (len(anchors) // batch)
+        sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=steps, pct_start=0.05)
+        for ep in range(epochs):
+            perm = rng.permutation(anchors)
+            tot = 0.0
+            for b0 in range(0, len(perm) - batch + 1, batch):
+                a_pos = perm[b0:b0 + batch]
+                c = inv[a_pos]
+                p_pos = order[starts[c] + rng.integers(0, cnt[c])]
+                same = p_pos == a_pos  # redraw once; a leftover self-pair is still a valid (trivial) positive
+                p_pos[same] = order[starts[c[same]] + rng.integers(0, cnt[c[same]])]
+                ia, ip = torch.as_tensor(tr[a_pos], device=dev), torch.as_tensor(tr[p_pos], device=dev)
+                za, zp = F.normalize(head(X[ia]), dim=-1), F.normalize(head(X[ip]), dim=-1)
+                logits = logit_scale.exp().clamp(max=100) * za @ zp.T
+                near = (km(ia, ip) < 25) & ~torch.eye(len(ia), dtype=torch.bool, device=dev)
+                logits = logits.masked_fill(near, -1e4)
+                y = torch.arange(len(ia), device=dev)
+                loss = (F.cross_entropy(logits, y) + F.cross_entropy(logits.T, y)) / 2
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                sched.step()
+                tot += loss.item()
+            print(f"  {name} epoch {ep + 1}: loss {tot / max(1, len(perm) // batch):.3f}", flush=True)
+        with torch.no_grad():
+            S["galleries"][f"{name}_trained"] = torch.cat([F.normalize(head(X[i:i + 65536]), dim=-1) for i in range(0, len(X), 65536)]).half()
+            S["queries"][f"{name}_trained"] = F.normalize(head(S["queries"][name].float()), dim=-1).half()
+        out[name] = head
+    print(f"\nb1 trained: eval half {len(ev):,} photos; dev3k {len(S['qids'])} queries; % with a gallery photo within "
+          f"{' / '.join(f'{r:g}' for r in radii)} km among the top K", flush=True)
+    names = ["contrastive", "siglip2", "pe_g", "siglip2_trained", "pe_g_trained"]
+    for exclude_own in (False, True):
+        print(f"\n{'photographer excluded' if exclude_own else 'original protocol (photographer kept)'}:", flush=True)
+        d = {name: S["dist"](S["top"](name, exclude_own, cols=ev)) for name in names}
+        _report(d, ks, radii, [("contrastive", "pe_g_trained"), ("contrastive", "siglip2_trained"), ("contrastive", "pe_g")],
+                "pe_g_trained")
+    torch.save({k: v.state_dict() for k, v in out.items()}, OUT / "trained_heads.pt")
 
 
 def main() -> None:
     global OUT
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("select", "embed", "recall"))
+    ap.add_argument("node", choices=("select", "embed", "recall", "trained"))
     ap.add_argument("--out", default=str(OUT), help="gallery directory (B1 artifacts/retrieval/b1, B2 artifacts/retrieval/b2)")
     ap.add_argument("--fraction", type=float, default=FRACTION, help="select: share of the index (1 = all, B2)")
     ap.add_argument("--reuse", default=None, help="embed: copy rows another gallery already embedded (B2: artifacts/retrieval/b1)")
     args = ap.parse_args()
     OUT = Path(args.out)
-    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall}[args.node]()
+    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall, "trained": trained}[args.node]()
 
 
 if __name__ == "__main__":
