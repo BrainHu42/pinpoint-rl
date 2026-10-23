@@ -54,6 +54,7 @@ def _pooled(net, b):
 
 
 GAIN = False  # --gain: information values as the best commit value now (detached) + a learned gain (advantage form; costs are ~0.01)
+DELTA = False  # --delta: the zoomed point's logits are the unzoomed point's plus a learned difference
 MC = False  # --mc: information targets = the realised gain of acting (greedy continuation's return from s' minus the greedy commit's reward
 # at s, added to the commit value now); no max over estimates in the targets (the overestimation of the plain fitted Q iteration)
 LISTWISE = 0.0  # --listwise W: + W x the old answer head's listwise loss on log commit values (ranking of options within a photo)
@@ -71,6 +72,8 @@ def _q(net, b, pooled, zoomed, read, rec, lam, detach_info: bool = True):
     for layer in net.layers:
         e = layer(e, src_key_padding_mask=~v["mask"])
     logits = net.commit(e)
+    if DELTA:  # zoomed point = unzoomed point + a learned difference (where the 1 km deficit sits: unzoomed vs zoomed point of an area)
+        logits = torch.cat([logits[..., :2], logits[..., :2] + logits[..., 2:]], -1)
     p = torch.sigmoid(logits)
     w = aa.ONE_KM
     commit = torch.cat([(p[..., 0] + w * p[..., 1]).masked_fill(~v["mask"], float("-inf")),
@@ -388,7 +391,7 @@ def run(seeds: Sequence[int], extra: Sequence[str], targets: Sequence[str], base
             runs[name].append(evaluate(q, rl, d, np.arange(d["n"])))
     for name, d in sets.items():
         report(name, runs[name], d["base_km"])
-    out = f"artifacts/value/value_agent_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{'_gain' if GAIN else ''}{'_mc' if MC else ''}{f'_lw{LISTWISE:g}' if LISTWISE else ''}.npz"
+    out = f"artifacts/value/value_agent_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{'_gain' if GAIN else ''}{'_mc' if MC else ''}{'_delta' if DELTA else ''}{f'_lw{LISTWISE:g}' if LISTWISE else ''}.npz"
     np.savez(out, **{f"{name}|{s}|{who}|{label}": r[who, label][0] for name, rs in runs.items() for s, r in zip(seeds, rs) for (who, label) in r})
     print(f"saved {out}", flush=True)
 
@@ -405,11 +408,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--shared", action="store_true", help="information losses also train the encoder (default: detached, as the old action head)")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--gain", action="store_true", help="information values in advantage form (best commit value now + gain)")
+    parser.add_argument("--lambdas", type=float, nargs="*", default=list(LAMBDAS), help="costs per unit to train on and report")
+    parser.add_argument("--delta", action="store_true", help="zoomed-point logits = unzoomed-point logits + a learned difference")
     parser.add_argument("--mc", action="store_true", help="information targets from realised greedy continuations (paired with the commit now)")
     parser.add_argument("--listwise", type=float, default=0.0, help="weight of the listwise ranking loss on commit values")
     args = parser.parse_args(argv)
     aa.CKPT_TAG, aa.ONE_KM = args.ckpt_tag, args.one_km
     globals()["GAIN"], globals()["LISTWISE"], globals()["MC"] = args.gain, args.listwise, args.mc
+    globals()["DELTA"], globals()["LAMBDAS"] = args.delta, tuple(args.lambdas)
     run(args.seeds, args.extra, args.targets, baseline=not args.no_baseline, epochs=args.epochs, w_info=args.w_info, detach_info=not args.shared)
     return 0
 
