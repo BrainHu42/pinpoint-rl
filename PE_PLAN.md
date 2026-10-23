@@ -6,7 +6,8 @@ SigLIP2 and PE-G is fine when both pull their weight (user, 2026-10-22); the evi
 PE-G alone +1.37).
 
 **Measure.** dev3k, original protocol, % < 25 / 1 km over the current answer head (47.2 / 30.8). Bar: >= +1.0 pt at 25 km, 1 km not down
-by more than 0.3. Test set untouched.
+by more than 0.3. Test set untouched. Main test sets: im2gps3k + yfcc4k (dev3k is their dev); commons26 dev is auxiliary, a
+secondary check reported alongside, never the deciding set (user, 2026-10-23).
 
 ## Workstreams (user, 2026-10-23: two in parallel, each reporting to the user)
 | Workstream | Owner | Scope | Reports to |
