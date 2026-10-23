@@ -134,3 +134,19 @@ V6. **One value network matches the answer head + REINFORCE (step 1), but over p
     zoom-0). Open-loop control (actions chosen at the empty state): dev3k <= 0.2 below the policy at matched cost, commons26 dev level or
     above: the order barely matters with these cached tools. Bars (b), (c) not met. A cheap fixed rule nearly matches the controller here;
     for the policy to add something it needs tools whose outcome changes the next choice, and training states like the target photos.
+V7. **Coarse distances: the right region is in the pool on ~90% of unsure photos but the answer reaches it on 52-61%; a fixed gated switch to
+    the region probe passes the step 3a bar on commons26 dev (+1.84) and misses on dev3k (+0.83)** (`scripts/multiscale_headroom.py`; the
+    value network's lambda 0 answer, `value_agent --gain --mc --listwise 2 --dump`, seed 7; track R's PE-G region probe refit as
+    `pe_probe.crossfit`'s final fit for full 2,048-cell scores; % < 25 / 200 / 750 / 2500 km). Answer: dev3k 47.47 / 58.20 / 72.70 / 84.37,
+    commons26 dev 25.28 / 44.93 / 71.14 / 86.28. Coarse answers alone (R 500 km): pool mass (the pool candidate with the most softmax score
+    within R) 30.70 / 44.10 / 71.27 / 83.73 and 15.05 / 37.05 / 71.34 / 85.06; probe top cell 26.17 / 46.30 / 68.03 / 82.90 and 13.51 / 42.89 /
+    73.18 / 87.21; probe mass (the cell with the most probe probability within R) 1.57 / 25.07 / 72.70 / 84.73 and 2.15 / 28.05 / 74.62 /
+    87.21: on commons26 dev the probe alone beats the pipeline at 750 / 2500 km. Best-of(answer, probe mass) per photo at 750 km 83.3 on
+    both (+10.6 / +12.2: the oracle room). Gated switch (answer's P(< 25 km) below the 5-60% quantile -> coarse answer), best net = d750 +
+    d25: dev3k probe mass at 10% switched -0.33 / -0.10 / +1.17 / +0.83, net +0.83 (bar +1, not met); commons26 dev probe top at 50% switched
+    -1.13 / +3.28 / +2.97 / +0.20, net +1.84 (probe mass at 20%: -0.61 / +1.74 / +2.15 / +1.02, net +1.54): passed. Picked among 21 configs on
+    the same photos, one seed: optimistic by ~0.3-0.5 pts. Selection, not candidates: on unsure photos (P(< 25 km) < 0.3; 44.6% of dev3k,
+    57.1% of commons26 dev) some pool candidate is < 750 km on 93.6 / 89.6%, a probe top-5 cell on 73.7 / 84.4%, the answer on 52.1 / 61.3%.
+    The head is trained only for 25 / 1 km, so on photos without a right area its choice is untrained for coarse scales; one confidence
+    threshold captures < 1/5 of the oracle room. Next (VALUE_PLAN 3b): P(< r) commit heads for r in 1 / 25 / 200 / 750 / 2500 km plus hedge
+    commits (probe cells, pool-mass point), answer = argmax sum_r w_r P(< r).

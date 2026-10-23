@@ -37,6 +37,9 @@ track go in `LESSONS.md` as V6, V7, ... The 2026-10-21 version of this plan (rea
   beat: commons26 dev 26.85-27.47% at 3.8-6.5 units vs 27.33% for everything at 17.1. Open: Commons training states, a step cap above the
   number of actions.
 
+- Step 3a done (lesson V7): the gated switch to the region probe passes on commons26 dev (net +1.84 at 750 km) and misses on dev3k
+  (+0.83); the right region is in the pool on ~90% of unsure photos vs 52-61% for the answer (oracle room +11-12 pts at 750 km). 3b next.
+
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
 |---|---|
