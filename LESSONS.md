@@ -173,5 +173,12 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     the photo's other areas; gate as above): blocks 32-47 +0.06 to +0.71, last block +0.94, pooled +1.38 / +0.36. Closed for PE-G's middle
     layers (caveats: 7 x 7 pooling and ~100k probe photos; full-resolution tokens with ImageNet-scale data were not tried). A by-product to
     keep: the pooled output's region probe stacks on the cosine columns (PE-G + SigLIP2 +1.18 -> +1.86 / +1.03 in the gate).
+    **Step 5c, trained head** (`pe_probe.py crossfit` / `head`): train-side probe columns cross-fitted (5 folds grouped by photographer, every
+    probe photo of a fold's photographers left out; cross-fitted train top cell < 200 km 44.9% vs dev3k 46.3%, commons26 dev 42.9%: no leak
+    visible), the answer head trained on train, 3 seeds, track V's V5 loop (reproduces V5 exactly). dev3k 47.17 / 30.63 -> PE-G + SigLIP2
+    49.21 / 31.91 -> + probe **49.82 / 32.02** (+0.61 / +0.11 over PE-G + SigLIP2, SE 0.26; +2.66 / +1.39 over the head); commons26 dev 25.01 /
+    7.68 -> 26.89 / 7.78 -> **27.70 / 7.92** (+0.82 / +0.14, SE 0.48; +2.70 over the head). Track V's bar (declared before the run: >= +0.5 on
+    dev3k, commons26 dev not down) passes. One image model (PE-G pooled output, 378 px for the probe) feeds two kinds of head column:
+    similarity to each area's photos and a learned region prior.
 
 ## Search-agent track (S)
