@@ -20,7 +20,7 @@ by more than 0.3. Test set untouched.
 | 5c | Region-probe columns in the trained head (train-side columns cross-fitted by photographer). Bar (track V, declared): >= +0.5 at 25 km over pe_g + siglip_final on dev3k, commons26 dev not down | track R | done | **done, passes (R16)** | dev3k 49.21 -> **49.82** (+0.61, SE 0.26), commons26 dev 26.89 -> **27.70** (+0.82, SE 0.48); total over today's head **+2.66 / +1.39** dev3k, **+2.70 / +0.24** commons26 dev |
 | 6 | Commit PE-G next to SigLIP2 in the answer head; confirm on commons26 dev (below, A) | track V (`scripts/second_model_commons.sh`, ac43ec4) | done | **done, passes** | commons26 dev (head 25.01 / 7.68): PE-G +1.16 / -0.03 (SE 0.45), **PE-G + SigLIP2 +1.88 / +0.10 (SE 0.54)**; dev3k reproduced (+1.37, +2.04); lesson V5 |
 | 7 | Retrieval pre-check on a 10% MP16 gallery (below, B1): PE-G 378 px embedding of 408,092 index photos, then recall@K of SigLIP2 / contrastive / PE-G / unions on dev3k | track R | embed started 5:08 PM Oct 22; ~2.5 h, so it stops at the 7 PM restart and resumes (see 'Resuming B1') | running | |
-| 8 | Full PE-G index as a retrieval modality next to SigLIP2 (below, B2) | track R | if 7 passes, with the user | | |
+| 8 | Full PE-G index as a retrieval modality next to SigLIP2 (below, B2) | track R | user (Oct 22, night): starts automatically if 7 passes; ~37 h GPU after reusing B1's rows, so ~2 days with restarts; B2 has GPU priority over track V | | |
 
 Step 4 settled that the gain is real, so PE-G stays. Step 5 says whether it is PE's knowledge or just
 more pixels (448 vs 378 px), sets the resolution for any re-embed, and tried the cheapest middle-layer readout (cosine of mean-pooled tokens; it fails). Lower priority, run only if asked: SigLIP2 intermediate layers (~40 min GPU); step 2
@@ -59,6 +59,11 @@ V5 passed the bar, so PE-G stays. Each step keeps SigLIP2 and asks what PE-G add
   - **B2 (if B1 passes):** full re-embed of MP16 with PE-G (4.12M photos; ~40-50 h at 448 px, less at 378, resumable over 2-3 nights
     because of the 02:00 shutdown) as a fourth search in the reranker's pool, then re-fine-tune the reranker with PE-G similarity features.
     Long run: confirm with the user first.
+  - **Decisions for the night of Oct 22 (user):** B1's bar is measured against Pinpoint's trained (contrastive) search, the one the
+    reranker uses, not raw SigLIP2: go if contrastive + PE-G at equal K beats contrastive alone by >= 2 pts at 25 km, K = 32, or PE-G's
+    top-32 finds a photo within 25 km for >= 3% of the photos contrastive's top-32 misses. If it passes, B2 starts right away
+    (`scripts/b2_embed.sh`; resume after a restart with the same command). If it fails, a ~2 h test instead: a small search layer trained
+    on PE-G embeddings of half the 10% gallery (positives by distance only, photographers split), compared with contrastive on the other half.
 - Both A and B keep every SigLIP2 component; no backbone swap is planned unless B shows PE-G retrieval makes SigLIP2's redundant.
 
 ## Resuming B1 after the daily restart

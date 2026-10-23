@@ -11,6 +11,8 @@ recall: dev3k queries (original protocol, the photographer's photos kept): per s
   .venv/bin/python scripts/pe_retrieval.py select
   PYTHONPATH=.venvs/pylib_pe:src .venvs/sft/bin/python scripts/pe_retrieval.py embed      # from the main checkout, or with paths below
   .venv/bin/python scripts/pe_retrieval.py recall
+B2 (full index): select --fraction 1 --out artifacts/retrieval/b2, then embed --out artifacts/retrieval/b2 --reuse artifacts/retrieval/b1
+(scripts/b2_embed.sh). Resume uses done.npy (B1's first run used the embed.progress counter; both are read).
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ MODEL, SIZE = "vit_pe_core_gigantic_patch14_448.fb", 378
 FRACTION = 0.10
 
 
-def select(seed: int = 0) -> None:
+def select(seed: int = 0, fraction: float = FRACTION) -> None:
     from geo_search_env.experiment.strategy_search import MP16_CSV, MP16_EMBED, _memmap_gallery
     from geo_search_env.models.pinpoint_reranker import _discover_index
 
@@ -37,7 +39,8 @@ def select(seed: int = 0) -> None:
     manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
     cache = np.fromfile(index_dir / manifest["files"]["cache_indices"], dtype=np.int64)
     row_index = _memmap_gallery(MP16_EMBED)["row_index"]
-    rows = np.sort(np.random.default_rng(seed).choice(len(cache), int(FRACTION * len(cache)), replace=False))
+    rows = (np.arange(len(cache)) if fraction >= 1 else
+            np.sort(np.random.default_rng(seed).choice(len(cache), int(fraction * len(cache)), replace=False)))
     csv_rows = np.asarray(row_index[cache[rows]])
     want = {int(r): i for i, r in enumerate(csv_rows)}
     ids, authors, latlon = [None] * len(rows), [None] * len(rows), np.zeros((len(rows), 2), np.float32)
@@ -54,7 +57,7 @@ def select(seed: int = 0) -> None:
     print(f"-> {OUT / 'gallery.npz'}: {len(rows):,} of {len(cache):,} index photos", flush=True)
 
 
-def embed(batch: int = 64, workers: int = 4) -> None:
+def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
     os.environ.setdefault("HF_HOME", str(Path("data/hf").resolve()))
     os.environ["HF_HUB_OFFLINE"] = "1"
     import timm
@@ -64,7 +67,8 @@ def embed(batch: int = 64, workers: int = 4) -> None:
 
     from geo_search_env.experiment.sft_data import MP16Images
 
-    ids = list(np.load(OUT / "gallery.npz")["ids"])
+    g = np.load(OUT / "gallery.npz")
+    ids, g_rows = list(g["ids"]), g["rows"]
     n = len(ids)
     net = timm.create_model(MODEL, pretrained=True, img_size=SIZE).cuda().eval().to(torch.bfloat16)
     tf = timm.data.create_transform(**(timm.data.resolve_data_config(model=net) | {"input_size": (3, SIZE, SIZE)}))
@@ -83,25 +87,38 @@ def embed(batch: int = 64, workers: int = 4) -> None:
             except Exception:  # noqa: BLE001
                 return i, torch.zeros(3, SIZE, SIZE), False
 
-    path, prog, okp = OUT / "pe_g378.npy", OUT / "embed.progress", OUT / "ok.npy"
-    if prog.exists():
-        out, ok, start = np.lib.format.open_memmap(path, mode="r+"), np.load(okp), int(prog.read_text())
+    path, prog, okp, donep = OUT / "pe_g378.npy", OUT / "embed.progress", OUT / "ok.npy", OUT / "done.npy"
+    if donep.exists() or prog.exists():
+        out, ok = np.lib.format.open_memmap(path, mode="r+"), np.load(okp)
+        done = np.load(donep) if donep.exists() else np.arange(n) < int(prog.read_text())  # B1 ran with a counter
     else:
-        out, ok, start = np.lib.format.open_memmap(path, mode="w+", dtype=np.float16, shape=(n, 1280)), np.zeros(n, bool), 0
-    print(f"b1 embed: {n:,} gallery photos at {SIZE} px; starting at {start:,}", flush=True)
-    done = start
+        out, ok, done = np.lib.format.open_memmap(path, mode="w+", dtype=np.float16, shape=(n, 1280)), np.zeros(n, bool), np.zeros(n, bool)
+        if reuse:  # B2: copy rows another gallery (B1) already embedded
+            src = Path(reuse)
+            sg, sd = np.load(src / "gallery.npz")["rows"], np.load(src / "done.npy") if (src / "done.npy").exists() else None
+            sd = sd if sd is not None else np.arange(len(sg)) < int((src / "embed.progress").read_text())
+            pos = np.searchsorted(g_rows, sg[sd])
+            assert np.array_equal(g_rows[pos], sg[sd])
+            out[pos] = np.load(src / "pe_g378.npy", mmap_mode="r")[np.flatnonzero(sd)]
+            ok[pos], done[pos] = np.load(src / "ok.npy")[sd], True
+            out.flush()
+            np.save(okp, ok)
+            np.save(donep, done)
+            print(f"  reused {sd.sum():,} photos from {src}", flush=True)
+    todo = np.flatnonzero(~done)
+    print(f"embed {OUT}: {n:,} gallery photos at {SIZE} px; {done.sum():,} done, {len(todo):,} to go", flush=True)
     with torch.inference_mode():
-        for b, (idx, x, good) in enumerate(DataLoader(torch.utils.data.Subset(Images(), list(range(start, n))), batch_size=batch,
+        for b, (idx, x, good) in enumerate(DataLoader(torch.utils.data.Subset(Images(), todo.tolist()), batch_size=batch,
                                                       num_workers=workers)):
             i = idx.numpy()
             out[i] = torch.nn.functional.normalize(net(x.cuda().to(torch.bfloat16)).float(), dim=-1).cpu().numpy().astype(np.float16)
-            ok[i] = good.numpy()
-            done += len(i)
-            if b % 100 == 99 or done == n:  # checkpoint every 6,400 photos (~2-3 min)
+            ok[i], done[i] = good.numpy(), True
+            if b % 100 == 99 or done.all():  # checkpoint every 6,400 photos (~4 min)
                 out.flush()
                 np.save(okp, ok)
-                prog.write_text(str(done))
-                print(f"  {done:,} / {n:,}", flush=True)
+                np.save(donep, done)
+                prog.write_text(str(int(done.sum())))
+                print(f"  {int(done.sum()):,} / {n:,}", flush=True)
     print(f"-> {path}: {np.mean(~ok):.2%} unreadable", flush=True)
 
 
@@ -112,7 +129,8 @@ def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 
     from geo_search_env.models.pinpoint_reranker import PinpointReranker
 
     g = np.load(OUT / "gallery.npz")
-    ok = np.load(OUT / "ok.npy") & (np.arange(len(g["rows"])) < int((OUT / "embed.progress").read_text()))
+    ok = np.load(OUT / "ok.npy") & (np.load(OUT / "done.npy") if (OUT / "done.npy").exists()
+                                    else np.arange(len(g["rows"])) < int((OUT / "embed.progress").read_text()))
     use = np.flatnonzero(ok)
     photos = json.loads(Path("artifacts/photo_sets/dev3k_setft_own/photos.json").read_text(encoding="utf-8"))
     qids = [p["image_id"] for p in photos]
@@ -177,10 +195,15 @@ def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 
 
 
 def main() -> None:
+    global OUT
     ap = argparse.ArgumentParser()
     ap.add_argument("node", choices=("select", "embed", "recall"))
+    ap.add_argument("--out", default=str(OUT), help="gallery directory (B1 artifacts/retrieval/b1, B2 artifacts/retrieval/b2)")
+    ap.add_argument("--fraction", type=float, default=FRACTION, help="select: share of the index (1 = all, B2)")
+    ap.add_argument("--reuse", default=None, help="embed: copy rows another gallery already embedded (B2: artifacts/retrieval/b1)")
     args = ap.parse_args()
-    {"select": select, "embed": embed, "recall": recall}[args.node]()
+    OUT = Path(args.out)
+    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall}[args.node]()
 
 
 if __name__ == "__main__":
