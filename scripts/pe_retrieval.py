@@ -57,9 +57,12 @@ def select(seed: int = 0, fraction: float = FRACTION) -> None:
     print(f"-> {OUT / 'gallery.npz'}: {len(rows):,} of {len(cache):,} index photos", flush=True)
 
 
-def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
+def embed(reuse: str | None = None, first: tuple[str, ...] = (), only_first: bool = False, batch: int = 64, workers: int = 4) -> None:
+    """first: .npy files of gallery positions to embed before the rest, in order (B2: the dev3k, then train pools' index rows);
+    only_first: stop after them."""
     os.environ.setdefault("HF_HOME", str(Path("data/hf").resolve()))
     os.environ["HF_HUB_OFFLINE"] = "1"
+    import pandas as pd
     import timm
     import torch
     from PIL import Image
@@ -106,14 +109,20 @@ def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
             np.save(donep, done)
             print(f"  reused {sd.sum():,} photos from {src}", flush=True)
     todo = np.flatnonzero(~done)
+    if first:
+        pri = pd.unique(np.concatenate([np.load(f) for f in first]).astype(np.int64))
+        pri = pri[~done[pri]]
+        todo = pri if only_first else np.concatenate([pri, todo[~np.isin(todo, pri)]])
+        print(f"  {len(pri):,} priority photos first ({', '.join(first)}){'; only those' if only_first else ''}", flush=True)
     print(f"embed {OUT}: {n:,} gallery photos at {SIZE} px; {done.sum():,} done, {len(todo):,} to go", flush=True)
+    last = (len(todo) - 1) // batch
     with torch.inference_mode():
         for b, (idx, x, good) in enumerate(DataLoader(torch.utils.data.Subset(Images(), todo.tolist()), batch_size=batch,
                                                       num_workers=workers)):
             i = idx.numpy()
             out[i] = torch.nn.functional.normalize(net(x.cuda().to(torch.bfloat16)).float(), dim=-1).cpu().numpy().astype(np.float16)
             ok[i], done[i] = good.numpy(), True
-            if b % 100 == 99 or done.all():  # checkpoint every 6,400 photos (~4 min)
+            if b % 100 == 99 or b == last:  # checkpoint every 6,400 photos (~4 min)
                 out.flush()
                 np.save(okp, ok)
                 np.save(donep, done)
@@ -185,7 +194,7 @@ def _setup(kmax: int = 256) -> dict:
         return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
 
     return dict(g=g, ok=ok, use=use, qids=qids, qauth=qauth, rr=rr, dev=dev, galleries=galleries, queries=queries, glat=glat,
-                top=top, dist=dist)
+                top=top, dist=dist, raw_q=raw_q, con_q=con_q)
 
 
 def _report(d: dict, ks: tuple[int, ...], radii: tuple[float, ...], pairs: list[tuple[str, str]], new: str) -> None:
@@ -310,23 +319,126 @@ def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float
     torch.save({k: v.state_dict() for k, v in out.items()}, OUT / f"trained_heads{tag}.pt")
 
 
+def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive", "siglip2_trained", "pe_g_trained"), combo: bool = False) -> None:
+    """Does the trained PE-G search's recall reach the reranker's top-1? dev3k's setft_own pool (the pipeline's, photographer kept), plus each
+    search's top K from this gallery (new photos only), all rescored by the setft_own reranker (run with PINPOINT_RERANKER_CKPT set to it).
+    Added photos get rank 1 / not-in-shortlist features, as the wide lists' extra hits it was trained on. Top-1 = best score over the pool.
+    combo: also pick by reranker score + lambda x the query's PE-G cosine to each candidate (raw, and in the trained projection), lambda by
+    2-fold cross-validation on dev3k (folds by photo parity); candidate PE-G embeddings from B2's file (the dev3k pools embedded first)."""
+    import torch
+    import torch.nn.functional as F
+
+    S = _setup(max(ks))
+    rr, dev = S["rr"], S["dev"]
+    heads, mods = torch.load(OUT / "trained_heads.pt"), {}
+    for name in ("pe_g", "siglip2"):
+        X = S["galleries"][name].float()
+        head = mods[name] = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 2048), torch.nn.GELU(), torch.nn.Linear(2048, 256)).to(dev)
+        head.load_state_dict(heads[name])
+        with torch.no_grad():
+            S["galleries"][f"{name}_trained"] = torch.cat([F.normalize(head(X[i:i + 65536]), dim=-1) for i in range(0, len(X), 65536)]).half()
+            S["queries"][f"{name}_trained"] = F.normalize(head(S["queries"][name].float()), dim=-1).half()
+    photos = json.loads(Path("artifacts/photo_sets/dev3k_setft_own/photos.json").read_text(encoding="utf-8"))
+    idx = np.asarray([e["index"] for e in photos])
+    z = np.load("artifacts/pinpoint_set/mp16_32_8_8_setft_own.npz")
+    rows0, feats0, scores0 = z["rows"][idx], z["features"][idx].astype(np.float32), z["scores"][idx]
+    truth = np.asarray([e["truth"] for e in photos], np.float64)
+    raw, con = S["raw_q"], S["con_q"]
+
+    def km(rows: np.ndarray, pick: np.ndarray) -> np.ndarray:
+        ll = np.asarray(rr.latlon[rows[np.arange(len(rows)), pick]], np.float64)
+        a, b = np.radians(truth), np.radians(ll)
+        h = np.sin((b[:, 0] - a[:, 0]) / 2) ** 2 + np.cos(a[:, 0]) * np.cos(b[:, 0]) * np.sin((b[:, 1] - a[:, 1]) / 2) ** 2
+        return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
+
+    def rescore(rows, ranks, flags):
+        s, _ = rr._score(raw, con, rows, ranks, flags)
+        return s
+
+    s_base = rescore(rows0, feats0[..., 3:6], feats0[..., 6:9])
+    v0 = rows0 >= 0
+    agree = np.mean(np.where(v0, s_base, -np.inf).argmax(1) == np.where(v0, scores0, -np.inf).argmax(1))
+    print(f"rerank: dev3k {len(idx)} photos, pool {v0.sum(1).mean():.1f} candidates; rescoring the stored pool reproduces its top-1 for "
+          f"{100 * agree:.1f}% (max |score diff| {np.nanmax(np.abs(np.where(v0, s_base - scores0, 0))):.3f})", flush=True)
+    base = km(rows0, np.where(v0, s_base, -np.inf).argmax(1))
+    print(f"  reranker top-1, today's pool: 25 km {100 * np.mean(base < 25):.2f}  1 km {100 * np.mean(base < 1):.2f}", flush=True)
+    if combo:
+        b2 = Path("artifacts/retrieval/b2")
+        pe_all, pe_done = np.load(b2 / "pe_g378.npy", mmap_mode="r"), np.load(b2 / "done.npy")
+        q_raw = S["queries"]["pe_g"].float()
+        q_tr = S["queries"]["pe_g_trained"].float()
+        lams = np.asarray([0, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128])
+        fold = np.arange(len(idx)) % 2
+
+        def combos(label: str, rows: np.ndarray, s: np.ndarray) -> None:
+            v = rows >= 0
+            have = pe_done[np.where(v, rows, 0)] & v
+            u, inv = np.unique(np.where(v, rows, 0), return_inverse=True)
+            e = torch.as_tensor(np.asarray(pe_all[u]), device=dev).float()
+            with torch.no_grad():
+                e_tr = F.normalize(mods["pe_g"](e), dim=-1)
+            inv = torch.as_tensor(inv.reshape(rows.shape), device=dev)
+            cos = {"raw": (q_raw[:, None] * e[inv]).sum(-1).cpu().numpy(), "trained": (q_tr[:, None] * e_tr[inv]).sum(-1).cpu().numpy()}
+            out = []
+            for kind, c in cos.items():
+                c = np.where(have, c, np.nanmean(np.where(have, c, np.nan), 1, keepdims=True))  # a candidate without PE-G: the pool mean
+                d = np.stack([km(rows, np.where(v, s + lam * c, -np.inf).argmax(1)) for lam in lams])  # [L, Q]
+                pick, chosen = np.zeros(len(idx)), []
+                for f in (0, 1):
+                    j = int(np.argmax((d[:, fold != f] < 25).mean(1)))
+                    chosen.append(lams[j])
+                    pick[fold == f] = d[j, fold == f]
+                diff25, diff1 = (pick < 25).astype(float) - (base < 25), (pick < 1).astype(float) - (base < 1)
+                out.append(f"{kind} cos (lambda {chosen[0]:g}/{chosen[1]:g}): 25 km {100 * np.mean(pick < 25):.2f} ({100 * diff25.mean():+.2f} +- "
+                           f"{100 * diff25.std() / np.sqrt(len(idx)):.2f})  1 km {100 * np.mean(pick < 1):.2f} ({100 * diff1.mean():+.2f})")
+            print(f"    combo {label}: PE-G for {100 * have[v].mean():.1f}% of candidates; " + ";  ".join(out), flush=True)
+
+        combos("today's pool", rows0, s_base)
+    grow = S["g"]["rows"][S["use"]]
+    for name in names:
+        top = S["top"](name, False)  # photographer kept, as the pool
+        for k in ks:
+            add = grow[top[:, :k]]
+            add = np.where(np.asarray([np.isin(a, r) for a, r in zip(add, rows0)]), -1, add)  # new photos only
+            rows = np.concatenate([rows0, add], 1)
+            ranks = np.concatenate([feats0[..., 3:6], np.ones(add.shape + (3,), np.float32)], 1)
+            flags = np.concatenate([feats0[..., 6:9], np.zeros(add.shape + (3,), np.float32)], 1)
+            s = rescore(rows, ranks, flags)
+            pick = np.where(rows >= 0, s, -np.inf).argmax(1)
+            d = km(rows, pick)
+            new_pick = np.mean(pick >= rows0.shape[1])
+            parts = []
+            for t in (25, 1):
+                diff = (d < t).astype(float) - (base < t)
+                parts.append(f"{t} km {100 * np.mean(d < t):.2f} ({100 * diff.mean():+.2f} +- {100 * diff.std() / np.sqrt(len(diff)):.2f})")
+            print(f"  + {name:16s} top {k:2d} ({(add >= 0).sum(1).mean():.1f} new): " + "  ".join(parts) +
+                  f"  top-1 is an added photo for {100 * new_pick:.1f}%", flush=True)
+            if combo:
+                combos(f"+ {name} top {k}", rows, s)
+
+
 def main() -> None:
     global OUT, SIZE
     ap = argparse.ArgumentParser()
-    ap.add_argument("node", choices=("select", "embed", "recall", "trained"))
+    ap.add_argument("node", choices=("select", "embed", "recall", "trained", "rerank"))
     ap.add_argument("--out", default=str(OUT), help="gallery directory (B1 artifacts/retrieval/b1, B2 artifacts/retrieval/b2)")
     ap.add_argument("--fraction", type=float, default=FRACTION, help="select: share of the index (1 = all, B2)")
     ap.add_argument("--reuse", default=None, help="embed: copy rows another gallery already embedded (B2: artifacts/retrieval/b1)")
+    ap.add_argument("--first", default="", help="embed: comma list of .npy gallery positions to embed first (B2 priority)")
+    ap.add_argument("--only-first", action="store_true", help="embed: stop after the --first photos")
     ap.add_argument("--size", type=int, default=SIZE, help="PE-G input resolution (files pe_g{size}.npy; queries from q{size}/ unless 378)")
     ap.add_argument("--backbones", default="pe_g,siglip2", help="trained: comma list of pe_g / siglip2 / concat")
     ap.add_argument("--train-frac", type=float, default=1.0, help="trained: share of the train half (same number of steps)")
     ap.add_argument("--eval-fracs", default="1", help="trained: comma list of nested shares of the eval half (gallery density)")
+    ap.add_argument("--combo", action="store_true", help="rerank: also reranker score + lambda x PE-G cosine (2-fold lambda)")
+    ap.add_argument("--names", default="contrastive,siglip2_trained,pe_g_trained", help="rerank: searches whose top K are added")
     ap.add_argument("--tag", default="", help="trained: suffix of the saved heads file")
     args = ap.parse_args()
     OUT, SIZE = Path(args.out), args.size
     tr = lambda: trained(backbones=tuple(args.backbones.split(",")), train_frac=args.train_frac,  # noqa: E731
                          eval_fracs=tuple(float(f) for f in args.eval_fracs.split(",")), tag=args.tag)
-    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall, "trained": tr}[args.node]()
+    first = tuple(f for f in args.first.split(",") if f)
+    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse, first=first, only_first=args.only_first), "recall": recall, "trained": tr, "rerank": lambda: rerank(names=tuple(args.names.split(",")), combo=args.combo)}[args.node]()
 
 
 if __name__ == "__main__":
