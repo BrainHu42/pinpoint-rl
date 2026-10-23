@@ -54,6 +54,8 @@ def _pooled(net, b):
 
 
 GAIN = False  # --gain: information values as the best commit value now (detached) + a learned gain (advantage form; costs are ~0.01)
+MC = False  # --mc: information targets = the realised gain of acting (greedy continuation's return from s' minus the greedy commit's reward
+# at s, added to the commit value now); no max over estimates in the targets (the overestimation of the plain fitted Q iteration)
 LISTWISE = 0.0  # --listwise W: + W x the old answer head's listwise loss on log commit values (ranking of options within a photo)
 
 
@@ -154,6 +156,28 @@ def _value(net, tgt, b, pooled_on, pooled_tg, zoomed, read, rec, lam):
     return torch.where(commit_best, vc, vi)
 
 
+def _greedy_return(net, b, pooled, zoomed, read, rec, lam, steps):
+    """Realised return of the online network's greedy continuation from a state: [< 25 km] + W x [< 1 km] of its commit minus lambda x the
+    units it spends on the way (at most `steps` more information actions). The choices never see the truth."""
+
+    import torch
+
+    h = b["mask"].shape[1]
+    cost = torch.zeros_like(lam)
+    live = torch.ones_like(read)
+    for _ in range(steps):
+        commit, _, info, _ = _q(net, b, pooled, zoomed, read, rec, lam)
+        live = live & (info.max(1).values > commit.max(1).values)
+        if not live.any():
+            break
+        a = info.argmax(1)
+        cost = cost + torch.where(live, lam * _units(a, h), 0.0)
+        zoomed, read, rec = _step(zoomed, read, rec, a, h, live)
+    commit, _, _, v = _q(net, b, pooled, zoomed & aa.view(b, read, rec)["mask"], read, rec, lam)
+    km = _km(v, commit)
+    return (km < 25).float() + aa.ONE_KM * (km < 1).float() - cost
+
+
 def _expand(b, k):
     return {key: x.repeat_interleave(k, 0) for key, x in b.items()}
 
@@ -213,8 +237,14 @@ def fit_q(d, photos, seed, epochs=30, batch=128, tau=0.01, w_info=1.0, detach_in
                 z2, r2, c2 = _step(zoomed.repeat_interleave(A, 0), read.repeat_interleave(A, 0), rec.repeat_interleave(A, 0), acts, h,
                                    allowed.reshape(-1))
                 l2 = lam.repeat_interleave(A)
-                v2 = _value(net, tgt, be, _pooled(net, be), _pooled(tgt, be), z2 & aa.view(be, r2, c2)["mask"], r2, c2, l2)
-                target = (v2 - l2 * _units(acts, h)).reshape(n, A)
+                z2 = z2 & aa.view(be, r2, c2)["mask"]
+                if MC:  # realised gain of acting: greedy continuation from s' minus the greedy commit at s (paired, so mostly 0)
+                    r0 = _greedy_return(net, b, _pooled(net, b), zoomed, read, rec, lam, 0)
+                    ret = _greedy_return(net, be, _pooled(net, be), z2, r2, c2, l2, aa.MAX_STEPS - 1)
+                    target = (ret - l2 * _units(acts, h)).reshape(n, A) - r0[:, None] + commit.max(1, keepdim=True).values.detach()
+                else:
+                    v2 = _value(net, tgt, be, _pooled(net, be), _pooled(tgt, be), z2, r2, c2, l2)
+                    target = (v2 - l2 * _units(acts, h)).reshape(n, A)
                 net.train()
             loss_i = ((info - target).masked_fill(~allowed, 0.0) ** 2).sum() / allowed.sum().clamp(min=1)
             loss = loss_c + w_info * loss_i
@@ -358,7 +388,7 @@ def run(seeds: Sequence[int], extra: Sequence[str], targets: Sequence[str], base
             runs[name].append(evaluate(q, rl, d, np.arange(d["n"])))
     for name, d in sets.items():
         report(name, runs[name], d["base_km"])
-    out = f"artifacts/value/value_agent_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{'_gain' if GAIN else ''}{f'_lw{LISTWISE:g}' if LISTWISE else ''}.npz"
+    out = f"artifacts/value/value_agent_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{'_gain' if GAIN else ''}{'_mc' if MC else ''}{f'_lw{LISTWISE:g}' if LISTWISE else ''}.npz"
     np.savez(out, **{f"{name}|{s}|{who}|{label}": r[who, label][0] for name, rs in runs.items() for s, r in zip(seeds, rs) for (who, label) in r})
     print(f"saved {out}", flush=True)
 
@@ -375,10 +405,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--shared", action="store_true", help="information losses also train the encoder (default: detached, as the old action head)")
     parser.add_argument("--no-baseline", action="store_true")
     parser.add_argument("--gain", action="store_true", help="information values in advantage form (best commit value now + gain)")
+    parser.add_argument("--mc", action="store_true", help="information targets from realised greedy continuations (paired with the commit now)")
     parser.add_argument("--listwise", type=float, default=0.0, help="weight of the listwise ranking loss on commit values")
     args = parser.parse_args(argv)
     aa.CKPT_TAG, aa.ONE_KM = args.ckpt_tag, args.one_km
-    globals()["GAIN"], globals()["LISTWISE"] = args.gain, args.listwise
+    globals()["GAIN"], globals()["LISTWISE"], globals()["MC"] = args.gain, args.listwise, args.mc
     run(args.seeds, args.extra, args.targets, baseline=not args.no_baseline, epochs=args.epochs, w_info=args.w_info, detach_info=not args.shared)
     return 0
 
