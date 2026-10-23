@@ -19,7 +19,7 @@ by more than 0.3. Test set untouched.
 | 5b | On-claim layer test: a geolocation probe trained per layer on PE-G patch tokens (the paper's Fig. 8 protocol) | track R | done | **done, no-go (R16)** | dev3k top cell within 200 km: blocks 32 / 38 / 44 / 47 9.0 / 14.0 / 25.1 / 34.9, last 45.6, pooled 46.5: the output is best, as for the paper's ImageNet probe. By-product: the pooled region probe as head columns +1.38, on top of PE-G + SigLIP2 cosine +1.18 -> +1.86 / +1.03 (gate) |
 | 5c | Region-probe columns in the trained head (train-side columns cross-fitted by photographer). Bar (track V, declared): >= +0.5 at 25 km over pe_g + siglip_final on dev3k, commons26 dev not down | track R | done | **done, passes (R16)** | dev3k 49.21 -> **49.82** (+0.61, SE 0.26), commons26 dev 26.89 -> **27.70** (+0.82, SE 0.48); total over today's head **+2.66 / +1.39** dev3k, **+2.70 / +0.24** commons26 dev |
 | 6 | Commit PE-G next to SigLIP2 in the answer head; confirm on commons26 dev (below, A) | track V (`scripts/second_model_commons.sh`, ac43ec4) | done | **done, passes** | commons26 dev (head 25.01 / 7.68): PE-G +1.16 / -0.03 (SE 0.45), **PE-G + SigLIP2 +1.88 / +0.10 (SE 0.54)**; dev3k reproduced (+1.37, +2.04); lesson V5 |
-| 7 | Retrieval pre-check on a 10% MP16 gallery (below, B1) | track R | next night | | |
+| 7 | Retrieval pre-check on a 10% MP16 gallery (below, B1): PE-G 378 px embedding of 408,092 index photos, then recall@K of SigLIP2 / contrastive / PE-G / unions on dev3k | track R | embed started 5:08 PM Oct 22; ~2.5 h, so it stops at the 7 PM restart and resumes (see 'Resuming B1') | running | |
 | 8 | Full PE-G index as a retrieval modality next to SigLIP2 (below, B2) | track R | if 7 passes, with the user | | |
 
 Step 4 settled that the gain is real, so PE-G stays. Step 5 says whether it is PE's knowledge or just
@@ -60,6 +60,19 @@ V5 passed the bar, so PE-G stays. Each step keeps SigLIP2 and asks what PE-G add
     because of the 02:00 shutdown) as a fourth search in the reranker's pool, then re-fine-tune the reranker with PE-G similarity features.
     Long run: confirm with the user first.
 - Both A and B keep every SigLIP2 component; no backbone swap is planned unless B shows PE-G retrieval makes SigLIP2's redundant.
+
+## Resuming B1 after the daily restart
+The embedding checkpoints every 6,400 photos to `artifacts/retrieval/b1/` (EBS; timm in `.venvs/pylib_pe`, also EBS). After the machine is
+back, from this worktree:
+```
+cd /home/brianhu/pinpoint-rl/.claude/worktrees/retrieval-track
+tail -3 artifacts/retrieval/b1/embed.log                      # last checkpoint
+setsid nohup bash scripts/b1_embed.sh >> artifacts/retrieval/b1/embed.log 2>&1 &    # continues from embed.progress
+```
+When the log says `b1 embed exit` after `408,092 / 408,092`, run the analysis (works on a partial embed too):
+```
+systemd-run --user --scope -q -p MemoryMax=12G -p MemorySwapMax=0 .venv/bin/python scripts/pe_retrieval.py recall | tee artifacts/retrieval/b1/recall.log
+```
 
 ## Where things are
 - Track R: `scripts/siglip_gate.py` (branch `worktree-retrieval-track`), outputs `artifacts/retrieval/gate/` (`gate_siglip_final.log`, `solo.log`).
