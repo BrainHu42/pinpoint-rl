@@ -87,7 +87,7 @@ def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
             except Exception:  # noqa: BLE001
                 return i, torch.zeros(3, SIZE, SIZE), False
 
-    path, prog, okp, donep = OUT / "pe_g378.npy", OUT / "embed.progress", OUT / "ok.npy", OUT / "done.npy"
+    path, prog, okp, donep = OUT / f"pe_g{SIZE}.npy", OUT / "embed.progress", OUT / "ok.npy", OUT / "done.npy"
     if donep.exists() or prog.exists():
         out, ok = np.lib.format.open_memmap(path, mode="r+"), np.load(okp)
         done = np.load(donep) if donep.exists() else np.arange(n) < int(prog.read_text())  # B1 ran with a counter
@@ -99,7 +99,7 @@ def embed(reuse: str | None = None, batch: int = 64, workers: int = 4) -> None:
             sd = sd if sd is not None else np.arange(len(sg)) < int((src / "embed.progress").read_text())
             pos = np.searchsorted(g_rows, sg[sd])
             assert np.array_equal(g_rows[pos], sg[sd])
-            out[pos] = np.load(src / "pe_g378.npy", mmap_mode="r")[np.flatnonzero(sd)]
+            out[pos] = np.load(src / f"pe_g{SIZE}.npy", mmap_mode="r")[np.flatnonzero(sd)]
             ok[pos], done[pos] = np.load(src / "ok.npy")[sd], True
             out.flush()
             np.save(okp, ok)
@@ -151,15 +151,20 @@ def _setup(kmax: int = 256) -> dict:
     pos = {k: i for i, k in enumerate((em / m["files"]["image_ids"]).read_text(encoding="utf-8").splitlines())}
     sig = np.memmap(em / m["files"]["embeddings"], dtype=np.float16, mode="r", shape=tuple(m["shapes"]["embeddings"]))
     q_sig = np.asarray(sig[np.asarray([pos[i] for i in qids])], np.float32)
-    probe = Path("artifacts/retrieval/probe")
-    n_p = len(np.load(probe / "photos.npz")["ids"])
-    q_pe = np.asarray(np.load(probe / "pooled.npy", mmap_mode="r")[n_p:n_p + len(qids)], np.float32)
+    if SIZE == 378:
+        probe = Path("artifacts/retrieval/probe")
+        n_p = len(np.load(probe / "photos.npz")["ids"])
+        q_pe = np.asarray(np.load(probe / "pooled.npy", mmap_mode="r")[n_p:n_p + len(qids)], np.float32)
+    else:  # dev3k queries embedded at SIZE by `embed --out artifacts/retrieval/q{SIZE}` (gallery.npz holding the dev3k ids in order)
+        qd = OUT.parent / f"q{SIZE}"
+        assert list(np.load(qd / "gallery.npz")["ids"]) == qids
+        q_pe = np.load(qd / f"pe_g{SIZE}.npy").astype(np.float32)
     rr = PinpointReranker()
     raw_q, con_q = rr.encode_queries(q_sig)
     rows = g["rows"][use]
     dev = rr.device
     galleries = {"siglip2": rr._dequantize(0, rows=rows), "contrastive": torch.as_tensor(np.asarray(rr.image[rows]), device=dev),
-                 "pe_g": torch.as_tensor(np.asarray(np.load(OUT / "pe_g378.npy", mmap_mode="r")[use]), device=dev)}
+                 "pe_g": torch.as_tensor(np.asarray(np.load(OUT / f"pe_g{SIZE}.npy", mmap_mode="r")[use]), device=dev)}
     queries = {"siglip2": raw_q.half(), "contrastive": con_q.half(),
                "pe_g": torch.nn.functional.normalize(torch.as_tensor(q_pe, device=dev), dim=-1).half()}
     glat = g["latlon"][use].astype(np.float64)
@@ -208,11 +213,14 @@ def recall(ks: tuple[int, ...] = (8, 32, 256), radii: tuple[float, ...] = (1.0, 
 
 
 def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float = 0.2, ks: tuple[int, ...] = (8, 32, 256),
-            radii: tuple[float, ...] = (1.0, 25.0, 200.0), seed: int = 0) -> None:
+            radii: tuple[float, ...] = (1.0, 25.0, 200.0), seed: int = 0, backbones: tuple[str, ...] = ("pe_g", "siglip2"),
+            train_frac: float = 1.0, eval_fracs: tuple[float, ...] = (1.0,), tag: str = "") -> None:
     """B1 fallback (PE_PLAN, Oct 22 decisions): is PE-G a better *trainable* search backbone than SigLIP2? The same small projection
     (MLP -> 256-d, InfoNCE) trained on each backbone's raw embedding of one half of the gallery (photographers split by hash; dev3k
     photographers kept out of training), positives by distance only (another photo in the same ~22 km cell), batch pairs within 25 km
-    masked as negatives. Evaluated on the other half with dev3k queries, next to Pinpoint's contrastive search (trained on all of MP16)."""
+    masked as negatives. Evaluated on the other half with dev3k queries, next to Pinpoint's contrastive search (trained on all of MP16).
+    backbones: pe_g / siglip2 / concat (both raw embeddings side by side). train_frac: a random share of the train half's photos, trained
+    for the same number of steps. eval_fracs: nested random shares of the eval half (gallery density), K = 32 at 25 km for each."""
     import hashlib
 
     import torch
@@ -224,6 +232,12 @@ def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float
     half = np.asarray([hashlib.md5(a.encode()).digest()[0] & 1 for a in auth], bool)
     tr = np.flatnonzero(half & ~np.isin(auth, np.unique(S["qauth"])))
     ev = np.flatnonzero(~half)
+    if train_frac < 1:
+        tr = np.sort(np.random.default_rng(seed + 1).choice(tr, int(train_frac * len(tr)), replace=False))
+        epochs = round(epochs / train_frac)
+    if "concat" in backbones:
+        S["galleries"]["concat"] = torch.cat([S["galleries"]["siglip2"], S["galleries"]["pe_g"]], 1)
+        S["queries"]["concat"] = torch.cat([S["queries"]["siglip2"], S["queries"]["pe_g"]], 1)
     lat = S["glat"]
     cell = np.floor(lat[:, 0] / cell_deg).astype(np.int64) * 100000 + np.floor(
         lat[:, 1] * np.cos(np.radians(lat[:, 0])) / cell_deg).astype(np.int64)
@@ -241,7 +255,7 @@ def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float
         return 2 * 6371.0 * torch.asin(h.clamp(0, 1).sqrt())
 
     out = {}
-    for name in ("pe_g", "siglip2"):
+    for name in backbones:
         torch.manual_seed(seed)
         X = S["galleries"][name].float()
         head = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 2048), torch.nn.GELU(), torch.nn.Linear(2048, dim)).to(dev)
@@ -275,27 +289,44 @@ def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float
             S["galleries"][f"{name}_trained"] = torch.cat([F.normalize(head(X[i:i + 65536]), dim=-1) for i in range(0, len(X), 65536)]).half()
             S["queries"][f"{name}_trained"] = F.normalize(head(S["queries"][name].float()), dim=-1).half()
         out[name] = head
-    print(f"\nb1 trained: eval half {len(ev):,} photos; dev3k {len(S['qids'])} queries; % with a gallery photo within "
-          f"{' / '.join(f'{r:g}' for r in radii)} km among the top K", flush=True)
-    names = ["contrastive", "siglip2", "pe_g", "siglip2_trained", "pe_g_trained"]
+    names = ["contrastive", "siglip2", "pe_g"] + [f"{b}_trained" for b in backbones]
+    new = "pe_g_trained" if "pe_g" in backbones else names[-1]
+    if len(eval_fracs) > 1 or eval_fracs[0] < 1:
+        ev_order = np.random.default_rng(seed + 2).permutation(ev)
+        print(f"\ngallery density (share of the index = 0.05 x fraction of the eval half): % within 25 km among the top 32", flush=True)
+        for exclude_own in (False, True):
+            print(f"  {'photographer excluded' if exclude_own else 'original protocol'}:", flush=True)
+            for f in eval_fracs:
+                cols = np.sort(ev_order[:int(f * len(ev))])
+                arms = {name: S["dist"](S["top"](name, exclude_own, cols=cols))[:, :32].min(1) for name in names}
+                print(f"    {100 * 0.05 * f:5.2f}% of the index ({len(cols):,} photos): " +
+                      "  ".join(f"{name} {100 * np.mean(v < 25):.1f}" for name, v in arms.items()), flush=True)
+    print(f"\nb1 trained: eval half {len(ev):,} photos; train {len(tr):,} photos; dev3k {len(S['qids'])} queries; % with a gallery photo "
+          f"within {' / '.join(f'{r:g}' for r in radii)} km among the top K", flush=True)
     for exclude_own in (False, True):
         print(f"\n{'photographer excluded' if exclude_own else 'original protocol (photographer kept)'}:", flush=True)
         d = {name: S["dist"](S["top"](name, exclude_own, cols=ev)) for name in names}
-        _report(d, ks, radii, [("contrastive", "pe_g_trained"), ("contrastive", "siglip2_trained"), ("contrastive", "pe_g")],
-                "pe_g_trained")
-    torch.save({k: v.state_dict() for k, v in out.items()}, OUT / "trained_heads.pt")
+        _report(d, ks, radii, [("contrastive", n) for n in names[3:]] + [("contrastive", "pe_g")], new)
+    torch.save({k: v.state_dict() for k, v in out.items()}, OUT / f"trained_heads{tag}.pt")
 
 
 def main() -> None:
-    global OUT
+    global OUT, SIZE
     ap = argparse.ArgumentParser()
     ap.add_argument("node", choices=("select", "embed", "recall", "trained"))
     ap.add_argument("--out", default=str(OUT), help="gallery directory (B1 artifacts/retrieval/b1, B2 artifacts/retrieval/b2)")
     ap.add_argument("--fraction", type=float, default=FRACTION, help="select: share of the index (1 = all, B2)")
     ap.add_argument("--reuse", default=None, help="embed: copy rows another gallery already embedded (B2: artifacts/retrieval/b1)")
+    ap.add_argument("--size", type=int, default=SIZE, help="PE-G input resolution (files pe_g{size}.npy; queries from q{size}/ unless 378)")
+    ap.add_argument("--backbones", default="pe_g,siglip2", help="trained: comma list of pe_g / siglip2 / concat")
+    ap.add_argument("--train-frac", type=float, default=1.0, help="trained: share of the train half (same number of steps)")
+    ap.add_argument("--eval-fracs", default="1", help="trained: comma list of nested shares of the eval half (gallery density)")
+    ap.add_argument("--tag", default="", help="trained: suffix of the saved heads file")
     args = ap.parse_args()
-    OUT = Path(args.out)
-    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall, "trained": trained}[args.node]()
+    OUT, SIZE = Path(args.out), args.size
+    tr = lambda: trained(backbones=tuple(args.backbones.split(",")), train_frac=args.train_frac,  # noqa: E731
+                         eval_fracs=tuple(float(f) for f in args.eval_fracs.split(",")), tag=args.tag)
+    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse), "recall": recall, "trained": tr}[args.node]()
 
 
 if __name__ == "__main__":
