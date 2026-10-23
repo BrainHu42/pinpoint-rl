@@ -82,6 +82,7 @@ GAIN = False  # --gain: information values as the best commit value now (detache
 DELTA = False  # --delta: the zoomed point's logits are the unzoomed point's plus a learned difference
 MC = False  # --mc: information targets = the realised gain of acting (greedy continuation's return from s' minus the greedy commit's reward
 # at s, added to the commit value now); no max over estimates in the targets (the overestimation of the plain fitted Q iteration)
+DUMP = False  # --dump: save each set's lambda 0 answers (km, commit value, P(< 25 km)) per seed to artifacts/value/answers_{set}_seed{s}.npz
 LISTWISE = 0.0  # --listwise W: + W x the old answer head's listwise loss on log commit values (ranking of options within a photo)
 
 
@@ -301,7 +302,7 @@ def _km(v, commit):
     return __import__("torch").cat([v["km_unzoom"], v["km_zoom"]], 1).gather(1, pick[:, None]).squeeze(1)
 
 
-def rollout_q(net, b, lam: float, fixed=None, gate=None, open_loop: bool = False):
+def rollout_q(net, b, lam: float, fixed=None, gate=None, open_loop: bool = False, details: bool = False):
     """Answer by the commit values after one of:
       - the greedy policy: argmax Q from the empty state, MAX_STEPS information actions at most (as action_agent);
       - fixed = (read, groups, k): read or not, reveal groups (0 none, 1 all, or a tuple of group indices), zoom the k top-ranked areas;
@@ -346,9 +347,16 @@ def rollout_q(net, b, lam: float, fixed=None, gate=None, open_loop: bool = False
                     break
                 zoomed, read, rec = _step(zoomed, read, rec, info.argmax(1), h, live)
         zoomed = zoomed & view(b, read, rec)["mask"]
-        commit, _, _, v = _q(net, b, pooled, zoomed, read, rec, lamt)
+        commit, logits, _, v = _q(net, b, pooled, zoomed, read, rec, lamt)
         km = _km(v, commit)
-    return km, (zoomed.sum(1).float(), read.float()) + tuple(rec[:, g].float() for g in range(G))
+    cnt = (zoomed.sum(1).float(), read.float()) + tuple(rec[:, g].float() for g in range(G))
+    if details:  # the answer's commit value and its P(< 25 km) (the chosen token's unzoomed or zoomed 25 km output)
+        pick = commit.argmax(1)
+        tok, zoom_pt = pick % h, pick >= h
+        lt = logits[torch.arange(n, device="cuda"), tok]
+        p25 = torch.sigmoid(torch.where(zoom_pt, lt[:, 2], lt[:, 0]))
+        return km, cnt, {"km": km.cpu().numpy(), "value": commit.max(1).values.cpu().numpy(), "p25": p25.cpu().numpy()}
+    return km, cnt
 
 
 def _units_of(cnt) -> float:
@@ -465,6 +473,12 @@ def run(seeds: Sequence[int], extra: Sequence[str], targets: Sequence[str], base
             rl = (net, {lam: aa.fit_policy(net, tr, np.arange(tr["n"]), lam, seed=seed + 4) for lam in LAMBDAS})
         for name, d in sets.items():
             runs[name].append(evaluate(q, rl, d, np.arange(d["n"])))
+        if DUMP:  # per photo, the lambda 0 policy's answer (multi-scale headroom check, VALUE_PLAN step 3a)
+            for name, d in sets.items():
+                import torch
+
+                b = _sub(d, torch.arange(d["n"], device="cuda"))
+                np.savez(f"artifacts/value/answers_{name.split(':')[0]}_seed{seed}.npz", **rollout_q(q, b, 0.0, details=True)[2])
     for name, d in sets.items():
         report(name, runs[name], d["base_km"])
     out = f"artifacts/value/value_agent_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{'_gain' if GAIN else ''}{'_mc' if MC else ''}{'_delta' if DELTA else ''}{f'_lw{LISTWISE:g}' if LISTWISE else ''}{'_split' if len(GROUPS) > 1 else ''}.npz"
@@ -487,13 +501,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--split", nargs="*", type=float, default=None,
                         help="one recognise action per model with these units, MegaLoc first then --extra (e.g. 1 9 0.05 0.17; VALUE_PLAN step 2)")
     parser.add_argument("--lambdas", type=float, nargs="*", default=list(LAMBDAS), help="costs per unit to train on and report")
+    parser.add_argument("--dump", action="store_true", help="save the lambda 0 answers per photo (km, commit value, P(< 25 km))")
     parser.add_argument("--delta", action="store_true", help="zoomed-point logits = unzoomed-point logits + a learned difference")
     parser.add_argument("--mc", action="store_true", help="information targets from realised greedy continuations (paired with the commit now)")
     parser.add_argument("--listwise", type=float, default=0.0, help="weight of the listwise ranking loss on commit values")
     args = parser.parse_args(argv)
     aa.CKPT_TAG, aa.ONE_KM = args.ckpt_tag, args.one_km
     globals()["GAIN"], globals()["LISTWISE"], globals()["MC"] = args.gain, args.listwise, args.mc
-    globals()["DELTA"], globals()["LAMBDAS"] = args.delta, tuple(args.lambdas)
+    globals()["DELTA"], globals()["LAMBDAS"], globals()["DUMP"] = args.delta, tuple(args.lambdas), args.dump
     if args.split is not None:
         globals()["GROUPS"] = list(zip(["megaloc"] + list(args.extra), args.split))
     run(args.seeds, args.extra, args.targets, baseline=not args.no_baseline, epochs=args.epochs, w_info=args.w_info, detach_info=not args.shared)
