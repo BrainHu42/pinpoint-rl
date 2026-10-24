@@ -21,7 +21,7 @@ when it is not. It sits on top of a strong retrieval system (Pinpoint) and impro
 | C2 | One value network over tools and answers matches the two-model system (answer head + REINFORCE) | dev3k 47.40 / 30.56 vs 47.23 / 30.67, commons26 dev 25.08 / 7.68 vs 24.97 / 7.68 (% < 25 / 1 km); cost curve level within noise (V6) | Done |
 | C3 | Calibrated multi-scale answers with hedges move the coarse columns, which no prior stage moved | Table weights: +3.6 / +4.0 at 750 km, +2.9 / +4.7 at 200 km, 25 km -0.08 / +0.41, 1 km -2.0 / -0.7 (dev3k / commons26 dev; V8). Weights are an inference-time knob: coarse weight 0.25 gives dev3k -1.2 / +1.06 / +2.8 / +3.2 at 1 / 25 / 200 / 750 km (V9, chosen in-sample) | Dev only |
 | C4 | Method: with tool costs ~1% of the reward, fitted Q-iteration's overestimation swamps the costs; paired Monte Carlo targets fix it | Policy spend at the highest cost 6.7 units (plain FQI) vs 0.6 REINFORCE; with paired MC targets spend falls with lambda like REINFORCE's (V6) | Done, small |
-| C5 | A second image model per area (PE-Core-G) adds to the answer head where SigLIP2 and MegaLoc share blind spots | +2.66 dev3k / +2.70 commons26 dev at 25 km with PE-G + SigLIP2 cosine + PE-G region probe columns (V5) | Done, not yet in the value network's tables |
+| C5 | A second image model per area (PE-Core-G) adds to the answer head where SigLIP2 and MegaLoc share blind spots | +2.66 dev3k / +2.70 commons26 dev at 25 km with PE-G + SigLIP2 cosine + PE-G region probe columns (V5) | In the value network (V10): +2.4 dev3k / +2.9 commons26 dev at 25 km over V8, calibration broken until train columns cover all photos |
 
 ## Headline numbers
 

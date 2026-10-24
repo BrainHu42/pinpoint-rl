@@ -47,6 +47,10 @@ track go in `LESSONS.md` as V6, V7, ... The 2026-10-21 version of this plan (rea
   3; commons26 dev, auxiliary, +3.5), but the boxes' own scores pick a right box less often than random; needs an independent picker
   (PE-G columns on restricted candidates). Weight sweep: wc 0.25 lifts dev3k 25 km +1.06 with +3.2 at 750 km, 1 km -1.2; fix it on train CV.
 
+- V5 columns in the multi-scale network (lesson V10): +2.4 at 25 km on dev3k over V8 (+2.9 commons26 dev), but overconfident (ECE 0.20)
+  and the hedges' coarse gain is lost; likely the train columns exist only for photos with mixed right / wrong options. Next: columns for
+  the other ~16k train photos (~6 h GPU, user's go-ahead) or a cheaper cause check first.
+
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
 |---|---|

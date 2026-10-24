@@ -186,3 +186,19 @@ V9. **Step 4 (search boxes around the hedge answers) creates right candidates bu
     coarse weight is a tie-breaker that moves 25 km hits too (areas with regional support), the gain peaks at wc 0.25 and goes at wc 1; picked
     among 12 settings on the same photos, so +1.06 is optimistic by a few tenths, and commons26 dev does not repeat it at 25 km. 1 km comes back
     with w1 (3: -0.4) at about a third of the 750 km gain. Next: wc below 0.25 and the setting fixed on train CV, then the test table on request.
+V10. **V5's PE-G columns in the multi-scale value network: +2.4 pts < 25 km on dev3k over V8 (bar +1, met), +2.9 on commons26 dev; but the
+    answers turn overconfident (dev3k ECE 0.20 at 25 km vs 0.03) and the hedges' coarse gain is gone, likely because train photos without
+    columns are exactly the all-right / all-wrong ones** (`value_agent --multi --gain --mc --listwise 2 --extra pe_g siglip_final pe_probe`;
+    one recognise action reveals MegaLoc + the three column sets; 3 seeds; everything revealed; % < 1 / 25 / 200 / 750 / 2500 km). dev3k,
+    W_OLD: 31.82 / 49.76 / 61.13 / 75.20 / 86.03 vs V8 30.49 / 47.38 / 58.11 / 72.47 / 84.28 (+1.33 / +2.38 / +3.02 / +2.73 / +1.75; step 2's
+    single-scale network with the same columns 50.09 / 31.90 at 25 / 1 km). W_TABLE: 30.76 / 49.26 / 61.22 / 75.37 / 86.32, only +0.09 /
+    +0.17 at 200 / 750 km over its own W_OLD (V8: +2.78 / +3.77), so it ends below V8's W_TABLE at 750 / 2500 km (75.37 vs 76.23, 86.32 vs
+    86.86); hedges chosen on 22% of photos (V8 44%); no weight in the 12-setting sweep recovers it. commons26 dev, W_OLD 7.95 / 27.60 / 49.13 /
+    73.69 / 87.75 (V8 7.71 / 24.70 / 45.41 / 70.69 / 85.88), W_TABLE +0.68 at 750 km (V8 +3.99). Calibration of the W_TABLE answer: dev3k mean
+    P(< 25 km) 0.695 vs observed 0.493 (ECE 0.12 / 0.20 / 0.19 / 0.15 / 0.08 at the five radii; V8 0.03-0.04), commons26 dev 0.586 vs 0.273.
+    Likely cause, not yet tested: the train-side columns exist only for the 19,321 train photos whose options are neither all right nor all
+    wrong (lesson V5's extraction; the others mean-filled). The softmax answer head of V5 never trains on the others, but the value network's
+    logistic P(< r) does: a real column value means "some area is right and some wrong", and on dev every photo has real columns, so every photo
+    looks like one with a right area. Ranking among areas is unaffected (+2.4 at 25 km); calibration, which the hedges need, is not. Fix: the
+    columns for the other ~16k train photos (PE-G ~6 h on the L40S, plus SigLIP2 and the probe), or a cheaper test first (train the multi
+    network only on the 19,321 photos and check whether dev calibration recovers, which isolates the cause but biases toward mixed photos).
