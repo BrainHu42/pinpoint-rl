@@ -138,6 +138,50 @@ def features(n_near: int, tag: str, l2: float) -> None:
     print(f"saved; photos with a fitted discriminator {100 * np.isfinite(out['logq']).any(1).mean():.1f}%")
 
 
+YFCC_KM = (1.0, 5.0, 25.0)
+
+
+def density() -> None:
+    """Flickr photo density around each area from YFCC100M's 48M geotags (no images; ~10x the gallery's density): geotagged photos within
+    YFCC_KM of the area centre, never counting the query photo or any photo by its photographer -> artifacts/area_discriminator/yfcc_density.npz"""
+
+    from scipy.spatial import cKDTree
+
+    from ..models.pinpoint_reranker import _unit_xyz
+    from .density_probe import GEO
+
+    tr = _traces()
+    q = dict(np.load(QUERIES))
+    dev = np.flatnonzero(q["set"] == "dev3k")
+    q_uid = q["uid"][dev]
+    g = np.load(GEO)
+    lat, lon, uid = g["lat"].astype(np.float64), g["lon"].astype(np.float64), g["uid"]
+    t0 = time.time()
+    tree = cKDTree(_unit_xyz(np.stack([lat, lon], 1)), leafsize=64, balanced_tree=False, compact_nodes=False)
+    print(f"YFCC tree over {len(lat):,} photos ({time.time() - t0:.0f}s)", flush=True)
+    order = np.argsort(uid, kind="stable")
+    uid_sorted = uid[order]
+    n = len(tr["p"])
+    counts = np.zeros((n, AREAS, len(YFCC_KM)))
+    for i in range(n):
+        ks = np.flatnonzero(np.isfinite(tr["lat"][i]))
+        if not len(ks):
+            continue
+        centres = _unit_xyz(np.stack([tr["lat"][i, ks], tr["lon"][i, ks]], 1))
+        own = order[np.searchsorted(uid_sorted, q_uid[i]): np.searchsorted(uid_sorted, q_uid[i], "right")] if q_uid[i] >= 0 else np.zeros(0, np.int64)
+        for j, km in enumerate(YFCC_KM):
+            chord = 2 * np.sin(km / 6371.0 / 2)
+            c = np.asarray(tree.query_ball_point(centres, chord, return_length=True), np.float64)
+            if len(own):  # the photographer's photos (the query photo among them)
+                d = _hav(lat[own][None], lon[own][None], tr["lat"][i, ks][:, None], tr["lon"][i, ks][:, None])
+                c -= (d < km).sum(1)
+            counts[i, ks, j] = c
+        if (i + 1) % 500 == 0:
+            print(f"  {i + 1}/{n} ({time.time() - t0:.0f}s)", flush=True)
+    np.savez(OUT / "yfcc_density.npz", counts=counts, km=np.asarray(YFCC_KM))
+    print("saved")
+
+
 def _fit(logp, f, right, mask):
     """Weights (a, w) maximising sum log P(right areas) with P ∝ exp(a log p + w f) over valid areas."""
 
@@ -162,9 +206,12 @@ def _fit(logp, f, right, mask):
     return theta.detach().numpy()
 
 
-def evaluate(n_near: int, tag: str, seeds: int = 5) -> None:
+def evaluate(n_near: int, tag: str, seeds: int = 5, spatial: bool = False) -> None:
     tr = _traces()
     z = np.load(OUT / f"features_{tag}_n{n_near}.npz")
+    truth = np.asarray([e["truth"] for e in json.loads((PHOTO_SET / "photos.json").read_text(encoding="utf-8"))], np.float64)
+    cell = (np.floor(truth[:, 0] / 10).astype(int) + 9) * 36 + (np.floor(truth[:, 1] / 10).astype(int) + 18)  # spatial folds: 10-degree cells
+    yfcc = np.load(OUT / "yfcc_density.npz")["counts"] if (OUT / "yfcc_density.npz").exists() else None
     p = tr["p"]
     valid = np.isfinite(tr["lat"]) & (p > 0)
     logp = np.where(valid, np.log(np.clip(p, 1e-9, 1)), np.nan)
@@ -180,6 +227,18 @@ def evaluate(n_near: int, tag: str, seeds: int = 5) -> None:
     variants = {
         "nearest neighbour (best cosine)": [col(z["best"], 0.0)],
         "neighbours (mean top-10 cosine)": [col(z["top10"], 0.0)],
+        "best cosine + log photos + interaction": [col(z["best"], 0.0), col(np.log1p(z["photos"]), 0.0),
+                                                   col(z["best"] * np.log1p(z["photos"]), 0.0)],
+        **({} if yfcc is None else {
+            "best cosine + YFCC density (1 / 5 / 25 km) + interactions": [col(z["best"], 0.0)]
+            + [col(np.log1p(yfcc[..., j]), 0.0) for j in range(yfcc.shape[-1])]
+            + [col(z["best"] * np.log1p(yfcc[..., j]), 0.0) for j in range(yfcc.shape[-1])],
+            "best cosine + gallery and YFCC density + interactions": [col(z["best"], 0.0), col(np.log1p(z["photos"]), 0.0),
+                                                                      col(z["best"] * np.log1p(z["photos"]), 0.0)]
+            + [col(np.log1p(yfcc[..., j]), 0.0) for j in range(yfcc.shape[-1])]
+            + [col(z["best"] * np.log1p(yfcc[..., j]), 0.0) for j in range(yfcc.shape[-1])],
+        }),
+        "best cosine relative to the photo's best area": [col(z["best"] - np.nanmax(np.where(valid, z["best"], np.nan), 1, keepdims=True), 0.0)],
         "discriminator log q": [col(z["logq"], 0.0), col(np.isfinite(z["logq"]).astype(float), 0.0)],
         "discriminator + top-10 + log photos": [col(z["logq"], 0.0), col(np.isfinite(z["logq"]).astype(float), 0.0), col(z["top10"], 0.0),
                                                 col(np.log1p(z["photos"]), 0.0)],
@@ -194,7 +253,7 @@ def evaluate(n_near: int, tag: str, seeds: int = 5) -> None:
         f = np.stack(cols, -1)
         acc, fixes, breaks, thetas = [], [], [], []
         for seed in range(seeds):
-            fold = np.random.default_rng(seed).integers(0, 5, n)
+            fold = np.random.default_rng(seed).integers(0, 5, n) if not spatial else (np.random.default_rng(seed).permutation(100_000)[cell] % 5)
             pick = np.zeros(n, np.int64)
             for k in range(5):
                 th = _fit(logp, f, right, fold != k)
@@ -211,20 +270,23 @@ def evaluate(n_near: int, tag: str, seeds: int = 5) -> None:
                      f"fixes {np.mean(fixes):.0f} / breaks {np.mean(breaks):.0f})  weights {np.round(np.mean(thetas, 0), 3).tolist()}")
     text = "\n".join(lines)
     print(text)
-    (OUT / f"evaluate_{tag}_n{n_near}.txt").write_text(text + "\n", encoding="utf-8")
+    (OUT / f"evaluate_{tag}_n{n_near}{'_spatial' if spatial else ''}.txt").write_text(text + "\n", encoding="utf-8")
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("features", "evaluate"))
+    parser.add_argument("cmd", choices=("features", "evaluate", "density"))
     parser.add_argument("--n", type=int, default=1000)
     parser.add_argument("--tag", default="index")
     parser.add_argument("--l2", type=float, default=1e-3)
+    parser.add_argument("--spatial", action="store_true", help="evaluate: folds by 10-degree cells of the truth")
     args = parser.parse_args(argv)
-    if args.cmd == "features":
+    if args.cmd == "density":
+        density()
+    elif args.cmd == "features":
         features(args.n, args.tag, args.l2)
     else:
-        evaluate(args.n, args.tag)
+        evaluate(args.n, args.tag, spatial=args.spatial)
     return 0
 
 

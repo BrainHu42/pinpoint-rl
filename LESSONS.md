@@ -143,3 +143,16 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     more samples, a max over look-alikes doesn't. Label noise is not the story: best MegaLoc >= 0.5 at the wrong pick on 3 of 725 photos.
     Next: the discriminator as an answer-head feature on all of dev3k (pipeline-right photos included, so breaks count), index photos first
     (free), then the YFCC increment; wider radius, PE-G features.
+
+144. **On all of dev3k the per-area boundary adds nothing, but the head mis-weighs look-alikes against gallery density: +1.5 pts (SE 0.37)
+    from three features; YFCC density doesn't add** (`area_discriminator.py`; frozen lesson 109 answer head from the dev3k traces, 47.9%
+    < 25 km, area oracle 61.5%; per area the nearest 1,000 index photos within 25 km of its centre, photographer excluded; score =
+    a log p_head + w . features, fitted by the likelihood of right areas; 5-fold CV x 5 seeds, answers at the chosen area's centre).
+    Class-balanced logistic over the photo's areas (lesson 143's boundary): +0.24 (SE 0.19; weight slightly negative), strongly regularised
+    -0.01. Best cosine to the query: weight -2.9, +0.80 (0.18; 27 fixes / 3 breaks): given the head, one very close look-alike is evidence
+    of a trap. Best cosine + log gallery photos + their interaction: **+1.61 (0.37; 82 / 34)**, folds by 10-degree truth cells +1.49
+    (0.37; 82 / 37); weights -0.98 best, +1.31 log photos, -1.72 best x log photos (a strong look-alike counts against an area more where
+    the gallery is dense; the cap at 1,000 makes log photos mostly a sparse-area flag). YFCC100M density (48M geotags, ~10x the gallery;
+    1 / 5 / 25 km, photographer excluded) instead of the gallery count: +1.11 (0.39); both +1.17-1.23: the head's miscalibration is about
+    what the gallery holds, not the true photo density. Fitted on dev3k with CV only: needs out-of-fold head outputs on train before it
+    counts, then a test run when the user asks.
