@@ -197,7 +197,7 @@ V10. **V5's PE-G columns in the multi-scale value network: +2.4 pts < 25 km on d
     73.69 / 87.75 (V8 7.71 / 24.70 / 45.41 / 70.69 / 85.88), W_TABLE +0.68 at 750 km (V8 +3.99). Calibration of the W_TABLE answer: dev3k mean
     P(< 25 km) 0.695 vs observed 0.493 (ECE 0.12 / 0.20 / 0.19 / 0.15 / 0.08 at the five radii; V8 0.03-0.04), commons26 dev 0.586 vs 0.273.
     Likely cause, not yet tested: the train-side columns exist only for the 19,321 train photos whose options are neither all right nor all
-    wrong (lesson V5's extraction; the others mean-filled). The softmax answer head of V5 never trains on the others, but the value network's
+    wrong (lesson V5's extraction; checked: the other 16,038 carry one identical filled row on every area). The softmax answer head of V5 never trains on the others, but the value network's
     logistic P(< r) does: a real column value means "some area is right and some wrong", and on dev every photo has real columns, so every photo
     looks like one with a right area. Ranking among areas is unaffected (+2.4 at 25 km); calibration, which the hedges need, is not. Fix: the
     columns for the other ~16k train photos (PE-G ~6 h on the L40S, plus SigLIP2 and the probe), or a cheaper test first (train the multi
