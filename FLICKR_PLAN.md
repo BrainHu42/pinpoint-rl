@@ -1,98 +1,82 @@
-# Live Flickr as an agent tool: research plan (draft 2026-10-24, for the user's review)
+# Live Flickr as an agent tool: research plan (revised 2026-10-24 with the user)
 
-**Idea.** A geolocation agent that spends a real, rate-limited budget of live Flickr calls. It decides which read clue to search and which
-candidate place to check against photos taken there, and it learns that policy with RL, where the per-call cost is a real constraint rather
-than a simulated one. Flickr is the right source for our main test sets: im2gps3k, yfcc4k and MP16 are Flickr photos from 2004-2014, so
-Flickr photos at a candidate place come from the same era and show the same kinds of photo spots. That's what lesson 135 (2004-14 photos vs
-2026 queries) and lesson 138 (sparse Commons and Mapillary) lacked. Tool: `src/geo_search_env/tools/flickr.py` (cache, limiter, leak
-filters, harvest, report).
+## Goal (refined)
+First find where the Flickr API can actually help, then build the agent around that one use. A screen of each API capability against
+dev3k's losses (pipeline 47.3% < 25 km) left one use worth testing first:
+
+**Photos at a point.** Dense, same-era Flickr photos at a candidate place, compared with the query by exact-view matching (MegaLoc). The
+question is whether they separate the right candidate from the look-alike the pipeline chose: the 14.4 pts of "wrong area chosen" and part
+of the 11.8 pts of "right candidate ranked low".
+
+If this works, the research goal becomes: **an agent that verifies candidate places with a limited budget of live Flickr photos at the
+place**, learning with RL which candidates are worth a call.
 
 Evaluation follows CLAUDE.md:
 - choose and tune on dev3k
-- test on all of im2gps3k + yfcc4k (7,533 photos, original protocol), only when the user asks
-- commons26 test once at the end as a final validation, with the "uploaded before capture" filter
-- go/no-go measures what Flickr adds *beyond the current pipeline and the offline YFCC copy*, at +1 pt at 25 km (dev3k SE ~0.26)
+- test on all of im2gps3k + yfcc4k when the user asks
+- commons26 test once at the end, as final validation only (no development on commons26 dev)
+- bar: +1 pt at 25 km beyond the current pipeline (which already has MegaLoc against Pinpoint's own photos per area, lesson 93)
 
-## What we already know (why this might fail)
-- On MP16 photos, text sits where retrieval already succeeds. A text-search result within 25 km exists on 17.5% of dev3k photos, but on
-  only 1.3% of photos with no right Pinpoint area (lesson 123). Commons-trained text trust hurts dev3k (lesson 141).
-- Coverage within 25 km is not the gap. Pinpoint's index has a photo within 1 km of the truth for ~85% of queries. Adding the 50 nearest
-  YFCC photos within 1 km would fix at most 1.2-2.8% at 1 km (lesson 134).
-- Look-alike verification saturates at AUC ~0.6-0.79 (main point 2), but exact-view matching works when the view is covered: MegaLoc 0.47-0.58
-  on a covered view (lesson 138).
-- Where dev3k loses (47.3% < 25 km): retrieval miss 26.5 pts, right candidate never an area 11.8, wrong area chosen 14.4 (cross-region,
-  median 381 km).
+## The screen: Flickr capability against dev3k loss
 
-So each use below has to escape one of these, and each phase starts with a cheap ceiling check that can stop it.
+| Capability | Targets | Prior evidence | Verdict |
+|---|---|---|---|
+| Text → places (titles, tags, descriptions) | Retrieval misses / never an area, photos with readable text | On MP16, text helps where retrieval already works: a right result on 1.3% of photos with no right area (lesson 123); the limit is the 4B's queries, not the backend (lesson 115) | weak; Phase 0 harvest measures live vs YFCC when the throttle allows |
+| **Photos at a point** + exact-view matching | Wrong area chosen (14.4), ranked low (part of 11.8) | Look-alike checks saturate (main point 2), but an exact covered view is matched cleanly (lesson 138, sparse Commons, 2026 queries); never tried with dense same-era photos | **test first** |
+| Photos at a point, 1 km tier | 1 km ranking | Up to 50 YFCC photos near the truth fix ≤ 1.2-2.8% at 1 km (lesson 134) | small; revisit if the above works |
+| More gallery photos (sparse regions) | Retrieval misses (26.5) | Track R's plan with YFCC images (CDN, not API) | belongs to track R |
+| Tag statistics per area | Wrong area chosen | Area profiles closed (main point 4) | weak |
 
-## What live Flickr has that our offline copies don't
-1. **Volume and fields.** All public geotagged Flickr photos, not YFCC's Creative Commons subset of 48M; text search covers descriptions
-   too; results are ranked by relevance.
-2. **Photos at any point.** A box search (up to 250 photos per call, with thumbnails) at a candidate spot: dense same-era photos where
-   MP16 has few.
-3. **Recency.** Uploads from 2015 on. This matters for live use and commons26, not for the main test sets.
+## Step 1 (running): coverage audit worked back from the truth, offline, YFCC as a lower bound for Flickr
+`experiment/spot_audit.py`, no API calls (images from Flickr's static CDN).
+- **Photos.** dev3k close calls: error tiers 1 policy, 2 coin flip, 4 ranked low, 5 in pool (`viz/errors.py`). That's 725 photos where a
+  right place is on the table and the pipeline picked another.
+- **Points per photo.**
+  - truth: ceiling
+  - right: the right area's centre, or the nearest right candidate (what an agent could check)
+  - wrong: the pipeline's answer
+- **References per point.** The 50 nearest YFCC100M photos within 1 km (accuracy ≥ 13). The query photo and its photographer are excluded,
+  and near-duplicates of the query (MegaLoc ≥ 0.9) are dropped and counted. Each reference is flagged as in Pinpoint's index or new. That
+  gives 85k references (79k unique); only 13% are in the index.
+- **Measure.** Best MegaLoc cosine at each point:
+  - P(right > wrong), paired
+  - clean wins (≥ 0.3 and above the other point) vs clean losses
+  - broken down by number of references (5 / 10 / 25 / 50), by source (all / index only / new only) and by tier
+- **Go:**
+  - P(right > wrong) ≥ 0.7 with all references.
+  - Clean wins well above clean losses.
+  - New photos add clearly over index-only photos, since the pipeline already has MegaLoc against index photos.
+  - If the curve still rises at 50, live Flickr's extra density should push further.
+- **No-go:** P(right > wrong) < 0.6, or no gain from new photos. Then photos at a point are closed as a Flickr use (with a note on what
+  coverage would be needed), and we're left with the narrow uses (text for landmark photos, 1 km refinement) or a different research goal.
 
-Leak rules (in the tool, applied when results are read back):
-- Hide the query photo and its photographer, always. Pinpoint's index keeps the photographer's photos under the primary protocol, but on
-  Flickr the same trip's photos carry the same titles, so the tool is stricter.
-- yfcc4k photos come from YFCC itself, so their ids are always dropped.
-- Re-uploads by other accounts can slip through. Phase 1b checks MegaLoc ≥ 0.9 near-duplicates of the query and drops them.
+## Step 2 (if step 1 is go): how much more live Flickr returns than YFCC
+- ~300 close-call photos × 2 box searches (right and wrong point, ±0.5-1 km) ≈ 600 API calls, plus thumbnails.
+- Compare live photo counts per point and the same MegaLoc measures against step 1's YFCC numbers. This scales the offline lower bound to
+  the live tool, which also has photos from 2015 on and non-Creative-Commons photos.
+- Leak rules: `tools/flickr.py` hides the query photo and its photographer; near-duplicates are dropped as in step 1.
 
-## Phases
+## Step 3: a per-area spot column in the answer head
+- Best spot match per area as an answer-head column (like lesson 93's MegaLoc columns), for the head's top-3 areas.
+- Built on dev3k (CV) and on a train subset so trust is learned on MP16 (lesson 141).
+- Built from YFCC first (offline, free); then from live Flickr if step 2 shows a clear density gain.
+- Bar: +1 pt at 25 km over the current head.
 
-**Phase 0: does live text search find right places the offline copy misses? (running)**
-- Inputs: every 4B query of dev3k (9,726 distinct searches, ~5.5 h at the safe pace; the first run was interrupted by Flickr throttling).
-- `flickr report --set dev3k_setft_own`, cache only. It reports, live vs YFCC copy, % of photos with a match / the tool's own pick within
-  25 km, on all photos and where the pipeline is wrong.
-- Add a third subset: photos with no right area, the 26.5 + 11.8 pts the pipeline can't reach.
-- **Go:** the live pick is right where the pipeline is wrong *and the YFCC copy's pick isn't* on ≥ 2% of dev3k. That's the headroom for
-  +1 pt after the answer head's losses. Otherwise text is closed as a Flickr use and only Phase 1b remains.
+## Step 4: the RL agent with a call budget
+- Action `flickr_spot(area)` over the existing area tokens (`action_agent.py`), each call with its live cost.
+- Trained by replaying cached responses (`FlickrSearch(offline=True)`; every listed action for a training photo is harvested beforehand).
+- Reward: hit within 25 km (and 1 km) − λ × calls; potential-based shaping only if an offline check supports it.
+- Judged against fixed recipes (check the top 1 / 2 / 3 areas) and heuristic gates (check when the head is unsure) at matched budgets.
+  RL earns its place only by beating the best gate at the same budget.
 
-**Phase 1: ceilings for the two uses, offline on cached calls**
-- *1a. Text evidence per area.* For each of the head's areas: guarded Flickr matches within 25 km, their share of the query's matches, and
-  distinct owners. These become answer-head columns, compared against the same columns from the YFCC copy.
-  - Lesson 141 says trust in text must be learned on MP16 training photos, so it needs a train harvest.
-  - 10k train photos ≈ 25k searches ≈ 14 h at the safe pace, over two nights.
-  - CV on dev3k. **Go:** Flickr columns beat YFCC columns by ≥ +0.5 and the total gain is ≥ +1 pt.
-- *1b. Photos at the spot.* For a check worked back from the truth (like lesson 138's test), 300 dev3k photos where the pipeline is wrong:
-  - Flickr photos within ±0.5 km of the truth and of the head's wrong pick (2 box searches per photo, 20 nearest thumbnails each).
-  - Best MegaLoc match vs the query.
-  - ~600 calls, ~12k thumbnails (~1 h at a polite 3-4 per second).
-  - **Go:** truth over wrong pick on well over half (AUC ≥ 0.7). Lesson 138 got 0.49 with Commons, and 0.64 even at the true spot.
-  - If go: the same per-area column for the head's top-3 areas on all of dev3k and the train subset (≈ 9k + 30k calls, multi-night), CV
-    on dev3k, bar +1 pt.
-
-**Phase 2: the RL agent (only for the uses that passed Phase 1)**
-- Actions, over the existing area tokens (`action_agent.py`):
-  - `flickr_text(query)`, worldwide
-  - `flickr_text(query, area)`
-  - `flickr_spot(area)`
-  - answer
-- Each action has its live cost in calls.
-- Training replays cached responses only (`FlickrSearch(offline=True)`). Every action that can be listed for a training photo is
-  harvested beforehand, so rollouts are unlimited and cost no API calls.
-- Reward: 25 km hit (and 1 km), minus λ × calls.
-  - Add potential-based shaping (Φ = head probability within 25 km of the truth) only if a ~1 h offline check shows the change in Φ predicts
-    which actions improve the final answer.
-- **Judged against** fixed recipes (call everything; text only; spot only) and heuristic gates (call when the head is unsure), at matched
-  call budgets of 1, 3 and 5 calls per photo (memory: offline actions simulate costly tools). RL earns its place only if it beats the best
-  gate at the same budget. Lesson 94/98: RL ties "take every action" when actions are cheap and independent; here they are neither.
-- Training on the YFCC copy (free, unlimited) with live-cache calibration is the fallback if train harvests are too slow.
-
-**Phase 3: test (only when the user asks)**
-- One harvest of the chosen actions on im2gps3k + yfcc4k: ≤ 5 calls × 7,533 photos ≈ 38k calls ≈ 21 h at the safe pace.
-- Original-protocol table: benchmark × 1 / 25 / 200 / 750 / 2500 km vs released Pinpoint and the current pipeline.
-- Then commons26 test once, as the final validation.
+## Step 5: test (only when the user asks)
+im2gps3k + yfcc4k (7,533 photos), original-protocol table vs released Pinpoint and the current pipeline; then commons26 test once.
 
 ## Budget and logistics
-- **Pace.** Flickr throttled us (HTTP 429) after ~600 calls in 13 min at ~50 per minute, below its nominal 3,600 per hour. The tool now
-  runs one call every 2 s, at most 1,800 per hour, 2 at a time, and all processes pause after any 429. That's about 40k calls per day if a
-  harvest runs all day; the machine stops at 7 PM Pacific and harvests resume from the cache.
-- **Thumbnails** come from the static CDN, which doesn't count against the API limit. We keep only the MegaLoc / SigLIP embeddings
-  long-term; the images are deleted after embedding (Flickr's terms allow storing photos only for "reasonable periods").
-- **Calls by phase:** 0: ~10k (dev3k). 1a: ~25k (train). 1b: ~1k for the check, ~40k if it passes. 2: none new beyond the chosen actions'
-  harvest. 3: ~38k (test, when asked).
-
-## Order and stop points
-Phase 0 report → stop text if it fails the 2% bar → Phase 1b check (cheap, ~1 h) → Phase 1a / full 1b columns only for what passed →
-Phase 2 RL → Phase 3 test when asked. Each phase gets a lesson in `LESSONS.md` and a line in `TOOL_USE_DESIGN.md`.
+- **API:** Flickr throttled us (HTTP 429) after ~600 calls in 13 min at ~50 per minute. The tool now runs ≤ 1,800 calls per hour,
+  2 at a time, with a shared pause after any 429.
+- **Image CDN:** it answered 403 / 429 for a while after a burst (and 403 to a fake browser user-agent). Downloads now identify the client,
+  run 8 at a time (~21 per second), and pause on 403 / 429 instead of counting the photo as gone. Only MegaLoc embeddings are kept, never
+  the images.
+- **Phase 0, the text harvest on dev3k** (9,726 searches, `tools.flickr harvest`), resumes when the API throttle lifts. It's a side
+  measurement of the weak text use, not on the critical path.
