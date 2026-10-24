@@ -132,3 +132,14 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     on the right side 0.343 -> 0.335. Net +9 of 3,000 dev3k photos (~+0.3 pt) even in this optimistic two-way setting: density adds
     candidates to both sides about equally. New photos borrow the nearest index photo's GPS embedding (location tower not ported); doing
     the same to every index photo changes the top-1 on 5 of 721 photos, so the approximation doesn't matter.
+
+143. **Used discriminatively, the new photos do help, and about 2.5x more than as neighbours (first sign, not yet a pipeline gain)**
+    (`spot_audit discriminate`; the 725 dev3k close calls of lesson 142, 524 with >= 5 index photos on both sides; SigLIP2). Per photo a
+    class-balanced logistic regression separates the photos near the right point from those near the wrong pick (index photos within 1 km,
+    median 162 / 232 per side; + new YFCC photos, median 36 / 37; the query's photographer excluded), then classifies the query. Query put on
+    the right side: nearest neighbour 30.9 -> 32.3% with the new photos (13 move to right / 6 to wrong), side prototypes 33.8 -> 36.8 (37 / 21),
+    logistic 34.2 -> 37.6 (33 / 15; sign test p ~ 0.01); the reranker over the same pools 19.1 -> 20.4 (lesson 142). Levels sit below 50 by
+    selection (these are the photos the pipeline got wrong); the increment is the signal: a boundary fitted to many photos per place gains from
+    more samples, a max over look-alikes doesn't. Label noise is not the story: best MegaLoc >= 0.5 at the wrong pick on 3 of 725 photos.
+    Next: the discriminator as an answer-head feature on all of dev3k (pipeline-right photos included, so breaks count), index photos first
+    (free), then the YFCC increment; wider radius, PE-G features.

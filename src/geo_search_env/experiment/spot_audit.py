@@ -363,6 +363,116 @@ def rerank(radius: float = 1.0, cap: int = 3000) -> None:
     (OUT / "rerank.txt").write_text(text + "\n", encoding="utf-8")
 
 
+def discriminate(radius: float = 1.0, cap: int = 3000, l2: float = 1.0) -> None:
+    """The photos used discriminatively instead of as neighbours: per close call, fit a class-balanced logistic regression on SigLIP2
+    embeddings that separates the photos near the right point from those near the wrong pick (index photos within `radius` km, nearest
+    `cap`; never the query photo or its photographer), with and without the new YFCC photos, and classify the query. Compared with
+    nearest neighbour (best cosine per side) and prototypes (cosine to each side's mean). A side needs >= 5 photos. Also: how often is the
+    best MegaLoc match at the wrong pick a near-copy-level match (>= 0.5), i.e. possibly the query's real location (label noise)?
+    -> artifacts/spot_audit/discriminate.txt"""
+
+    import torch
+    from scipy.spatial import cKDTree
+
+    from ..models.pinpoint_reranker import _discover_index, _unit_xyz
+    from .strategy_search import MP16_EMBED
+    from .yfcc_names import _mp16_authors
+
+    s, sg = dict(np.load(OUT / "shortlist.npz")), dict(np.load(OUT / "siglip.npz"))
+    photos = json.loads((PHOTO_SET / "photos.json").read_text(encoding="utf-8"))
+    q = dict(np.load(QUERIES))
+    dev = np.flatnonzero(q["set"] == "dev3k")
+    q_emb, q_pid = q["emb"][dev].astype(np.float32), q["photo_id"][dev]
+    index_dir = _discover_index()
+    manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
+    count = manifest["shapes"]["raw_image_embeddings"][0]
+    latlon = np.memmap(index_dir / manifest["files"]["latlon_deg"], dtype=np.float32, mode="r", shape=(count, 2)).astype(np.float64)
+    cache_rows = np.fromfile(index_dir / manifest["files"]["cache_indices"], dtype=np.int64)
+    mp16 = np.memmap(MP16_EMBED / "embeddings.f16.bin", dtype=np.float16, mode="r").reshape(-1, 1536)
+    image_ids = np.asarray((MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines())
+    tree = cKDTree(_unit_xyz(latlon))
+    chord = 2 * np.sin(radius / 6371.0 / 2)
+    kind = s["p_kind"]
+    p_right, p_wrong = np.flatnonzero(kind == "right"), np.flatnonzero(kind == "wrong")
+    near = {}
+    for p in np.concatenate([p_right, p_wrong]):
+        d, r = tree.query(_unit_xyz(np.asarray([[s["p_lat"][p], s["p_lon"][p]]]))[0], k=cap, distance_upper_bound=chord)
+        near[p] = r[np.isfinite(d)]
+    rows_all = np.unique(np.concatenate(list(near.values())))
+    ids_all = image_ids[cache_rows[rows_all]]
+    authors = _mp16_authors(set(ids_all) | {p["image_id"] for p in photos})
+    author_of = dict(zip(rows_all, (authors.get(i, "") for i in ids_all)))
+    pid_of = dict(zip(rows_all, (int(i.rsplit("_", 1)[-1][:-4]) for i in ids_all)))
+    new_emb = {int(pid): e for pid, e in zip(sg["ids"], sg["emb"]) if np.isfinite(e[0])}
+    in_index = s["in_index"].astype(bool)
+
+    def unit(x):
+        x = np.asarray(x, np.float32)
+        return x / np.linalg.norm(x, axis=-1, keepdims=True)
+
+    def logistic(xr, xw, query):
+        x = torch.as_tensor(np.concatenate([xr, xw]))
+        y = torch.cat([torch.ones(len(xr)), torch.zeros(len(xw))])
+        w8 = torch.cat([torch.full((len(xr),), 0.5 / len(xr)), torch.full((len(xw),), 0.5 / len(xw))])  # balanced: equal priors
+        w, b = torch.zeros(x.shape[1], requires_grad=True), torch.zeros(1, requires_grad=True)
+        opt = torch.optim.LBFGS([w, b], max_iter=100, line_search_fn="strong_wolfe")
+
+        def closure():
+            opt.zero_grad()
+            loss = (w8 * torch.nn.functional.binary_cross_entropy_with_logits(x @ w + b, y, reduction="none")).sum() + l2 * 1e-3 * (w @ w)
+            loss.backward()
+            return loss
+        opt.step(closure)
+        with torch.no_grad():
+            return float(torch.as_tensor(query) @ w + b)
+
+    rows = []
+    for i, pr, pw in zip(s["p_i"][p_right], p_right, p_wrong):
+        qa, qp, qx = authors.get(photos[i]["image_id"], "?"), q_pid[i], unit(q_emb[i])
+        sides = []
+        for p in (pr, pw):
+            idx = [r for r in near[p] if author_of[r] != qa and pid_of[r] != qp]
+            xi = unit(mp16[cache_rows[np.asarray(idx, np.int64)]]) if idx else np.zeros((0, 1536), np.float32)
+            new = [new_emb[int(pid)] for pid in s["photo_id"][(s["point"] == p) & ~in_index] if int(pid) in new_emb]
+            xn = unit(new) if new else np.zeros((0, 1536), np.float32)
+            sides.append((xi, xn))
+        (ri, rn), (wi, wn) = sides
+        if min(len(ri), len(wi)) < 5:
+            continue
+        out = [len(ri), len(wi), len(rn), len(wn)]
+        for xr, xw in ((ri, wi), (np.concatenate([ri, rn]), np.concatenate([wi, wn]))):
+            out += [float((xr @ qx).max() - (xw @ qx).max()), float(unit(xr.mean(0)) @ qx - unit(xw.mean(0)) @ qx), logistic(xr, xw, qx)]
+        rows.append(out)
+    r = np.asarray(rows)
+    lines = [f"Discriminative use of the photos, dev3k close calls with >= 5 index photos on both sides: {len(r)} of {len(p_right)}; "
+             f"index photos per side median right {np.median(r[:, 0]):.0f} / wrong {np.median(r[:, 1]):.0f}; new per side median "
+             f"{np.median(r[:, 2]):.0f} / {np.median(r[:, 3]):.0f}",
+             "  % of close calls the query is put on the right side (> 0); 50 = coin flip; the reranker over the same pools: 19.1 -> 20.4"]
+    for c, name in ((4, "nearest neighbour"), (5, "prototype (side mean)"), (6, "logistic, balanced")):
+        lines.append(f"    {name:<22} index only {100 * (r[:, c] > 0).mean():5.1f}   + new photos {100 * (r[:, c + 3] > 0).mean():5.1f}"
+                     f"   (moves to right {int(((r[:, c] <= 0) & (r[:, c + 3] > 0)).sum())}, to wrong {int(((r[:, c] > 0) & (r[:, c + 3] <= 0)).sum())})")
+    many = (r[:, 2] >= 20) & (r[:, 3] >= 20)
+    lines.append(f"    logistic where both sides got >= 20 new photos ({int(many.sum())}): index only {100 * (r[many, 6] > 0).mean():.1f}, "
+                 f"+ new {100 * (r[many, 9] > 0).mean():.1f}")
+
+    # label noise: near-copy-level MegaLoc matches at the wrong pick
+    m = np.load(OUT / "megaloc.npz")
+    e = m["emb"].astype(np.float32)
+    e /= np.linalg.norm(e, axis=1, keepdims=True)
+    mq = np.load(MEGALOC_Q).astype(np.float32)
+    mq /= np.linalg.norm(mq, axis=1, keepdims=True)
+    sim = np.einsum("nd,nd->n", e[np.searchsorted(m["ids"], s["photo_id"])], mq[s["p_i"][s["point"]]])
+    best = np.full(len(kind), -1.0)
+    good = np.isfinite(sim)
+    np.maximum.at(best, s["point"][good], sim[good])
+    for t in (0.5, 0.6, 0.7):
+        lines.append(f"  best MegaLoc >= {t}: at the wrong pick {int((best[p_wrong] >= t).sum())} photos, at the right point "
+                     f"{int((best[p_right] >= t).sum())}, at the truth {int((best[kind == 'truth'] >= t).sum())} (of {len(p_right)})")
+    text = "\n".join(lines)
+    print(text)
+    (OUT / "discriminate.txt").write_text(text + "\n", encoding="utf-8")
+
+
 def _paired(a: np.ndarray, b: np.ndarray) -> float:
     """P(a > b) over pairs (ties half); points without references score -1."""
 
@@ -460,7 +570,7 @@ def report() -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("shortlist", "fetch", "report", "siglip", "rerank"))
+    parser.add_argument("cmd", choices=("shortlist", "fetch", "report", "siglip", "rerank", "discriminate"))
     parser.add_argument("--k", type=int, default=50)
     parser.add_argument("--radius", type=float, default=1.0)
     parser.add_argument("--workers", type=int, default=4)
@@ -472,6 +582,8 @@ def main(argv=None) -> int:
         fetch(args.workers, args.batch)
     elif args.cmd == "siglip":
         siglip(args.workers, args.batch)
+    elif args.cmd == "discriminate":
+        discriminate()
     elif args.cmd == "rerank":
         rerank()
     else:
