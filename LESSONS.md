@@ -216,7 +216,8 @@ V11. **Probe A: an evidence source's independence from the answer head does not 
     well they rank areas at all, and strength and complement move together, so 8 sources can't tell them apart. The region probe is the
     exception: by far the most independent (0.83), a coarse-scale model, and second in gain. The thesis "a verifier is worth its independence"
     is not supported in this form; "a verifier is worth its accuracy on the proposer's mistakes" is, but that is close to a tautology.
-    The new fact: training a projection for geolocation turns PE-G from +0.79 into +2.70, as much as V5's three column sets together
-    (+2.66), from one source; a trained head on an independent backbone beats raw embeddings of bigger models (DINOv3-7B +0.23). Check before
-    relying on it: that track R's projection never trained on dev3k photos or their areas' gallery photos. Next: probe A's question needs
+    Consistent with R19: training a projection for geolocation turns PE-G from +0.79 into +2.70, as much as V5's three column sets together
+    (+2.66), from one source; a trained head on an independent backbone beats raw embeddings of bigger models (DINOv3-7B +0.23). Checked: the
+    projection trained with dev3k photographers held out (`retrieval-track/scripts/pe_retrieval.py trained`); track R's R19 already found
+    pe_gtr +1.05 over the best head with the V5 columns (49.82 -> 50.87), so this confirms R19 rather than being new. Next: probe A's question needs
     more sources or a within-source design (one backbone, projections trained at different radii: VALUE_PLAN regime idea R4).
