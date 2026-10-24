@@ -236,3 +236,16 @@ V12. **Regime idea R1: lesson V9's boxes picked by a coarse judge instead of Pin
     restriction effect). Size: probe-mass net of luck +3.7% of misses = +1.4 pts of all photos if one switched only on misses (a ceiling; a
     real switch also breaks hits). The cascade "coarse expert picks the region -> retrieval inside -> fine judge" is the R4 direction with a
     working first stage; the coarse expert's region accuracy (9.4% of misses) is now the limit, so a stronger region expert is where it pays.
+V13. **Regime idea R2: one network per radius vs one shared multi-scale network, at the answer step: 25 km gains from its own network
+    (+0.72, SE 0.24), 750 km loses (-0.61, SE 0.28), 1 km ties (+0.11); scales neither clearly help nor clearly hurt each other there**
+    (`value_agent --multi --gain --mc --listwise 2 [--only-r r]`, `scripts/regime_r2.sh`; dev3k only, 3 seeds, everything revealed; --only-r
+    trains only radius r's output (BCE, plus the listwise term for 1 / 25 km) with commit values and rewards at r alone; each network answers
+    by argmax P(< r) at its own r, the shared one with the same one-radius weighting). % < r: 1 km 30.50 shared / 30.61 separate; 25 km 48.60 /
+    49.32 (per seed +0.73 / +0.47 / +0.97); 750 km 77.87 / 77.26 (+0.03 / -0.83 / -1.03). The shared run reproduces V8 (W_TABLE 28.39 / 47.29
+    / 60.79 / 76.12 / 86.87; it overwrote V8's npz under the same name, V8's numbers stay in its log). Answering for one radius is itself a
+    large lever: the shared network weighted on 25 km alone gives 48.60 vs 47.57 under W_OLD (25 + 0.5 x 1 km), at 1 km 25.53 vs 30.50; on 750
+    km alone 77.87 vs W_TABLE's 76.12. The separate 25 km network is the best dev3k 25 km of any value network without the V5 columns (49.32;
+    V8 sweep best 48.44), at 1 km 22.27. Reading: the 25 km decision is better learned alone (the coarse targets pull the shared encoder
+    toward regional features), the 750 km decision is better learned with the finer targets (they teach the encoder which areas are real),
+    and 1 km is indifferent. All effects are < 1 pt: splitting the answer step is not where per-scale models pay. R1 (V12) points upstream:
+    the judge and the evidence per scale (a coarse, retrieval-independent region model) changed results by 3x on retrieval misses.

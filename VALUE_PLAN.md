@@ -139,6 +139,10 @@ Ideas, cheapest first (each a probe of the question, not a system change):
   the probe at 750 km, the controller has a real decision (finding 6 of PAPER_NOTES: tools need outcome- or goal-dependent value).
 Paper angle: "scale-specific experts, arbitrated by a calibrated value network under the scoring rule" (mixture of experts by decision theory).
 Start with R1 and R2 (cached / short); R4 needs the user's go-ahead (GPU hours beside track R).
+Status (2026-10-24): R1 done (lesson V12): picking V9's boxes by the region probe's mass gives place hits on area-oracle misses 6.0% vs
+luck 2.3% vs Pinpoint's score 2.0%; retrieval-built judges are at or below luck there. R2 done (V13): separate answer networks per radius
++0.72 at 25 km, -0.61 at 750 km, +0.11 at 1 km: under 1 pt either way. The regime lever is upstream (evidence and judges per scale: R3, R4),
+not in splitting the answer step.
 
 ## How every step is judged
 - Costs from measured latency, the same units for every action; report return - lambda x units and accuracy vs mean cost.

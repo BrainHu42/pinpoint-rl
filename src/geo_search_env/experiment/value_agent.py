@@ -92,6 +92,7 @@ RS = (1.0, 25.0, 200.0, 750.0, 2500.0)
 W_TABLE = (0.5, 1.0, 1.0, 1.0, 1.0)  # the primary table's columns (1 km at the --one-km weight), fixed before any result
 W_OLD = (0.5, 1.0, 0.0, 0.0, 0.0)  # step 1's reward: [< 25] + 0.5 [< 1]
 CW = W_TABLE  # weights of the commit values the policy sees and of the reward it is trained on (MULTI)
+ONLY_R = None  # --only-r: VALUE_PLAN regime idea R2, one radius's output trained (BCE, listwise if 1 / 25 km), CW one-hot on it
 LISTWISE = 0.0  # --listwise W: + W x the old answer head's listwise loss on log commit values (ranking of options within a photo)
 
 
@@ -288,8 +289,19 @@ def fit_q(d, photos, seed, epochs=30, batch=128, tau=0.01, w_info=1.0, detach_in
                 y = (kmo[..., None] < torch.as_tensor(RS, device="cuda")).float()
                 okm = _valid(v, zoomed)[..., None].expand_as(y)
                 bce = F.binary_cross_entropy_with_logits(logits, y, reduction="none")
+                if ONLY_R is not None:  # only this radius's output learns
+                    okm = okm * (torch.as_tensor(RS, device="cuda") == ONLY_R).float()
                 loss_c = (bce * okm).sum() / okm.sum().clamp(min=1) * len(RS)
-                if LISTWISE:  # on the area options' step 1 value P25 + W P1 only; the coarse outputs stay plain logistic (calibrated)
+                if LISTWISE and ONLY_R in (1.0, 25.0):  # one radius's listwise term on its own output
+                    h2 = 2 * h
+                    j = RS.index(ONLY_R)
+                    va = _valid(v, zoomed)[:, :h2]
+                    logp = torch.log_softmax(logits[:, :h2, j].masked_fill(~va, float("-inf")), 1)
+                    ok = (kmo[:, :h2] < ONLY_R) & va
+                    use = ok.any(1)
+                    if use.any():
+                        loss_c = loss_c - LISTWISE * torch.logsumexp(logp.masked_fill(~ok, float("-inf")), 1)[use].mean()
+                elif LISTWISE and ONLY_R is None:  # on the area options' step 1 value P25 + W P1 only; the coarse outputs stay plain logistic (calibrated)
                     h2 = 2 * h
                     pa = torch.sigmoid(logits[:, :h2])
                     vo = pa[..., 1] + aa.ONE_KM * pa[..., 0]
@@ -614,6 +626,7 @@ def evaluate_multi(net, d) -> dict:
             weightings = [("W_OLD", W_OLD, False), ("W_TABLE", W_TABLE, True), ("W_TABLE, no hedges", W_TABLE, False)]
             if sname == "everything":  # the 1 km / coarse trade-off from the same outputs (weights are an inference-time choice)
                 weightings += [(f"w1 {w1:g}, coarse {wc:g}", (w1, 1.0, wc, wc, wc), True) for w1, wc in WEIGHT_SWEEP]
+                weightings += [(f"only {r:g} km", tuple(float(x == r) for x in RS), True) for r in RS]  # regime R2: one radius
             for wname, wv, hedges in weightings:
                 val = (p * torch.as_tensor(wv, device="cuda")).sum(-1).masked_fill(~valid, float("-inf"))
                 if not hedges:
@@ -703,7 +716,7 @@ def run(seeds: Sequence[int], extra: Sequence[str], targets: Sequence[str], base
         names = list(sets)
         for i, name in enumerate(names):
             report_multi(name, runs[name], runs[names[1 - i]] if len(names) == 2 else None)
-        out = f"artifacts/value/value_agent_multi_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}.npz"
+        out = f"artifacts/value/value_agent_multi_{aa.CKPT_TAG}{'_' + '+'.join(extra) if extra else ''}{f'_r{ONLY_R:g}' if ONLY_R else ''}.npz"
         np.savez(out, **{f"{name}|{s}|{a}|{b_}": r[a, b_]["km"] for name, rs in runs.items() for s, r in zip(seeds, rs) for (a, b_) in r})
         print(f"saved {out}", flush=True)
         return
@@ -733,12 +746,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dump", action="store_true", help="save the lambda 0 answers per photo (km, commit value, P(< 25 km))")
     parser.add_argument("--delta", action="store_true", help="zoomed-point logits = unzoomed-point logits + a learned difference")
     parser.add_argument("--mc", action="store_true", help="information targets from realised greedy continuations (paired with the commit now)")
+    parser.add_argument("--only-r", type=float, default=None, help="MULTI: train only this radius's output (regime idea R2)")
     parser.add_argument("--listwise", type=float, default=0.0, help="weight of the listwise ranking loss on commit values")
     args = parser.parse_args(argv)
     aa.CKPT_TAG, aa.ONE_KM = args.ckpt_tag, args.one_km
     globals()["GAIN"], globals()["LISTWISE"], globals()["MC"] = args.gain, args.listwise, args.mc
     globals()["DELTA"], globals()["LAMBDAS"], globals()["DUMP"] = args.delta, tuple(args.lambdas), args.dump
     globals()["MULTI"] = args.multi
+    if args.only_r is not None:
+        globals()["ONLY_R"], globals()["CW"] = args.only_r, tuple(float(r == args.only_r) for r in RS)
     if args.split is not None:
         globals()["GROUPS"] = list(zip(["megaloc"] + list(args.extra), args.split))
     run(args.seeds, args.extra, args.targets, baseline=not args.no_baseline, epochs=args.epochs, w_info=args.w_info, detach_info=not args.shared)
