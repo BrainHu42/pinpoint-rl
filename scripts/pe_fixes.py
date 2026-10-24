@@ -51,12 +51,21 @@ def main() -> None:
                   f"its rank in the pool by {k}: median {np.median(rank(s, c)[sel]):.0f} (reranker's pick {np.median(rank(s, r)[sel]):.0f})")
         print(f"  distance of the new pick {np.median(d[q, c][sel]):.1f} km vs the reranker's {np.median(d[q, r][sel]):.0f} km (medians)")
 
+    # candidates the projection saw in training (B1 gallery, the train half: author hash parity 1, dev3k photographers out; pe_retrieval trained)
+    import hashlib
+
+    g = np.load("artifacts/retrieval/b1/gallery.npz")
+    half = np.asarray([hashlib.md5(a.encode()).digest()[0] & 1 for a in g["authors"]], bool)
+    seen_rows = set(g["rows"][half].tolist())  # conservative: the train half's dev3k-photographer photos (left out) count as seen too
+    seen = np.vectorize(lambda r: r in seen_rows)(np.where(v, z["rows"], -1)) & v
+    print(f"\ncandidates the projection trained on: {100 * seen[v].mean():.1f}% of pool slots")
+
     # 2. matched pairs within each pool: right (< 25 km) vs wrong (> 25 km) candidates that look equally alike
     rng = np.random.default_rng(0)
-    for match in ("raw PE-G", "SigLIP2"):
+    for match, unseen in (("raw PE-G", False), ("SigLIP2", False), ("raw PE-G", True), ("SigLIP2", True)):
         wins = {k: [] for k in sims}
         for i in range(len(q)):
-            ok = np.flatnonzero(v[i])
+            ok = np.flatnonzero(v[i] & ~seen[i]) if unseen else np.flatnonzero(v[i])
             R, W = ok[d[i, ok] < 25], ok[d[i, ok] >= 25]
             if not len(R) or not len(W):
                 continue
@@ -69,7 +78,8 @@ def main() -> None:
             for k, s in sims.items():
                 wins[k].extend((s[i, R[pr]] > s[i, W[pw]]).astype(float) + 0.5 * (s[i, R[pr]] == s[i, W[pw]]))
         n = len(wins["trained PE-G"])
-        print(f"\nmatched pairs (right vs wrong candidate, same pool, {match} similarity within 0.01; {n:,} pairs, <= 20 per photo): "
+        print(f"\nmatched pairs{' (only candidates the projection never saw)' if unseen else ''} (right vs wrong candidate, same pool, {match} "
+              f"similarity within 0.01; {n:,} pairs, <= 20 per photo): "
               "% where each similarity ranks the right one higher")
         print("  " + "   ".join(f"{k} {100 * np.mean(w):.1f}%" for k, w in wins.items()))
 

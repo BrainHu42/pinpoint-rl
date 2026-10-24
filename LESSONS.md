@@ -243,4 +243,17 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     +0.21 / +0.10 (noise). PE-G only beats SigLIP2 only by ~+3 in the head; the rest of the pipeline (retrieval, reranker, head base
     features) is still SigLIP2.
 
+- **R20. Same place or looks alike? Both: most of PE-G's fixes are candidates PE-G sees as alike and SigLIP2 doesn't, and the location
+    training adds place identity beyond appearance (right over an equally-alike wrong candidate 66-68% vs 50%; Pinpoint's contrastive
+    search 56%)** (`scripts/pe_fixes.py`, `artifacts/retrieval/b1/fixes_dev3k.log`, Oct 24; dev3k, today's setft_own pool, R18's reranker +
+    lambda x trained PE-G with lambda cross-fitted). 187 fixes / 91 breaks at 25 km. On fixes, the new pick vs the reranker's: raw PE-G
+    similarity rank in the pool median 2 vs 11 (less alike only 20% of the time); SigLIP2 rank 6 vs 10 (less alike 39%); contrastive
+    similarity lower 57%; distance 0.5 km vs 706 km. Matched pairs (a right < 25 km and a wrong > 25 km candidate of the same pool whose raw
+    similarity is within 0.01; <= 20 per photo), % ranking the right one higher, matched on raw PE-G / on SigLIP2: raw PE-G 50.4 / 60.1,
+    SigLIP2 **40.5** / 49.6, contrastive 56.1 / 56.8, **trained PE-G 66.0 / 68.1**; with only candidates the projection never trained on
+    (95% of slots; the train half counted as seen): 65.9 / 68.0, so not memorization. Readings: (1) PE-G's appearance is better aligned with
+    place than SigLIP2's: at equal PE-G appearance SigLIP2 prefers the wrong candidate (40.5%); (2) a small location-trained layer turns PE-G
+    into a place-identity signal well beyond what Pinpoint's contrastive training got from SigLIP2 on all of MP16. This is the core question
+    (knowledge beyond visual similarity) answered positively at the embedding level.
+
 ## Search-agent track (S)
