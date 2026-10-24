@@ -8,8 +8,8 @@
 # query can only find older uploads; this also drops Flickr copies of the query and the photographer's same-trip uploads).
 # Usage: PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr query "Villa d'Este" [--near LAT LON KM] [--offline]
 #        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr usage
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr harvest --set commons26dev_setft_own [--max-calls N]
-#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr report --set commons26dev_setft_own   (cache only, no calls)
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr harvest --set dev3k_setft_own [--max-calls N]
+#        PYTHONPATH=src .venv/bin/python -m geo_search_env.tools.flickr report --set dev3k_setft_own   (cache only, no calls)
 
 """query:   one search, printed as the agent would see it (clusters as in text_search).
 usage:   calls in the last hour / day / in total, cached responses.
@@ -37,9 +37,10 @@ import zlib
 
 API = "https://api.flickr.com/services/rest/"
 CACHE = Path("artifacts/tool_use/flickr")
-MIN_INTERVAL = 1.1  # seconds between calls, all processes together
-WORKERS = 4  # concurrent calls while harvesting (each takes ~5 s)
-PER_HOUR = 3000  # below Flickr's 3,600 per key, leaving room for interactive use
+MIN_INTERVAL = 2.0  # seconds between calls, all processes together (1.1 s with 4 workers drew HTTP 429 after ~600 calls)
+WORKERS = 2  # concurrent calls while harvesting (each takes ~5 s)
+PER_HOUR = 1800  # half of Flickr's nominal 3,600 per key: its throttle fires below the nominal rate
+THROTTLE_PAUSE = 300.0  # seconds all processes wait after a 429, doubling on repeats
 PER_PAGE = 250  # the most a geo search returns per call (per_page=500 still gives 250)
 EXTRAS = "geo,date_upload,date_taken,owner_name,path_alias,tags,url_m"
 YFCC_END = 1420070400  # 2015-01-01 UTC: YFCC100M holds uploads to 2014
@@ -114,6 +115,7 @@ class FlickrSearch:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS responses (key TEXT PRIMARY KEY, method TEXT, fetched REAL, body BLOB)")
         self.db.execute("CREATE TABLE IF NOT EXISTS calls (t REAL, method TEXT, ok INTEGER)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS pause (until REAL)")
         self.offline = offline
         self.live_calls = 0  # made by this instance
 
@@ -127,7 +129,8 @@ class FlickrSearch:
             now = time.time()
             last = self.db.execute("SELECT MAX(t) FROM calls").fetchone()[0] or 0.0
             n, first = self.db.execute("SELECT COUNT(*), MIN(t) FROM calls WHERE t > ?", (now - 3600,)).fetchone()
-            wait = max(last + MIN_INTERVAL - now, (first + 3600 - now) if n >= PER_HOUR else 0.0)
+            paused = self.db.execute("SELECT MAX(until) FROM pause").fetchone()[0] or 0.0
+            wait = max(last + MIN_INTERVAL - now, (first + 3600 - now) if n >= PER_HOUR else 0.0, paused - now)
             if wait <= 0:
                 self.db.execute("INSERT INTO calls VALUES (?, '', 1)", (now,))
                 self.db.execute("COMMIT")
@@ -158,6 +161,8 @@ class FlickrSearch:
                     raise RuntimeError(f"Flickr {method}: {err}")
             except (OSError, ValueError) as e:  # timeouts, 5xx, 429, broken JSON
                 err = str(e)
+                if "429" in err:  # throttled: every process waits (4 overlapping calls at ~50 / min drew 429s after ~600)
+                    self.db.execute("INSERT INTO pause VALUES (?)", (time.time() + THROTTLE_PAUSE * 2 ** attempt,))
             time.sleep(10 * 2 ** attempt)
         else:
             raise RuntimeError(f"Flickr {method} failed after retries: {err}")
@@ -223,7 +228,7 @@ def _queries(tag: str) -> dict[str, list[str]]:
             json.loads((AGENT / f"queries_{tag}_4b.json").read_text(encoding="utf-8")).items()}
 
 
-def guards(tag: str) -> dict[str, Guard]:
+def guards(tag: str, allow_test: bool = False) -> dict[str, Guard]:
     """Each photo's guard: MP16 photos (id in the file name) hide themselves and their photographer; commons26 photos hide uploads from their
     capture date on and, for files imported from Flickr, the Flickr original and its owner."""
 
@@ -249,17 +254,34 @@ def guards(tag: str) -> dict[str, Guard]:
             g.photo_ids.add(int(Path(image_id).stem.rsplit("_", 1)[-1]))
             if authors.get(image_id):
                 g.owners.add(authors[image_id])
-    else:
-        raise ValueError(f"no guard rule for photo set {tag} (benchmark photos are test: not without the user)")
+    elif not allow_test:
+        raise ValueError(f"{tag} holds test photos (im2gps3k / yfcc4k): only when the user asks (--test)")
+    else:  # im2gps3k: <flickr id>_<secret>_<server>_<owner>.jpg; yfcc4k: <flickr id>.jpg, owner from the YFCC metadata
+        from ..experiment.text_search import _db_dir
+
+        lookup = {}
+        for image_id, g in out.items():
+            parts = Path(image_id).stem.split("_")
+            g.photo_ids.add(int(parts[0]))
+            if len(parts) == 4:
+                g.owners.add(parts[3])
+            else:
+                lookup[int(parts[0])] = g
+        if lookup:  # meta.photo_id has no index: one scan for all of them
+            yfcc = sqlite3.connect(f"file:{_db_dir() / 'yfcc.db'}?mode=ro", uri=True)
+            for pid, uid in yfcc.execute("SELECT photo_id, uid FROM meta"):
+                if pid in lookup:
+                    lookup[pid].owners.add(uid)
     return out
 
 
-def harvest(tag: str, max_calls: int | None = None, workers: int = WORKERS) -> None:
+def harvest(tag: str, max_calls: int | None = None, workers: int = WORKERS, allow_test: bool = False) -> None:
     """Calls take ~5 s (relevance-sorted geo search), so `workers` threads overlap them; the shared limiter still paces the calls."""
 
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
+    guards(tag, allow_test)  # refuses test photo sets unless asked
     tool = FlickrSearch()
     todo = list(dict.fromkeys(norm_text(q) for qs in _queries(tag).values() for q in qs))
     missing = [q for q in todo if not tool.cached("flickr.photos.search", **tool.search_params(q))][:max_calls]
@@ -286,14 +308,14 @@ def _pipeline_km(tag: str) -> "np.ndarray | None":  # noqa: F821
     import numpy as np
 
     path, key = {"commons26dev_setft_own": (AGENT / "action_agent_apply_km_setft_own_1km0.5_commons26dev.npz", "commons26dev:setft_own|RL policy, lambda 0"),
-                 "dev3k_setft_own": (AGENT / "action_agent_apply_km_setft_own_1km0.5.npz", "dev3k:setft_own|RL policy, lambda 0")}.get(tag, (None, None))
+                 "dev3k_setft_own": (AGENT / "action_agent_apply_km_setft_own_1km0.5.npz", "dev3k|RL policy, lambda 0")}.get(tag, (None, None))
     if path is None or not path.exists():
         return None
     with np.load(path) as z:
         return z[key] if key in z.files else None
 
 
-def report(tag: str) -> None:
+def report(tag: str, allow_test: bool = False) -> None:
     """Cache only (offline): photos whose queries have a match / the tool's own pick within 25 km, live Flickr vs the YFCC replica."""
 
     import numpy as np
@@ -301,7 +323,7 @@ def report(tag: str) -> None:
     from ..experiment.text_search import Result as TSResult, TextSearch, _pick, haversine_km
 
     photos = json.loads((PHOTO_SETS / tag / "photos.json").read_text(encoding="utf-8"))
-    queries, guard = _queries(tag), guards(tag)
+    queries, guard = _queries(tag), guards(tag, allow_test)
     live, replica = FlickrSearch(offline=True), TextSearch()
     pipe = _pipeline_km(tag)
     rows, misses = [], 0
@@ -363,16 +385,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("text", nargs="?")
     parser.add_argument("--near", type=float, nargs=3, metavar=("LAT", "LON", "KM"))
     parser.add_argument("--offline", action="store_true", help="cache only, never call Flickr")
-    parser.add_argument("--set", dest="tag", default="commons26dev_setft_own")
+    parser.add_argument("--set", dest="tag", default="dev3k_setft_own")
     parser.add_argument("--max-calls", type=int, default=None)
     parser.add_argument("--workers", type=int, default=WORKERS)
+    parser.add_argument("--test", action="store_true", help="allow im2gps3k / yfcc4k photo sets (only when the user asks)")
     args = parser.parse_args(argv)
     if args.cmd == "usage":
         print(FlickrSearch().usage())
     elif args.cmd == "harvest":
-        harvest(args.tag, args.max_calls, args.workers)
+        harvest(args.tag, args.max_calls, args.workers, args.test)
     elif args.cmd == "report":
-        report(args.tag)
+        report(args.tag, args.test)
     else:
         from ..experiment.text_search import Result as TSResult, TextSearch
 
