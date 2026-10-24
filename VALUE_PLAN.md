@@ -143,6 +143,10 @@ Status (2026-10-24): R1 done (lesson V12): picking V9's boxes by the region prob
 luck 2.3% vs Pinpoint's score 2.0%; retrieval-built judges are at or below luck there. R2 done (V13): separate answer networks per radius
 +0.72 at 25 km, -0.61 at 750 km, +0.11 at 1 km: under 1 pt either way. The regime lever is upstream (evidence and judges per scale: R3, R4),
 not in splitting the answer step.
+R3 + R4 done (V14): cached text / 4B-country / OSV signals are weaker region judges than the probe on the same photos and barely
+complementary; a 12x-data PE-G region expert gains +1.4-2 at 750 km (saturates near 70% within 750 km for every data size, cell count and
+backbone); boxes around its cells raise net place hits on retrieval misses to +5.0% (ceiling +1.9 pts). The coarse stage is limited by what
+frozen embeddings encode about region.
 
 ## How every step is judged
 - Costs from measured latency, the same units for every action; report return - lambda x units and accuracy vs mean cost.

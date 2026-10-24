@@ -249,3 +249,27 @@ V13. **Regime idea R2: one network per radius vs one shared multi-scale network,
     toward regional features), the 750 km decision is better learned with the finer targets (they teach the encoder which areas are real),
     and 1 km is indifferent. All effects are < 1 pt: splitting the answer step is not where per-scale models pay. R1 (V12) points upstream:
     the judge and the evidence per scale (a coarse, retrieval-independent region model) changed results by 3x on retrieval misses.
+V14. **Regime ideas R3 + R4: signals closed at 25 km stay weak at coarse scales, and a 12x larger region expert gains little: every
+    frozen-embedding region readout tops out near 70% of dev3k within 750 km (50% on area-oracle misses); boxes around the bigger expert's
+    cells raise V12's net place hits on misses from +3.7 to +5.0%** (`scripts/coarse_signals.py`, `scripts/region_expert.py`,
+    `region_expert_sweep.sh`, `hedge_search.py run / regime --expert`; dev3k only; area-oracle misses = 38.0% of dev3k).
+    R3, each signal's own coarse guess right within 200 / 750 / 2500 km on all photos | on misses: region probe top cell 46.3 / 68.0 / 82.9 |
+    20.2 / 47.9 / 70.4; OSV-5M mass point 30.9 / 55.6 / 76.1 | 12.5 / 39.7 / 65.5; OSV top-1 31.9 / 50.7 / 72.5; heaviest text hit (69.7%
+    coverage) 19.5 / 31.4 / 43.1; the 4B's country = the true country on 41.2 | 23.2% (64.6 | 51.4% when it names one). As V12 box judges
+    (+-50 km, misses), on the photos where the signal exists, region / place [nearby luck]: text weight 9.8 / 6.7 [3.2] vs the probe on the
+    same photos 11.6 / 7.2 [2.7]; 4B country match 10.1 / 6.4 [2.9] vs probe 13.8 / 8.1 [3.3]; OSV mass on all misses 5.4 / 2.6 [2.8] (luck);
+    the mean-rank fusion of each with the probe is below the probe alone. Complementarity is small: where the best expert's top cell is
+    > 750 km off (49.9% of misses), the 4B is right on 11.8% of them; where the 4B's country and the expert's differ, the expert is right 51%,
+    the 4B 12%. R4 (track R's PE-G 378 px pooled embeddings of index photos, pe_probe's MLP readout, leak guard: dev3k photos / photographers
+    and every B2 row first embedded for the dev3k / commons26 dev pools and zooms, 309k rows; dev3k top cell within 25 / 200 / 750 / 2500 km):
+    probe set 98k photos, 2,048 cells 25.5 / 46.5 / 68.0 / 82.7 (track R's 26.4 / 46.5 / 68.1 / 83.4); B1 355k 28.0 / 49.0 / 69.5 / 83.7;
+    B2 1.21M, 2,048 cells 29.0 / 49.9 / 69.8 / 84.3 (4 epochs; 10 epochs 28.3 / 48.6 / 69.4 / 83.8); 8,192 cells 30.9 / 48.6 / 69.4 / 83.5;
+    16,384 cells 30.6 / 47.9 / 69.1 / 83.8; SigLIP2 (the retriever's model, same rows, 8,192 cells) 25.6 / 41.8 / 63.7 / 80.8; PE-G + SigLIP2
+    concatenated 30.6 / 48.5 / 70.1 / 84.3. On misses at 750 km: probe 47.9, B2 PE-G 50.1, concat 49.6, SigLIP2 41.0 (the retriever's backbone
+    is weakest exactly where retrieval failed). 12x data: +5 at 25 km, +2 at 200, +1.4-2 at 750 km: the readout saturates by data, cells and
+    backbone; the limit is what a frozen image embedding encodes about region. New box searches around the B2 8,192-cell expert's top 5
+    cells + mass point (42k Pinpoint restricted searches, 391 s): some box place-right on 16.3% of misses (V9's boxes 14.6%); judges on
+    misses, +-50 km, place [luck] net: expert mass 6.7 [1.7] +5.0, probe mass 7.0 [2.1] +4.9, top expert cell 6.3 [1.3] +5.0, Pinpoint score
+    3.0 [1.4] +1.6, random 3.8 [1.5] +2.3. Ceiling if switched only on misses: +1.9 pts of all photos (V12: +1.4). Reading for the regime
+    plan: per-scale experts built from the same frozen features (and the cached text / VLM / street-view signals) add a little; the coarse
+    stage needs evidence a frozen embedding lacks (a fine-tuned or geo-pretrained region model, or knowledge beyond our open VLMs, finding 5).

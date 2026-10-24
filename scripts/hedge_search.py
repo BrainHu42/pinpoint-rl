@@ -45,8 +45,20 @@ def _photos(tag: str) -> list[dict]:
     return json.loads((Path("artifacts/photo_sets") / SETS[tag] / "photos.json").read_text(encoding="utf-8"))
 
 
-def hedge_points(tag: str) -> np.ndarray:
-    """[n, 7, 2] hedge answers as in value_agent._hedges (lesson V8)."""
+def _probe(tag: str, expert: str = "") -> tuple[np.ndarray, np.ndarray]:
+    """(log-probs [n, cells], cell centres): the region probe, or a region_expert.py file (R4)."""
+    if expert:
+        e = np.load(expert)
+        return e["logp"].astype(np.float32), e["cells"].astype(np.float64)
+    return np.load(OUT / f"probe_logp_{tag}.npy").astype(np.float32), np.load("artifacts/retrieval/probe/cells.npy").astype(np.float64)
+
+
+def _out(tag: str, expert: str = "") -> Path:
+    return OUT / f"hedge_search_{tag}{'_' + Path(expert).stem.replace('region_expert_', '') if expert else ''}.npz"
+
+
+def hedge_points(tag: str, expert: str = "") -> np.ndarray:
+    """[n, 7, 2] hedge answers as in value_agent._hedges (lesson V8); with expert, its top 5 cells and mass point instead of the probe's."""
 
     photos = _photos(tag)
     pools = np.load(Path("artifacts/pinpoint_reference") / f"{photos[0]['pools']}.npz")
@@ -54,8 +66,7 @@ def hedge_points(tag: str) -> np.ndarray:
     pll, sc, pv = pools["latlon"][idx].astype(np.float64), pools["scores"][idx], pools["rows"][idx] >= 0
     w = np.exp(np.where(pv, sc - np.where(pv, sc, -np.inf).max(1, keepdims=True), -np.inf))
     w = np.where(pv, w / w.sum(1, keepdims=True), 0.0)
-    lp = np.load(OUT / f"probe_logp_{tag}.npy").astype(np.float32)
-    cent = np.load("artifacts/retrieval/probe/cells.npy").astype(np.float64)
+    lp, cent = _probe(tag, expert)
     cc = (6371.0 * np.arccos(np.clip(_xyz(cent) @ _xyz(cent).T, -1, 1)) < HEDGE_R).astype(np.float32)
     dpp = 6371.0 * np.arccos(np.clip(np.einsum("nid,njd->nij", _xyz(pll), _xyz(pll)), -1, 1))
     pm = pll[np.arange(len(pll)), ((dpp < HEDGE_R) * w[:, None, :]).sum(-1).argmax(1)]
@@ -68,13 +79,13 @@ def _box(p, r: float):
     return (float(max(p[0] - dlat, -90)), float(min(p[0] + dlat, 90)), float(max(p[1] - dlon, -180)), float(min(p[1] + dlon, 180)))
 
 
-def run(tag: str) -> None:
+def run(tag: str, expert: str = "") -> None:
     if os.environ.get("PINPOINT_KEEP_OWN") != "1" or "setft_own" not in os.environ.get("PINPOINT_RERANKER_CKPT", ""):
         raise SystemExit("set PINPOINT_KEEP_OWN=1 and PINPOINT_RERANKER_CKPT to the setft_own checkpoint")
     from geo_search_env.tools.pinpoint import Constraint, Pinpoint
 
     photos = _photos(tag)
-    pts = hedge_points(tag)
+    pts = hedge_points(tag, expert)
     tool = Pinpoint()
     if "row" in photos[0]:  # MP16 queries: the cached embedding; KEEP_OWN drops only the query itself
         from geo_search_env.experiment.strategy_search import load_world
@@ -97,8 +108,8 @@ def run(tag: str) -> None:
         out["rows"].append(found.rows[:, :TOP].astype(np.int32))
         print(f"  {s + len(chunk)} / {len(items)} searches, {time.perf_counter() - t:.0f} s", flush=True)
     n, K, R = len(photos), len(POINTS), len(RADII)
-    np.savez(OUT / f"hedge_search_{tag}.npz", points=pts, **{k: np.concatenate(v).reshape((n, K, R) + np.concatenate(v).shape[1:]) for k, v in out.items()})
-    print(f"-> {OUT / f'hedge_search_{tag}.npz'}", flush=True)
+    np.savez(_out(tag, expert), points=pts, **{k: np.concatenate(v).reshape((n, K, R) + np.concatenate(v).shape[1:]) for k, v in out.items()})
+    print(f"-> {_out(tag, expert)}", flush=True)
 
 
 def _area_oracle(tag: str) -> np.ndarray:
@@ -180,12 +191,12 @@ def report(seed: int = 7) -> None:
                   f"(any search's top-1: {np.mean(right[:, :, r_i].any(1)[~area]):.1%})", flush=True)
 
 
-def regime(tag: str = "dev3k") -> None:
+def regime(tag: str = "dev3k", expert: str = "") -> None:
     """VALUE_PLAN regime idea R1: lesson V9 picked between boxes with the restricted top-1's score, a 25 km judge on a region question. Pick
     the box with coarse judges instead (the region probe's probability within the box radius, the pool's softmax mass there, the top probe
     cell) and split success into region (truth inside the chosen box: centre < r km) and place (its restricted top-1 < 25 km given that)."""
 
-    z = np.load(OUT / f"hedge_search_{tag}.npz")
+    z = np.load(_out(tag, expert))  # boxes around the probe's cells, or around the expert's (R4)
     photos = _photos(tag)
     truth = np.asarray([e["truth"] for e in photos], np.float64)
     n, K = len(truth), len(POINTS)
@@ -197,6 +208,10 @@ def regime(tag: str = "dev3k") -> None:
     w = np.where(pv, w / w.sum(1, keepdims=True), 0.0)
     prob = np.exp(np.load(OUT / f"probe_logp_{tag}.npy").astype(np.float64))
     cent = np.load("artifacts/retrieval/probe/cells.npy").astype(np.float64)
+    if expert:
+        lp_e, cent_e = _probe(tag, expert)
+        prob_e = np.exp(lp_e.astype(np.float64))
+        d_cell_e = 6371.0 * np.arccos(np.clip(np.einsum("nkd,cd->nkc", _xyz(z["points"].astype(np.float64)), _xyz(cent_e)), -1, 1))
     d_cell = 6371.0 * np.arccos(np.clip(np.einsum("nkd,cd->nkc", _xyz(pts), _xyz(cent)), -1, 1))  # [n, K, cells]
     d_pool = 6371.0 * np.arccos(np.clip(np.einsum("nkd,nmd->nkm", _xyz(pts), _xyz(pll)), -1, 1))  # [n, K, pool]
     area = _area_oracle(tag)
@@ -210,8 +225,10 @@ def regime(tag: str = "dev3k") -> None:
         judges = {"Pinpoint top-1 score (V9)": s1,
                   "probe mass within r": np.einsum("nkc,nc->nk", (d_cell < r).astype(np.float64), prob),
                   "pool mass within r": np.einsum("nkm,nm->nk", (d_pool < r).astype(np.float64), w),
-                  "top probe cell": np.tile(-np.arange(K, dtype=np.float64), (n, 1)),
+                  "top cell of the box source": np.tile(-np.arange(K, dtype=np.float64), (n, 1)),
                   "random box": rng.random((n, K))}
+        if expert:
+            judges["expert mass within r"] = np.einsum("nkc,nc->nk", (d_cell_e < r).astype(np.float64), prob_e)
         reg = _km(truth[:, None, :], pts) < r  # [n, K]
         place = _km(truth[:, None, :], ll[:, :, r_i, 0]) < 25  # [n, K]
         lucky = _km(truth[near][:, None, :], ll[:, :, r_i, 0]) < 25
@@ -230,8 +247,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("node", choices=("run", "report", "regime"))
     ap.add_argument("--tag", default="dev3k", choices=tuple(SETS))
+    ap.add_argument("--expert", default="", help="run / regime: boxes around a region_expert.py file's cells (R4)")
     args = ap.parse_args()
-    run(args.tag) if args.node == "run" else report() if args.node == "report" else regime(args.tag)
+    run(args.tag, args.expert) if args.node == "run" else report() if args.node == "report" else regime(args.tag, args.expert)
 
 
 if __name__ == "__main__":
