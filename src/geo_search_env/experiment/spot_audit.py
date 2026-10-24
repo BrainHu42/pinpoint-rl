@@ -255,6 +255,29 @@ def report() -> None:
     for lo_, hi_ in ((0, 10), (10, 30), (30, 10**9)):
         mr = (n_refs[kind == "right"] >= lo_) & (n_refs[kind == "right"] < hi_)
         lines.append(f"    right point with {lo_}-{hi_ if hi_ < 10**9 else '':} refs: {int(mr.sum())} photos, right>wrong {_paired(r[mr], w[mr]):.3f}")
+    # The wrong pick sits in denser places, which tilts best-of-k towards it: compare with the same number of kept references at both points
+    # (the nearest k of each), and within a tighter radius.
+    keep = ok & ~dup
+    per_point = [[] for _ in range(n_pts)]
+    for p, v, d in zip(s["point"][keep], sim[keep], s["dist"][keep]):
+        per_point[p].append((d, v))
+    per_point = [sorted(x) for x in per_point]
+    lines.append("  equal reference counts (both points >= k kept; best of each point's nearest k), and within RADIUS km:")
+    for radius in (float(s["radius"]), 0.25):
+        for k in (5, 10, 25):
+            rr, ww, tt = [], [], []
+            for j in np.flatnonzero(kind == "truth"):  # points come in truth, right, wrong order per photo
+                t_, r_, w_ = ([v for d, v in per_point[j + x] if d < radius][:k] for x in range(3))
+                if len(r_) >= k and len(w_) >= k:
+                    rr.append(max(r_)); ww.append(max(w_)); tt.append(max(t_) if len(t_) >= k else np.nan)
+            if not rr:
+                continue
+            rr, ww, tt = map(np.asarray, (rr, ww, tt))
+            mt = np.isfinite(tt)
+            lines.append(f"    radius {radius:g} km, k {k:>2}: n {len(rr):3d}  right>wrong {_paired(rr, ww):.3f}  truth>wrong "
+                         f"{_paired(tt[mt], ww[mt]) if mt.any() else float('nan'):.3f} (n {int(mt.sum())})  >= {THRESH}: right "
+                         f"{100 * (rr >= THRESH).mean():.1f}% wrong {100 * (ww >= THRESH).mean():.1f}%  median best right {np.median(rr):.3f} "
+                         f"wrong {np.median(ww):.3f}")
     text = "\n".join(lines)
     print(text)
     (OUT / "report.txt").write_text(text + "\n", encoding="utf-8")

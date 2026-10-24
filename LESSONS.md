@@ -111,3 +111,18 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     alone +0.20. The head learned how far to trust text only from Commons rows (MP16 training rows carry zero text columns), where the
     reranker is weak (~20%); on Flickr photos the reranker is strong and the same trust overrides right answers. So no gain is expected on
     im2gps3k / yfcc4k as trained; the fix is text features on MP16 training photos (gather on train, ~35k photos) so trust is learned per domain.
+
+142. **Dense same-era Flickr photos at a candidate don't tell the right candidate from the pipeline's look-alike, even on MP16 queries (no-go)**
+    (`spot_audit.py`, `FLICKR_PLAN.md` step 1; YFCC100M as an offline lower bound for the live Flickr API's photos at a point, `tools/flickr.py`).
+    dev3k close calls (error tiers 1, 2, 4, 5: a right place on the table, the pipeline wrong; 725 photos). Per photo the truth, the right
+    area's centre (or nearest right candidate) and the pipeline's answer; per point the 50 nearest YFCC photos within 1 km (accuracy >= 13; the
+    query photo and its photographer excluded; 79k unique, 13% in Pinpoint's index, 83% still on Flickr); best MegaLoc cosine to the query.
+    Right beats wrong on 39% (truth 35%) with all references; index-only 39%, new-only 42%; flat in k (5 -> 50: 0.37 -> 0.39). The wrong
+    pick sits in denser places (median 44 kept references vs 39), but at equal counts it is still chance or worse: 0.44-0.46 (k 5-25, n 551-413),
+    within 0.25 km 0.44-0.47 (truth 0.46-0.49). Scores sit at noise (median best 0.07-0.11 at both points), and clean matches (>= 0.3) are
+    more common at the *wrong* pick (8.4% vs 4.6% at k 50; clean wins 3.0% vs losses 8.0%): retrieval chose the wrong area because photos there
+    look like the query, and its neighbours inherit that. Same-era photos fix nothing that 2026 queries (135, 138) lacked: the nearest photos
+    rarely show the query's view, and more of the same density (new photos, larger k) doesn't change it. Closes "photos at a point" as the
+    Flickr API's use for verification; the live API would add density of the same kind. Tooling: Flickr's API throttles (HTTP 429) after
+    ~600 calls in 13 min at ~50 / min, below its nominal 3,600 / h, and its image CDN answers 403 / 429 after bursts and 403 to a fake browser
+    user-agent; `tools/flickr.py` paces at <= 1,800 / h with a shared pause, `spot_audit.fetch` identifies the client and pauses on 403 / 429.

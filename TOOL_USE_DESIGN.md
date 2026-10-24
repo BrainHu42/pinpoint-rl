@@ -42,3 +42,9 @@ bursts), so it needs a multi-day crawl or a higher limit.
 ## Known data issues
 - `artifacts/agent/megaloc_queries_commons26_setft_own.npy` and `megaloc_commons26_setft_own.npz` (full commons26, Oct 16) are blank
   (written before the bd2d12d image-path fix); only the commons26dev files are valid. Lesson 113's commons26 test run had no MegaLoc signal.
+
+## Live Flickr (FLICKR_PLAN.md, 2026-10-24)
+`tools/flickr.py`: Flickr photo search with a permanent response cache, a shared rate limiter (Flickr throttles below its nominal
+3,600 / h) and leak filters applied when results are read back. Photos at a candidate point don't verify it, even same-era ones on MP16
+queries (lesson 142, `spot_audit.py`): right beats wrong on 39%, and clean MegaLoc matches are commoner at the pipeline's wrong pick.
+Remaining uses: text search for landmark photos, 1 km refinement.

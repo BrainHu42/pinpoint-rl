@@ -54,7 +54,9 @@ areas on it +4.9 / +5.4 ([71]); MegaLoc per area +0.8 / +0.5-1.1 ([93]); clue re
 5. **The right place's own photos look like "the same kind of scene nearby", not the same spot** ([90], [95]). External imagery is limited by
    coverage of the exact view: old Flickr photos rarely show the query's view ([135]), nor do the 20 nearest live Commons / Mapillary
    photos, even at the true spot (AUC 0.63 / 0.52; a covered view is matched cleanly, [138]). OSV-5M sits on roads, not photo spots ([136]). New
-   nearby YFCC photos would fix at most 1-3% at 1 km ([134]).
+   nearby YFCC photos would fix at most 1-3% at 1 km ([134]). Same-era photos don't help either: on dev3k close calls the 50 nearest YFCC
+   photos at the right candidate beat those at the wrong pick on 39% (0.44-0.47 at equal counts), and clean matches are commoner at the wrong
+   pick (142).
 6. **RL over today's actions only buys cost**: the policy ties "take every action", because the actions are cheap, independent and reveal fixed
    features ([94], [98]). RL on open-model free text learns silence ([87], [96]); GRPO on a 2-way one-token answer collapses (use the exact
    expected reward, [137]).

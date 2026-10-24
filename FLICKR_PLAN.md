@@ -50,18 +50,17 @@ Evaluation follows CLAUDE.md:
 - **No-go:** P(right > wrong) < 0.6, or no gain from new photos. Then photos at a point are closed as a Flickr use (with a note on what
   coverage would be needed), and we're left with the narrow uses (text for landmark photos, 1 km refinement) or a different research goal.
 
-**Preliminary (2026-10-24 01:40 UTC, 48.7k of 79k references fetched; heading to no-go).**
-- Best MegaLoc at the right point beats the wrong pick on only 43% of photos (truth point 40%), the same for index-only (44%) and new-only
-  (44%) references. The curve is flat in the number of references (k 5 → 50: 0.42 → 0.43).
-- The wrong pick sits in denser places (median 22 kept references vs 18 at the right point), and that tilts best-of-k toward it. Compared
-  at equal reference counts (both points ≥ k), it's still chance: k 5 / 10 / 25 → 0.48 / 0.45 / 0.46 (n 437 / 350 / 149).
-- Scores are at noise level: median best 0.06-0.10 at both points; a clean match (≥ 0.3) at 2-5% of points either way. Clean wins 2.6% vs
-  clean losses 5.0% at k 50.
-- Only where the right point has ≥ 30 references does it reach 0.56.
-- Reading: the nearest same-era photos within 1 km rarely show the query's view, even for MP16 queries, as lessons 135 and 138 found for
-  2026 queries. More of the same density doesn't change it.
-- To finish when the fetch completes: the full report, then a check on spots before closing (a 0.25 km radius, and references chosen by
-  SigLIP similarity to the query instead of distance; the latter is a look-alike and needs care).
+**Result (2026-10-24, lesson 142): no-go.** All 79k references fetched (83% still on Flickr).
+- Right beats wrong on 39% of photos (truth 35%); index-only 39%, new-only 42%; flat in the number of references (k 5 -> 50: 0.37 -> 0.39).
+- At equal reference counts it's still chance or worse: 0.44-0.46 (k 5-25), and within 0.25 km 0.44-0.47 (truth 0.46-0.49).
+- Scores sit at noise (median best 0.07-0.11). Clean matches (>= 0.3) are more common at the *wrong* pick: 8.4% vs 4.6%; clean wins 3.0%
+  vs clean losses 8.0%.
+- Reading: retrieval chose the wrong area because photos there look like the query, and its neighbours inherit that; the nearest photos
+  rarely show the query's own view, same era or not. More of the same density (new photos, larger k, live Flickr) doesn't change it.
+- Not run: references chosen by visual similarity instead of distance. That re-creates the look-alike problem that main point 2 already
+  closes, so it can't escape this result.
+- **Steps 2-4 below are not reached.** The Flickr API's remaining uses are the narrow ones from the screen (text for landmark photos, 1 km
+  refinement), or a different research goal.
 
 ## Step 2 (if step 1 is go): how much more live Flickr returns than YFCC
 - ~300 close-call photos × 2 box searches (right and wrong point, ±0.5-1 km) ≈ 600 API calls, plus thumbnails.
