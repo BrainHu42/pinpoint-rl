@@ -156,3 +156,17 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     1 / 5 / 25 km, photographer excluded) instead of the gallery count: +1.11 (0.39); both +1.17-1.23: the head's miscalibration is about
     what the gallery holds, not the true photo density. Fitted on dev3k with CV only: needs out-of-fold head outputs on train before it
     counts, then a test run when the user asks.
+
+145. **Flickr text search finds places through names, not descriptions: the photographer's own non-town words locate 19.7% of dev3k
+    retrieval misses (oracle over queries), ~85% of those hits being proper names a town list misses; descriptive words ~3%. The 4B's
+    queries reach 1.0%** (`tag_ceiling.py`; each dev3k photo's own YFCC title + tags, used only as a measurement, searched in the YFCC FTS copy
+    with the photo and its photographer excluded; text_search's 25 km clusters, one weight per Flickr user; right = top cluster < 25 km for
+    some query; "pick" = the heaviest top cluster with >= half its query's weight, no truth). Words split by GeoNames towns >= 1,000 people
+    and countries. Retrieval misses (767): content words alone top 19.7 / pick 12.5%, all words alone 39.0 / 26.9%, 4B queries 1.0 / 0.8%.
+    Pipeline-right photos: 42.7 / 64.6 / 28.4%; close calls (404): 29.5 / 50.2 / 5.0%. A hand audit of 40 retrieval-miss hits: 33 are
+    proper names outside the town list (regions such as mallorca and manipur, landmarks such as epcot and selinunt, local companies such as
+    vitrasa and sbb, universities), 7 common words, several of those in the local language. So the channel works when the agent holds a
+    name, and the gap is getting a name from the pixels (the 4B reads one for 1% of misses), not search. An RL query writer over
+    descriptive words has a ~3% ceiling on misses even with oracle selection, below the 10% bar: no-go for Flickr as a descriptive search
+    engine. Flickr's role narrows to a name resolver behind recognition, where the shipped YFCC copy already does the job offline; the live
+    API adds post-2014 photos and the deployment case.

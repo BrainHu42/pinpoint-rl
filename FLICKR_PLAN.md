@@ -65,6 +65,13 @@ Evaluation follows CLAUDE.md:
 - **Steps 2-4 below are not reached.** The Flickr API's remaining uses are the narrow ones from the screen (text for landmark photos, 1 km
   refinement), or a different research goal.
 
+## Rethink: Flickr text as the agent's search engine (lesson 145, no-go)
+- Ceiling test (`tag_ceiling.py`): each dev3k photo's own Flickr title + tags searched in the YFCC copy, photographer excluded. On retrieval
+  misses the non-town words find the place for 19.7% (oracle over queries, 12.5% with a pick that doesn't use the truth). About 85% of those
+  hits are proper names (regions, landmarks, companies); descriptive words alone give about 3%. The 4B's own queries reach 1.0%.
+- Reading: text search works once a name is known; the bottleneck is recognising the name from the photo. Flickr is a name resolver, which
+  YFCC already provides offline. Descriptive query writing has no headroom here.
+
 ## Step 2 (if step 1 is go): how much more live Flickr returns than YFCC
 - ~300 close-call photos × 2 box searches (right and wrong point, ±0.5-1 km) ≈ 600 API calls, plus thumbnails.
 - Compare live photo counts per point and the same MegaLoc measures against step 1's YFCC numbers. This scales the offline lower bound to

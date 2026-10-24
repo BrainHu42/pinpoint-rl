@@ -98,7 +98,7 @@ One split, ids in `artifacts/agent/splits.json` (`agent_targets --splits`):
 - Track S (`SEARCH_PLAN.md`): `search_tree.py` (search speed, pool-derived constraint vocabulary, cached restricted searches, ceiling with luck controls, result-as-evidence and MegaLoc checks; lessons S1-S2), `text_verify.py` (text-proposed places verified by restricted search on commons26 dev; S3); outputs `artifacts/search/`.
 - Live Flickr (`FLICKR_PLAN.md`): `tools/flickr.py` (Flickr search: permanent cache `artifacts/tool_use/flickr/cache.db`, shared rate
   limiter, leak filters at replay, `harvest` / `report`; FLICKR_KEY in `.env`), `spot_audit.py` (YFCC photos at candidate points on dev3k
-  close calls; lesson 142, no-go).
+  close calls; lesson 142, no-go), `tag_ceiling.py` (photos' own tags as oracle text queries; lesson 145).
 - Probes of lessons 134-137: `density_probe.py` (denser photo database), `clue_verify.py` (fetched YFCC photos / OSV-5M per text place,
   MegaLoc and keypoints), `osv_propose.py` / `osv_refine.py` / `osv_remote.py` (OSV-5M as proposer, street action, 1 km refiner),
   `names_grpo.py` (trained named A/B judge; GRPO and exact expected reward).
