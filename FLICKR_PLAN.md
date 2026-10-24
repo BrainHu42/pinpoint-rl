@@ -50,6 +50,19 @@ Evaluation follows CLAUDE.md:
 - **No-go:** P(right > wrong) < 0.6, or no gain from new photos. Then photos at a point are closed as a Flickr use (with a note on what
   coverage would be needed), and we're left with the narrow uses (text for landmark photos, 1 km refinement) or a different research goal.
 
+**Preliminary (2026-10-24 01:40 UTC, 48.7k of 79k references fetched; heading to no-go).**
+- Best MegaLoc at the right point beats the wrong pick on only 43% of photos (truth point 40%), the same for index-only (44%) and new-only
+  (44%) references. The curve is flat in the number of references (k 5 → 50: 0.42 → 0.43).
+- The wrong pick sits in denser places (median 22 kept references vs 18 at the right point), and that tilts best-of-k toward it. Compared
+  at equal reference counts (both points ≥ k), it's still chance: k 5 / 10 / 25 → 0.48 / 0.45 / 0.46 (n 437 / 350 / 149).
+- Scores are at noise level: median best 0.06-0.10 at both points; a clean match (≥ 0.3) at 2-5% of points either way. Clean wins 2.6% vs
+  clean losses 5.0% at k 50.
+- Only where the right point has ≥ 30 references does it reach 0.56.
+- Reading: the nearest same-era photos within 1 km rarely show the query's view, even for MP16 queries, as lessons 135 and 138 found for
+  2026 queries. More of the same density doesn't change it.
+- To finish when the fetch completes: the full report, then a check on spots before closing (a 0.25 km radius, and references chosen by
+  SigLIP similarity to the query instead of distance; the latter is a look-alike and needs care).
+
 ## Step 2 (if step 1 is go): how much more live Flickr returns than YFCC
 - ~300 close-call photos × 2 box searches (right and wrong point, ±0.5-1 km) ≈ 600 API calls, plus thumbnails.
 - Compare live photo counts per point and the same MegaLoc measures against step 1's YFCC numbers. This scales the offline lower bound to
