@@ -79,6 +79,25 @@ V5 passed the bar, so PE-G stays. Each step keeps SigLIP2 and asks what PE-G add
     on PE-G embeddings of half the 10% gallery (positives by distance only, photographers split), compared with contrastive on the other half.
 - Both A and B keep every SigLIP2 component; no backbone swap is planned unless B shows PE-G retrieval makes SigLIP2's redundant.
 
+## Option: an all-PE-G system (draft for the user, 2026-10-24; not approved, nothing launched)
+**Question.** Is the frozen encoder the system's bottleneck? R17-R19: a location-trained layer on PE-G beats the same layer on SigLIP2 by
+~+5 recall and ~+3 in the head, and SigLIP2 adds ~0 once PE-G is in, yet search, reranker and head base features all still run on SigLIP2.
+Test: the same Pinpoint recipe trained from scratch on each encoder, then our pipeline on each.
+
+| # | Step | Work | GPU (est.) |
+|---|---|---|---|
+| 0 | B2: PE-G of the 4.08M index rows (running; 29% at 04:25 UTC Oct 24) | done by itself | ~25-30 h left |
+| 1 | Contrastive retriever (image + GPS towers, 256-d) from scratch on PE-G, released recipe (50k steps, batch 4096) on MP16 only | `retriever_train.py` hard-codes 1536 and fine-tune-only: make it a from-scratch trainer on any cache (the module itself takes `embed_dim`) | ~1 h |
+| 2 | Index v6 rebuild: image / GPS from the new towers, raw = PE-G int8 (1280-d) | `retrieval_index.ensure_attention_retrieval_index` reads any cache in the mp16-embed format: write B2 in that format | ~1-2 h |
+| 3 | Reranker from scratch on PE-G (`pinpoint_train`, raw dim from the checkpoint; set head; no OSV support token: worth ~0, lesson 136, and OSV-5M images aren't on disk) | the inference port insists on the OSV token: make it optional | ~2-9 h (6k-50k steps) |
+| 4 | Downstream on the new pools: extract, photo sets, hypotheses / restricted / zoom, compare features (`retrained_pipeline.sh`); clue reading unchanged | re-run, PE-G paths | ~4-6 h |
+| 5 | Answer head (+ R19's PE-G columns) and the RL policy; dev3k, then im2gps3k + yfcc4k when the user asks; commons26 as the final check | existing code | ~1 h |
+| C | **Control:** steps 1-5 with SigLIP2 under the same from-scratch recipe, so recipe and encoder aren't confounded | same code, SigLIP2 cache | ~9-18 h |
+
+Total ~3-4 days of GPU after B2 (with nightly restarts), ~2-3 days of code. Paper table: released Pinpoint, Pinpoint-from-scratch on
+SigLIP2, Pinpoint-from-scratch on PE-G, our agent on each. Still on SigLIP2 unless changed: the agent's glance (crop_look view 0),
+graph diffusion, near-duplicate labels (minor). Cheaper first look: steps 1-3 at 6k reranker steps (~1 day) before the full recipe.
+
 ## Resuming B2 after the daily restart
 The embedding checkpoints every 6,400 photos to `artifacts/retrieval/b2/` (EBS; `done.npy` marks embedded rows). After the machine is back,
 from this worktree:

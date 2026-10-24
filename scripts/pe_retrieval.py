@@ -402,7 +402,7 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
             cos = {"raw": (q_raw[:, None] * e[inv]).sum(-1).cpu().numpy(), "trained": (q_tr[:, None] * e_tr[inv]).sum(-1).cpu().numpy(),
                    "siglip2 trained": (q_sig_tr[:, None] * e_sig[inv]).sum(-1).cpu().numpy()}
             cos["trained + siglip2 trained"] = cos["trained"] + cos["siglip2 trained"]
-            out = []
+            out, lam_of = [], {}
             for kind, c in cos.items():
                 if "raw" in kind or kind.startswith("trained"):  # a candidate without PE-G: the pool mean
                     c = np.where(have, c, np.nanmean(np.where(have, c, np.nan), 1, keepdims=True))
@@ -417,10 +417,18 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
                     f25, f1 = (d[j] < 25).astype(float) - (base < 25), (d[j] < 1).astype(float) - (base < 1)
                     out.append(f"{kind} cos (fixed lambda {lam:g}): 25 km {100 * np.mean(d[j] < 25):.2f} ({100 * f25.mean():+.2f} +- "
                                f"{100 * f25.std() / np.sqrt(len(idx)):.2f})  1 km {100 * np.mean(d[j] < 1):.2f} ({100 * f1.mean():+.2f})")
+                lam_of[kind] = chosen
                 diff25, diff1 = (pick < 25).astype(float) - (base < 25), (pick < 1).astype(float) - (base < 1)
                 out.append(f"{kind} cos (lambda {chosen[0]:g}/{chosen[1]:g}): 25 km {100 * np.mean(pick < 25):.2f} ({100 * diff25.mean():+.2f} +- "
                            f"{100 * diff25.std() / np.sqrt(len(idx)):.2f})  1 km {100 * np.mean(pick < 1):.2f} ({100 * diff1.mean():+.2f})")
             print(f"    combo {label}: PE-G for {100 * have[v].mean():.1f}% of candidates; " + ";  ".join(out), flush=True)
+            if label == "today's pool":  # for the fix analysis (scripts/pe_fixes.py): what the trained similarity changes, and why
+                feats = feats0 if rows.shape == rows0.shape else None
+                np.savez(OUT / f"combo_dump_{QSET}.npz", rows=rows, score=s, base_km=base, truth=truth, fold=fold,
+                         latlon=np.asarray(rr.latlon[np.where(v, rows, 0)]), cos_raw=cos["raw"], cos_trained=cos["trained"],
+                         cos_siglip2_trained=cos["siglip2 trained"], lam_trained=np.asarray(lam_of["trained"]),
+                         sim_contrastive=feats[..., 0], sim_siglip2=feats[..., 1], sim_gps=feats[..., 2])
+                print(f"    -> {OUT / f'combo_dump_{QSET}.npz'}", flush=True)
 
         combos("today's pool", rows0, s_base)
     grow = S["g"]["rows"][S["use"]]
