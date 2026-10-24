@@ -42,6 +42,7 @@ WORKERS = 4  # concurrent calls while harvesting (each takes ~5 s)
 PER_HOUR = 3000  # below Flickr's 3,600 per key, leaving room for interactive use
 PER_PAGE = 250  # the most a geo search returns per call (per_page=500 still gives 250)
 EXTRAS = "geo,date_upload,date_taken,owner_name,path_alias,tags,url_m"
+YFCC_END = 1420070400  # 2015-01-01 UTC: YFCC100M holds uploads to 2014
 MIN_ACCURACY = 11  # as text_search: below city level a photo can't place a 25 km cluster
 PHOTO_SETS, AGENT = Path("artifacts/photo_sets"), Path("artifacts/agent")
 FLICKR_URL = re.compile(r"flickr\.com/photos/([^/]+)/(\d+)")
@@ -309,16 +310,23 @@ def report(tag: str) -> None:
         g, qs = guard[e["image_id"]], queries.get(e["image_id"], [])
         mp16 = "benchmark" not in e
         exclude = (next(iter(g.photo_ids)), next(iter(g.owners), "")) if mp16 else None  # YFCC is <= 2014: no leak for 2026 photos
-        stats = {}
+        stats, extra = {}, [False, False]  # Flickr: any match < 25 km uploaded after YFCC (2015 on); any before the guard
         for name in ("flickr", "yfcc"):
             results, n_any, best = [], False, None
             for q in qs:
                 if name == "flickr":
                     try:
-                        found = live.matches(q, guard=g)
+                        kept = [p for p in live.search(q, guard=g).photos if p.accuracy >= MIN_ACCURACY]
+                        everything = [p for p in live.search(q).photos if p.accuracy >= MIN_ACCURACY]
                     except CacheMiss:
                         misses += 1
                         continue
+                    near = lambda ps: haversine_km(truth[0], truth[1], np.asarray([p.lat for p in ps]), np.asarray([p.lon for p in ps])) < 25  # noqa: E731
+                    if kept:
+                        extra[0] = extra[0] or bool((near(kept) & (np.asarray([p.uploaded for p in kept]) >= YFCC_END)).any())
+                    if everything:
+                        extra[1] = extra[1] or bool(near(everything).any())
+                    found = [(p.photo_id, p.owner, p.lat, p.lon, p.accuracy) for p in kept]
                 else:
                     found = replica.matches(q, exclude=exclude)[2]
                 if found:
@@ -329,7 +337,7 @@ def report(tag: str) -> None:
             best = _pick(results)
             pick = best is not None and float(haversine_km(truth[0], truth[1], np.asarray([best.lat]), np.asarray([best.lon]))[0]) < 25
             stats[name] = (n_any, pick, best is not None)
-        rows.append((bool(qs), *stats["flickr"], *stats["yfcc"]))
+        rows.append((bool(qs), *stats["flickr"], *stats["yfcc"], *extra))
     r = np.asarray(rows, bool)
     lines = [f"Flickr live vs YFCC replica, {tag}: {len(photos)} photos, {int(r[:, 0].sum())} with 4B queries; cache misses {misses}",
              "  % of photos           any match < 25 km   own pick < 25 km   has a pick"]
@@ -341,6 +349,8 @@ def report(tag: str) -> None:
         for name, c in (("Flickr live", 1), ("YFCC replica", 4)):
             lines.append(f"    {name:<20} {100 * r[m, c].mean():17.1f} {100 * r[m, c + 1].mean():18.1f} {100 * r[m, c + 2].mean():12.1f}")
         lines.append(f"    {'either, any match':<20} {100 * (r[m, 1] | r[m, 4]).mean():17.1f}")
+        lines.append(f"    {'Flickr, from 2015 on':<20} {100 * r[m, 7].mean():17.1f}  (any match uploaded after YFCC's last year)")
+        lines.append(f"    {'Flickr, no guard':<20} {100 * r[m, 8].mean():17.1f}  (what the leak guard removes, for scale)")
         lines.append(f"    {'Flickr only, pick':<20} {100 * (r[m, 2] & ~r[m, 5]).mean():17.1f}  (live pick right, replica pick not)")
     text = "\n".join(lines)
     print(text)
