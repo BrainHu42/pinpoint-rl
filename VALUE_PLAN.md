@@ -105,6 +105,41 @@ read / re-read box i / escalate box i in the network, judged at matched reader c
 
 **Then**: the primary table (original protocol, 1 / 25 / 200 / 750 / 2500 km) and commons26 test, only when the user asks.
 
+## Exploration: one model per distance regime (user, 2026-10-24)
+Every trained part of the system serves one scale: Pinpoint's retriever and reranker learned "same place within 25 km", the answer head
+(25 + 0.5 x 1 km). The questions differ by scale: 1 km is "same spot" (viewpoint, landmark), 25 km "which town", 200-750 km "which region"
+(architecture, vegetation, language, road furniture), 2500 km "which climate / continent". The evidence differs too, and so may the data:
+OSV-5M failed as 25 km candidates (domain gap) but street views are good at telling countries apart. V8 shared one encoder across five
+P(< r) outputs and moved only the answer step. Open question: do models trained per scale, on that scale's evidence and data, combined by
+the calibrated value network (expected score under the chosen weights), beat one model at every scale? Experts trained for different scales
+are also partly independent of each other, which ties this to probe A (independence predicts value).
+
+Where scale already showed up: true region restriction lifts Pinpoint 33.4 -> 61.3% < 25 km, true country +7.8 (lesson 64); nested country /
+region / place proposals best-of-16 +6.1 but one sample -19.6 (83); V9's boxes around region-probe cells hold right places (+2.6 net of
+nearby luck on dev3k) yet were picked by Pinpoint's 25 km score, a fine-scale judge on a coarse question. Region knowledge didn't help where
+retrieval fails at 25 km (52); nobody checked it at 200 / 750 km.
+
+Ideas, cheapest first (each a probe of the question, not a system change):
+- **R1. Regime mismatch in V9 (minutes, cached).** Pick the box by a coarse judge (the probe's cell probability, probe / pool mass, V8's
+  P(< 750 km) for the hedge) instead of the restricted top-1's score, then answer with the box's restricted top-1. Tests whether "can't
+  verify" was the wrong-scale judge. Compare to random and to the area answer, net of nearby-truth luck.
+- **R2. Shared vs separate answer models (~45 min per run).** Train V8's network with one radius at a time (r = 1 / 25 / 750 km) and score
+  each on its own column against the shared five-output network. Separate wins at its own r -> sharing costs; shared wins -> scales help each
+  other (likely at 25 km, via regional support, V9's coarse-weight tie-break).
+- **R3. Past "no" signals judged at coarse scales (cached features).** Text cues vs country tables (`cue_check`), the 4B's country guess
+  (right on 53%), clue-judge outputs, knowledge-SFT region answers, OSV-5M neighbours: each closed at 25 km. Add them as columns to the
+  multi-scale network's hedges / areas and measure 200 / 750 / 2500 km only. A signal that is useless at 25 km may be what a region expert needs.
+- **R4. A region expert from more data (GPU hours; coordinate with track R).** The PE-G region probe trained on MP16 + OSV-5M (5M street
+  views, country-diverse), or a PE-G projection trained with positives < 750 km (track R's R17 recipe at a coarse radius). Judge: probe alone
+  at 750 / 2500 km and as hedges in V8. Then the coarse-to-fine cascade: region expert -> Pinpoint restricted to its top regions (lesson 64's
+  +27.9 if the region is right) -> the 25 km head picks within.
+- **R5. A 1 km expert.** Same-spot evidence (MegaLoc, keypoint geometry on the area's photos, 12 per area cached) trained only to separate
+  < 1 km from 1-25 km within the right area; V8 loses 1 km to coarse weights, a separate expert could give it back.
+- **R6. Per-scale tool values (cached, from V8).** Which tool's info value rises with which weight: if zoom pays at 1 km, PE-G at 25 km and
+  the probe at 750 km, the controller has a real decision (finding 6 of PAPER_NOTES: tools need outcome- or goal-dependent value).
+Paper angle: "scale-specific experts, arbitrated by a calibrated value network under the scoring rule" (mixture of experts by decision theory).
+Start with R1 and R2 (cached / short); R4 needs the user's go-ahead (GPU hours beside track R).
+
 ## How every step is judged
 - Costs from measured latency, the same units for every action; report return - lambda x units and accuracy vs mean cost.
 - Baselines at matched budget: fixed recipes, simple heuristic gates, the open-loop control, and the previous step's system. A gain from more
