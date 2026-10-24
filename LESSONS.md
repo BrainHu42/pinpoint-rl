@@ -273,3 +273,17 @@ V14. **Regime ideas R3 + R4: signals closed at 25 km stay weak at coarse scales,
     3.0 [1.4] +1.6, random 3.8 [1.5] +2.3. Ceiling if switched only on misses: +1.9 pts of all photos (V12: +1.4). Reading for the regime
     plan: per-scale experts built from the same frozen features (and the cached text / VLM / street-view signals) add a little; the coarse
     stage needs evidence a frozen embedding lacks (a fine-tuned or geo-pretrained region model, or knowledge beyond our open VLMs, finding 5).
+V15. **Region expert screen, step 1: open geo-pretrained models zero-shot are weaker region judges than our trained PE-G expert on the
+    photos retrieval misses; bar not met** (`scripts/geo_zeroshot.py`; dev3k; GPU capped at 6 GB per process beside track R's B2 embed,
+    StreetCLIP peak 1.5 GB). Right within 25 / 200 / 750 / 2500 km, all photos | area-oracle misses (38.0%), and rescue = right within 750 km
+    on misses where the B2 PE-G expert (V14) is > 750 km off: PE-G expert 30.9 / 48.6 / 69.4 / 83.5 | 6.8 / 22.6 / 50.1 / 72.1; region probe
+    26.2 / 46.3 / 68.0 / 82.9 | ... / 47.9 / 70.4, rescue 17.9; StreetCLIP (CLIP ViT-L/14-336 trained on street views), zero-shot over 3,865
+    GeoNames first-level regions ("A Street View photo in {region}, {country}.") 5.9 / 22.8 / 51.7 / 69.9 | 1.1 / 9.9 / 32.8 / 55.1, rescue
+    13.0 (region inside its top country: 46.4 at 750 km); country right 41.1 | 23.6% vs the PE-G expert's top cell 70.3 | 52.6%; GeoCLIP
+    top-1 (trained on MP16, which dev3k is drawn from: an upper bound) 22.4 / 36.1 / 56.5 / 74.1 | 2.6 / 12.8 / 37.2 / 61.3, rescue 17.2.
+    Pre-declared bar (misses within 750 km >= 55.1, or rescue >= 25): not met by either. Street-view pretraining does not transfer to Flickr
+    photos zero-shot, and GeoCLIP's MP16 training does not beat a readout trained on 1.2M index photos. The 2nd-best rescuer is the old
+    probe (same backbone, different cells and data): disagreement between experts is mostly noise, not a second view. With V14 this says the
+    ceiling (about half of retrieval's misses never within 750 km) is not specific to frozen PE-G features; lesson 110's misses are largely
+    photos without geography in the pixels (people, pets, macros, sky, interiors). Not run: training readouts on StreetCLIP / GeoCLIP
+    embeddings of index photos (step 2, gated on step 1), fine-tuning PE-G on region labels.

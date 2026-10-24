@@ -147,6 +147,8 @@ R3 + R4 done (V14): cached text / 4B-country / OSV signals are weaker region jud
 complementary; a 12x-data PE-G region expert gains +1.4-2 at 750 km (saturates near 70% within 750 km for every data size, cell count and
 backbone); boxes around its cells raise net place hits on retrieval misses to +5.0% (ceiling +1.9 pts). The coarse stage is limited by what
 frozen embeddings encode about region.
+Region expert screen (V15): StreetCLIP zero-shot (32.8% of misses within 750 km) and GeoCLIP (37.2%, MP16-trained upper bound) are
+below the PE-G expert (50.1%); the ceiling is not specific to frozen PE-G features. Regime direction: closed for now (R1-R4, V12-V15).
 
 ## How every step is judged
 - Costs from measured latency, the same units for every action; report return - lambda x units and accuracy vs mean cost.
