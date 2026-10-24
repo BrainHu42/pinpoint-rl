@@ -221,3 +221,18 @@ V11. **Probe A: an evidence source's independence from the answer head does not 
     projection trained with dev3k photographers held out (`retrieval-track/scripts/pe_retrieval.py trained`); track R's R19 already found
     pe_gtr +1.05 over the best head with the V5 columns (49.82 -> 50.87), so this confirms R19 rather than being new. Next: probe A's question needs
     more sources or a within-source design (one backbone, projections trained at different radii: VALUE_PLAN regime idea R4).
+V12. **Regime idea R1: lesson V9's boxes picked by a coarse judge instead of Pinpoint's 25 km score: on area-oracle misses the region probe's
+    mass picks a box whose top-1 is < 25 km on 6.0% (nearby-truth luck 2.3%) vs 2.0% [1.9] for Pinpoint's score and 3.3% [1.4] at random;
+    judges built from retrieval (Pinpoint's score, the pool's mass) are at or below luck there** (`hedge_search.py regime`; dev3k; V9's cached
+    restricted searches around the 7 hedge points; region = truth < r km from the chosen box's centre, place = its restricted top-1 < 25 km;
+    luck = the same top-1 against another photo's truth 100-750 km away). +-50 km, area-oracle misses (38.0% of dev3k; some box is region-right
+    on 22.3%, place-right on 14.6%): region / place [luck] / place given region: Pinpoint top-1 score 5.3 / 2.0 [1.9] / 36.7%; pool mass within
+    r 3.9 / 0.6 [2.1] / 13.6%; random box 5.3 / 3.3 [1.4] / 55.7%; top probe cell 7.8 / 5.2 [2.0] / 64.0%; probe mass within r 9.4 / 6.0 [2.3]
+    / 61.7%. +-150 km: the same order, smaller (probe mass 19.0 / 5.0 [2.3], Pinpoint 14.1 / 2.8 [2.3]). Over all photos Pinpoint's and the
+    pool's judges look best (39.7 / 40.3% region) because they pick where retrieval already succeeds. Two failures of V9's judge: it picks the
+    wrong region (no better than random on misses), and when its box is region-right, the high-scoring top-1 is a look-alike elsewhere in the box
+    (place given region 37% vs 62% for the probe's pick). A coarse, retrieval-independent model (the probe is also the most independent source
+    in V11) is the right judge of a region question; retrieval then finds the place inside the right region about 60% of the time (lesson 64's
+    restriction effect). Size: probe-mass net of luck +3.7% of misses = +1.4 pts of all photos if one switched only on misses (a ceiling; a
+    real switch also breaks hits). The cascade "coarse expert picks the region -> retrieval inside -> fine judge" is the R4 direction with a
+    working first stage; the coarse expert's region accuracy (9.4% of misses) is now the limit, so a stronger region expert is where it pays.

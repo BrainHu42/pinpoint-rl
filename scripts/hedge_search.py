@@ -180,12 +180,58 @@ def report(seed: int = 7) -> None:
                   f"(any search's top-1: {np.mean(right[:, :, r_i].any(1)[~area]):.1%})", flush=True)
 
 
+def regime(tag: str = "dev3k") -> None:
+    """VALUE_PLAN regime idea R1: lesson V9 picked between boxes with the restricted top-1's score, a 25 km judge on a region question. Pick
+    the box with coarse judges instead (the region probe's probability within the box radius, the pool's softmax mass there, the top probe
+    cell) and split success into region (truth inside the chosen box: centre < r km) and place (its restricted top-1 < 25 km given that)."""
+
+    z = np.load(OUT / f"hedge_search_{tag}.npz")
+    photos = _photos(tag)
+    truth = np.asarray([e["truth"] for e in photos], np.float64)
+    n, K = len(truth), len(POINTS)
+    pts, ll, sc = z["points"].astype(np.float64), z["latlon"].astype(np.float64), z["scores"]
+    pools = np.load(Path("artifacts/pinpoint_reference") / f"{photos[0]['pools']}.npz")
+    idx = np.asarray([e["index"] for e in photos])
+    pll, psc, pv = pools["latlon"][idx].astype(np.float64), pools["scores"][idx], pools["rows"][idx] >= 0
+    w = np.exp(np.where(pv, psc - np.where(pv, psc, -np.inf).max(1, keepdims=True), -np.inf))
+    w = np.where(pv, w / w.sum(1, keepdims=True), 0.0)
+    prob = np.exp(np.load(OUT / f"probe_logp_{tag}.npy").astype(np.float64))
+    cent = np.load("artifacts/retrieval/probe/cells.npy").astype(np.float64)
+    d_cell = 6371.0 * np.arccos(np.clip(np.einsum("nkd,cd->nkc", _xyz(pts), _xyz(cent)), -1, 1))  # [n, K, cells]
+    d_pool = 6371.0 * np.arccos(np.clip(np.einsum("nkd,nmd->nkm", _xyz(pts), _xyz(pll)), -1, 1))  # [n, K, pool]
+    area = _area_oracle(tag)
+    dt = _km(truth[:, None, :], truth[None, :, :])  # nearby-truth luck as report(): another photo 100-750 km away
+    rng = np.random.default_rng(1)
+    near = np.asarray([rng.choice(c) if len(c := np.flatnonzero((dt[i] > 100) & (dt[i] < 750))) else i for i in range(n)])
+    rng = np.random.default_rng(0)
+    print(f"\n {tag}: pick one of the {K} boxes per photo; region = truth < r km from the box centre; place = the box's restricted top-1 < 25 km")
+    for r_i, r in enumerate(RADII):
+        s1 = np.where(np.isfinite(sc[:, :, r_i, 0]), sc[:, :, r_i, 0], -np.inf)
+        judges = {"Pinpoint top-1 score (V9)": s1,
+                  "probe mass within r": np.einsum("nkc,nc->nk", (d_cell < r).astype(np.float64), prob),
+                  "pool mass within r": np.einsum("nkm,nm->nk", (d_pool < r).astype(np.float64), w),
+                  "top probe cell": np.tile(-np.arange(K, dtype=np.float64), (n, 1)),
+                  "random box": rng.random((n, K))}
+        reg = _km(truth[:, None, :], pts) < r  # [n, K]
+        place = _km(truth[:, None, :], ll[:, :, r_i, 0]) < 25  # [n, K]
+        lucky = _km(truth[near][:, None, :], ll[:, :, r_i, 0]) < 25
+        print(f"   box +-{r:.0f} km (any box: region {reg.any(1).mean():.1%}, place {place.any(1).mean():.1%}; on area-oracle misses "
+              f"{reg.any(1)[~area].mean():.1%} / {place.any(1)[~area].mean():.1%})")
+        for name, s in judges.items():
+            k = s.argmax(1)
+            rr, pp = reg[np.arange(n), k], place[np.arange(n), k]
+            m = ~area
+            print(f"     {name:28s} all: region {rr.mean():6.1%}  place {pp.mean():6.1%}  place | region {pp[rr].mean():6.1%}   "
+                  f"area-oracle misses: region {rr[m].mean():6.1%}  place {pp[m].mean():6.1%} [nearby luck {lucky[np.arange(n), k][m].mean():5.1%}]  "
+                  f"place | region {pp[m & rr].mean():6.1%}", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("node", choices=("run", "report"))
+    ap.add_argument("node", choices=("run", "report", "regime"))
     ap.add_argument("--tag", default="dev3k", choices=tuple(SETS))
     args = ap.parse_args()
-    run(args.tag) if args.node == "run" else report()
+    run(args.tag) if args.node == "run" else report() if args.node == "report" else regime(args.tag)
 
 
 if __name__ == "__main__":
