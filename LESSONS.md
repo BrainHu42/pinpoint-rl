@@ -202,3 +202,21 @@ V10. **V5's PE-G columns in the multi-scale value network: +2.4 pts < 25 km on d
     looks like one with a right area. Ranking among areas is unaffected (+2.4 at 25 km); calibration, which the hedges need, is not. Fix: the
     columns for the other ~16k train photos (PE-G ~6 h on the L40S, plus SigLIP2 and the probe), or a cheaper test first (train the multi
     network only on the 19,321 photos and check whether dev calibration recovers, which isolates the cause but biases toward mixed photos).
+V11. **Probe A: an evidence source's independence from the answer head does not predict what it adds beyond its plain strength; the
+    largest single source is track R's trained PE-G projection (+2.70 pts < 25 km alone vs raw PE-G +0.79)** (`scripts/independence_probe.py`;
+    dev3k; the pipeline's answer head, `--one-km 0.5`, every tool revealed, 47.20%; each source's 4 per-area columns stacked on the head
+    logit with second_model_gate.clogit, 2-fold x 3 seeds). Per source: strength (AUC right vs wrong areas, all photos), independence (1 -
+    within-photo Spearman with the head's area logits), complement (AUC on the 14.8% of photos where the head is wrong and a right area exists),
+    pick (its top area right there), gain (SE): MegaLoc 0.685 / 0.512 / 0.528 / 20.8% / +0.04 (0.11; already inside the head, so a control,
+    not a data point); SigLIP2 own embedding (the retriever's model) 0.670 / 0.508 / 0.534 / 24.6% / -0.03 (0.11); PE-G 0.711 / 0.535 / 0.571
+    / 30.9% / +0.79 (0.32); PE-G + track R's trained projection (`pe_gtr`) 0.763 / 0.591 / 0.632 / 44.0% / +2.70 (0.41); PE-L 0.684 / 0.546 /
+    0.549 / 28.2% / +0.23; DINOv3-L 0.682 / 0.567 / 0.531 / 24.8% / +0.02; DINOv3-7B 0.689 / 0.562 / 0.548 / 31.2% / +0.23; region probe
+    0.706 / 0.826 / 0.638 / 37.7% / +1.11 (0.35). Across the 8, Spearman of gain with strength +0.95, complement +0.86, pick +0.90,
+    independence +0.67. The image models are all about equally correlated with the head (independence 0.51-0.59); what separates them is how
+    well they rank areas at all, and strength and complement move together, so 8 sources can't tell them apart. The region probe is the
+    exception: by far the most independent (0.83), a coarse-scale model, and second in gain. The thesis "a verifier is worth its independence"
+    is not supported in this form; "a verifier is worth its accuracy on the proposer's mistakes" is, but that is close to a tautology.
+    The new fact: training a projection for geolocation turns PE-G from +0.79 into +2.70, as much as V5's three column sets together
+    (+2.66), from one source; a trained head on an independent backbone beats raw embeddings of bigger models (DINOv3-7B +0.23). Check before
+    relying on it: that track R's projection never trained on dev3k photos or their areas' gallery photos. Next: probe A's question needs
+    more sources or a within-source design (one backbone, projections trained at different radii: VALUE_PLAN regime idea R4).
