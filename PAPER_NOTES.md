@@ -3,7 +3,8 @@
 What we would put in a paper, and the findings behind it. One place for the claims, the numbers that support them, the negative results
 worth reporting, and what is still missing. Sources: lesson numbers (`[N]` = `docs/archive/LESSONS_1-137.md#lN`; V / S lessons in
 `LESSONS.md`; R lessons on branch `worktree-retrieval-track`; 140-141 on `worktree-error-viewer`). All numbers are dev (dev3k = MP16 photos
-Pinpoint never trained on; commons26 dev = fresh 2026 Wikimedia Commons photos) unless marked test. Keep this file short; update it when a
+Pinpoint never trained on; commons26 dev = fresh 2026 Wikimedia Commons photos, an auxiliary set: im2gps3k + yfcc4k are the main test sets and dev3k decides) unless
+marked test. Keep this file short; update it when a
 result changes a claim.
 
 ## Working thesis
@@ -18,7 +19,7 @@ when it is not. It sits on top of a strong retrieval system (Pinpoint) and impro
 |---|---|---|---|
 | C1 | Structure over retrieval (agreement areas, restricted search, retrained reranker, an answer head over areas) beats the released Pinpoint at 25 km | **Test**, original protocol: 46.4 -> 51.2 % < 25 km [109]; commons26 test 16.8 -> 24.2 [113] | Done |
 | C2 | One value network over tools and answers matches the two-model system (answer head + REINFORCE) | dev3k 47.40 / 30.56 vs 47.23 / 30.67, commons26 dev 25.08 / 7.68 vs 24.97 / 7.68 (% < 25 / 1 km); cost curve level within noise (V6) | Done |
-| C3 | Calibrated multi-scale answers with hedges move the coarse columns, which no prior stage moved | Table weights: +3.6 / +4.0 at 750 km, +2.9 / +4.7 at 200 km, 25 km -0.08 / +0.41, 1 km -2.0 / -0.7 (dev3k / commons26 dev; V8) | Dev only |
+| C3 | Calibrated multi-scale answers with hedges move the coarse columns, which no prior stage moved | Table weights: +3.6 / +4.0 at 750 km, +2.9 / +4.7 at 200 km, 25 km -0.08 / +0.41, 1 km -2.0 / -0.7 (dev3k / commons26 dev; V8). Weights are an inference-time knob: coarse weight 0.25 gives dev3k -1.2 / +1.06 / +2.8 / +3.2 at 1 / 25 / 200 / 750 km (V9, chosen in-sample) | Dev only |
 | C4 | Method: with tool costs ~1% of the reward, fitted Q-iteration's overestimation swamps the costs; paired Monte Carlo targets fix it | Policy spend at the highest cost 6.7 units (plain FQI) vs 0.6 REINFORCE; with paired MC targets spend falls with lambda like REINFORCE's (V6) | Done, small |
 | C5 | A second image model per area (PE-Core-G) adds to the answer head where SigLIP2 and MegaLoc share blind spots | +2.66 dev3k / +2.70 commons26 dev at 25 km with PE-G + SigLIP2 cosine + PE-G region probe columns (V5) | Done, not yet in the value network's tables |
 
@@ -74,7 +75,8 @@ areas and text places, commons26 dev +1.8-2.2 (140, 141).
    ties "take everything"; with per-model recognise actions and realistic latency costs it only ties a simple gate on dev3k (<= +0.3 at matched
    cost) and loses 1.4-2.2 pts to it on commons26 dev (a zoom habit learned on MP16); choosing all actions upfront does as well. The claim "the
    controller adds something" is not yet supported; it needs sequential tools (re-reads, candidate creation).
-7. **Search results don't verify search proposals** (S1-S3): constrained searches find right regions beyond the area oracle (~+6 pts net of
+7. **Search results don't verify search proposals** (S1-S3, V9; boxes around the region probe's cells add +2.6 pts of right places on
+   dev3k net of a nearby-truth control, but the highest-scoring box is right less often than a random one): constrained searches find right regions beyond the area oracle (~+6 pts net of
    luck) but their results can't tell them apart from look-alikes; text-proposed places verify much better (AUC 0.94) but are blind where the
    gallery is sparse.
 8. **Better retrieval needs a reranker that can use it** (R17, reported by the retrieval-track session 2026-10-23, not yet in its pushed
@@ -106,7 +108,8 @@ areas and text places, commons26 dev +1.8-2.2 (140, 141).
 ## Missing before a paper
 - **The primary table on test with C3 and C5** (user's go-ahead needed): the multi-scale network with V5 columns, original protocol, all three
   benchmarks, against the released Pinpoint and the current pipeline.
-- **The 1 km trade-off**: a weight sweep (1 km weight 0.5 -> 1 -> 2) to show how much 1 km comes back and what coarse gain it costs.
+- **The 1 km trade-off** (V9 swept it): 1 km weight 3 brings 1 km to -0.4 at about a third of the 750 km gain; the weight setting still
+  has to be fixed on train CV, not dev3k.
 - **Calibration on fresh photos**: Commons training states (the combined-head session's `commons_train` pool) for commons26.
 - **Gemini, column by column**: large VLMs tend to be strong at country / region scale, exactly where C3 gains; our Gemini numbers per column
   are needed (OpenRouter credits ran out 2026-09-29: check which Gemini results are stored before planning new calls).

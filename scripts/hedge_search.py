@@ -121,6 +121,8 @@ def _auc(s, y):
 
 def report(seed: int = 7) -> None:
     for tag in SETS:
+        if not (OUT / f"hedge_search_{tag}.npz").exists():
+            continue
         z = np.load(OUT / f"hedge_search_{tag}.npz")
         photos = _photos(tag)
         truth = np.asarray([e["truth"] for e in photos], np.float64)
@@ -150,9 +152,26 @@ def report(seed: int = 7) -> None:
                 print(f"   box +-{r:3.0f} km, {name:11s}  top-1 < 25 km: {cells[0]}   top-5 < 25 km: {cells[1]}   top-1 < 1 km: {cells[2]}   "
                       f"(on unsure photos {hu:.2f})")
         print(f"   best top-1 < 25 km net of luck: {best_net:+.2f} pts (bar +3.00: {'passed' if best_net >= 3 else 'not met'})")
+        # stricter luck: another photo whose truth is 100-750 km from this one's (dense-region luck); photos without one are skipped
+        dt = _km(truth[:, None, :], truth[None, :, :])
+        rng = np.random.default_rng(1)
+        near = np.asarray([rng.choice(c) if len(c := np.flatnonzero((dt[i] > 100) & (dt[i] < 750))) else -1 for i in range(n)])
+        has = near >= 0
+        d_near = np.where(ok, _km(truth[np.maximum(near, 0)][:, None, None, None, :], ll), np.inf)
+        for r_i, r in enumerate(RADII):
+            hit = (d_true[:, :, r_i, :1] < 25).any((1, 2)) & ~area & has
+            luck = (d_near[:, :, r_i, :1] < 25).any((1, 2)) & ~area & has
+            print(f"   box +-{r:3.0f} km, all 7, top-1 < 25 km, photos with a neighbour 100-750 km away ({has.mean():.0%}): {100 * hit.mean():.2f} "
+                  f"[nearby-truth luck {100 * luck.mean():.2f}] net {100 * (hit.mean() - luck.mean()):+.2f} pts of all photos")
         right = d_true[..., 0] < 25  # [n, K, R] the restricted top-1
         s1 = sc[..., 0]
         valid = np.isfinite(s1)
+        for r_i, r in enumerate(RADII):  # within a photo: does the best score pick the right search more often than a random search would?
+            m = ~area & right[:, :, r_i].any(1) & (~right[:, :, r_i] & valid[:, :, r_i]).any(1)
+            pick = np.where(valid[:, :, r_i], s1[:, :, r_i], -np.inf).argmax(1)
+            chance = (right[:, :, r_i] & valid[:, :, r_i]).sum(1) / valid[:, :, r_i].sum(1).clip(1)
+            print(f"   box +-{r:3.0f} km, area-oracle misses with right and wrong searches ({100 * m.mean():.2f} pts): best score picks a right one "
+                  f"{np.mean(right[np.arange(n), pick, r_i][m]):.1%} vs random {np.mean(chance[m]):.1%}", flush=True)
         for r_i, r in enumerate(RADII):
             v = valid[:, :, r_i]
             print(f"   box +-{r:3.0f} km: AUC of the restricted top-1's score, right vs wrong searches {_auc(s1[:, :, r_i][v], right[:, :, r_i][v]):.3f}; "

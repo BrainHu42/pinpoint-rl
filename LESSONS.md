@@ -165,3 +165,24 @@ V8. **Multi-scale answers in the value network: with hedge answers and the table
     -0.53 / -0.07. The price is 1 km (-2.0 / -0.7; weight 0.5 in W_TABLE); weights are an inference-time choice. Calibration of the W_TABLE
     answer's P(< r): dev3k mean predicted vs observed within 0.03-0.04 (ECE 0.03-0.04) at every r; commons26 dev overconfident (ECE 0.06-0.13;
     25 km 0.38 vs 0.25), trained on MP16 only. Not yet: test set (original protocol, on request), Commons training states, other weightings.
+V9. **Step 4 (search boxes around the hedge answers) creates right candidates but Pinpoint's scores can't pick them: dev3k +2.6 net of
+    nearby-truth luck (bar 3, not met; commons26 dev, auxiliary, +3.5); the best-scoring box is right less often than a random box. Weight
+    sweep: small coarse weights also lift 25 km on dev3k (+1.06), 1 km comes back with its weight** (`scripts/hedge_search.py run / report`;
+    `value_agent --multi`, 3 seeds; V8's answers). Search: Pinpoint (setft_own) restricted to +-50 / +-150 km boxes around each photo's 7 hedge
+    points (probe top 5 cells, probe-mass and pool-mass points), top 16 kept; new right = restricted top-1 < 25 km on photos where no area
+    answer is < 25 km, % of all photos. dev3k, +-50 km: top 3 cells 4.10 [luck 0.10], all 7 5.57 [0.17] -> +5.40 vs another photo's truth,
+    but vs a photo 100-750 km away (nearby-truth luck 2.93) +2.57; +-150 km +2.43. commons26 dev: all 7 6.76 [0.51] -> +6.24, nearby-truth
+    +3.48 (+-50) / +1.02 (+-150). A box near the truth's region finds a match < 25 km about half the time for any photo there: half of the
+    plain-luck gain is regional density, not the photo. Picking: on area-oracle misses with right and wrong boxes, the highest restricted
+    top-1 score picks a right box 13.8% vs 18.2% at random (dev3k +-50; +-150 19.9 vs 22.8; commons26 dev 13.6 vs 17.0, 13.3 vs 20.7); the
+    best-scoring box's top-1 is < 25 km on 2.0% of area-oracle misses vs 14.6% for any box (commons26 dev 1.5 vs 11.3). The score AUC 0.85-0.92
+    is between photos (easy photos score high everywhere), not between boxes. Same failure as S1-S2: retrieval scores rank look-alikes as high
+    as the right place. Step 4 with Pinpoint as its own verifier stops here; it would need an independent picker (PE-G columns on the
+    restricted candidates). Weight sweep (answer = argmax w1 P(< 1) + P(< 25) + wc sum_{200, 750, 2500} P(< r), same trained network,
+    everything revealed; V8 reproduces: W_TABLE 28.49 / 47.24 / 60.89 / 76.23 / 86.86 vs 28.44 / 47.30 / 60.97 / 76.23 / 86.99), vs W_OLD
+    (30.49 / 47.38 / 58.11 / 72.47 / 84.28), % < 1 / 25 / 200 / 750 / 2500 km, dev3k: w1 0.5 wc 0.25 -1.17 / +1.06 / +2.82 / +3.22 / +2.18;
+    wc 0.5 -1.33 / +0.83 / +3.11 / +3.65; w1 1 wc 0.25 -0.83 / +0.95 / +2.53 / +2.95; w1 3 wc 0.25 -0.38 / +0.74 / +1.82 / +2.22; wc 1 (table)
+    -2.00 / -0.13 / +2.78 / +3.77. commons26 dev: 25 km +0.07 to +0.51 at every setting, 750 km +2.3 to +4.0, 1 km -0.3 to -0.8. A little
+    coarse weight is a tie-breaker that moves 25 km hits too (areas with regional support), the gain peaks at wc 0.25 and goes at wc 1; picked
+    among 12 settings on the same photos, so +1.06 is optimistic by a few tenths, and commons26 dev does not repeat it at 25 km. 1 km comes back
+    with w1 (3: -0.4) at about a third of the 750 km gain. Next: wc below 0.25 and the setting fixed on train CV, then the test table on request.

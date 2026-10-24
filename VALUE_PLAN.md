@@ -43,6 +43,10 @@ track go in `LESSONS.md` as V6, V7, ... The 2026-10-21 version of this plan (rea
 - Step 3b done (lesson V8): P(< r) outputs + hedge answers; under the table's weights +3.6 / +4.0 at 750 km, +2.9 / +4.7 at 200 km
   (dev3k / commons26 dev), 25 km -0.08 / +0.41, 1 km -2.0 / -0.7; bars met. Calibrated on dev3k, overconfident on commons26 dev.
 
+- Step 4 stopped (lesson V9): Pinpoint boxes around the hedge answers add right candidates (dev3k +2.6 net of nearby-truth luck, bar
+  3; commons26 dev, auxiliary, +3.5), but the boxes' own scores pick a right box less often than random; needs an independent picker
+  (PE-G columns on restricted candidates). Weight sweep: wc 0.25 lifts dev3k 25 km +1.06 with +3.2 at 750 km, 1 km -1.2; fix it on train CV.
+
 ## Ruled out by past lessons: not in this plan
 | Not doing | Why (lessons) |
 |---|---|
