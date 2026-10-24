@@ -335,12 +335,14 @@ def trained(epochs: int = 20, batch: int = 4096, dim: int = 256, cell_deg: float
     torch.save({k: v.state_dict() for k, v in out.items()}, OUT / f"trained_heads{tag}.pt")
 
 
-def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive", "siglip2_trained", "pe_g_trained"), combo: bool = False) -> None:
+def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive", "siglip2_trained", "pe_g_trained"), combo: bool = False,
+           fixed: tuple[float, ...] = ()) -> None:
     """Does the trained PE-G search's recall reach the reranker's top-1? dev3k's setft_own pool (the pipeline's, photographer kept), plus each
     search's top K from this gallery (new photos only), all rescored by the setft_own reranker (run with PINPOINT_RERANKER_CKPT set to it).
     Added photos get rank 1 / not-in-shortlist features, as the wide lists' extra hits it was trained on. Top-1 = best score over the pool.
     combo: also pick by reranker score + lambda x the query's PE-G cosine to each candidate (raw, and in the trained projection), lambda by
-    2-fold cross-validation on dev3k (folds by photo parity); candidate PE-G embeddings from B2's file (the dev3k pools embedded first)."""
+    2-fold cross-validation on dev3k (folds by photo parity); candidate PE-G embeddings from B2's file (the dev3k pools embedded first).
+    fixed: also report these lambdas as chosen elsewhere (commons26 is final validation only: lambda from dev3k, no tuning on its dev)."""
     import torch
     import torch.nn.functional as F
 
@@ -410,6 +412,11 @@ def rerank(ks: tuple[int, ...] = (8, 16), names: tuple[str, ...] = ("contrastive
                     j = int(np.argmax((d[:, fold != f] < 25).mean(1)))
                     chosen.append(lams[j])
                     pick[fold == f] = d[j, fold == f]
+                for lam in fixed:
+                    j = int(np.flatnonzero(lams == lam)[0])
+                    f25, f1 = (d[j] < 25).astype(float) - (base < 25), (d[j] < 1).astype(float) - (base < 1)
+                    out.append(f"{kind} cos (fixed lambda {lam:g}): 25 km {100 * np.mean(d[j] < 25):.2f} ({100 * f25.mean():+.2f} +- "
+                               f"{100 * f25.std() / np.sqrt(len(idx)):.2f})  1 km {100 * np.mean(d[j] < 1):.2f} ({100 * f1.mean():+.2f})")
                 diff25, diff1 = (pick < 25).astype(float) - (base < 25), (pick < 1).astype(float) - (base < 1)
                 out.append(f"{kind} cos (lambda {chosen[0]:g}/{chosen[1]:g}): 25 km {100 * np.mean(pick < 25):.2f} ({100 * diff25.mean():+.2f} +- "
                            f"{100 * diff25.std() / np.sqrt(len(idx)):.2f})  1 km {100 * np.mean(pick < 1):.2f} ({100 * diff1.mean():+.2f})")
@@ -453,6 +460,7 @@ def main() -> None:
     ap.add_argument("--train-frac", type=float, default=1.0, help="trained: share of the train half (same number of steps)")
     ap.add_argument("--eval-fracs", default="1", help="trained: comma list of nested shares of the eval half (gallery density)")
     ap.add_argument("--set", default="dev3k", choices=tuple(SETS), help="query set (rerank, recall, trained)")
+    ap.add_argument("--fixed", default="", help="rerank --combo: comma list of lambdas chosen elsewhere (e.g. on dev3k)")
     ap.add_argument("--combo", action="store_true", help="rerank: also reranker score + lambda x PE-G cosine (2-fold lambda)")
     ap.add_argument("--names", default="contrastive,siglip2_trained,pe_g_trained", help="rerank: searches whose top K are added")
     ap.add_argument("--tag", default="", help="trained: suffix of the saved heads file")
@@ -461,7 +469,8 @@ def main() -> None:
     tr = lambda: trained(backbones=tuple(args.backbones.split(",")), train_frac=args.train_frac,  # noqa: E731
                          eval_fracs=tuple(float(f) for f in args.eval_fracs.split(",")), tag=args.tag)
     first = tuple(f for f in args.first.split(",") if f)
-    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse, first=first, only_first=args.only_first), "recall": recall, "trained": tr, "rerank": lambda: rerank(names=tuple(args.names.split(",")), combo=args.combo)}[args.node]()
+    {"select": lambda: select(fraction=args.fraction), "embed": lambda: embed(reuse=args.reuse, first=first, only_first=args.only_first), "recall": recall, "trained": tr, "rerank": lambda: rerank(names=tuple(args.names.split(",")), combo=args.combo,
+                                                                   fixed=tuple(float(x) for x in args.fixed.split(",") if x))}[args.node]()
 
 
 if __name__ == "__main__":

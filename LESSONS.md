@@ -222,7 +222,9 @@ R16. **PE-core-G's gain is the model, not the column form, the resolution or a m
     **commons26 dev transfers** (`--set commons26dev`, `combo_commons26dev.log`; its pools' 41k rows embedded into B2; queries at 378 px
     from step 5c): reranker top-1 19.65 / 6.04; + trained PE-G cosine **21.80 (+2.15 +- 0.91) / 6.45**; with PE-G trained top 16 added
     **22.62 (+2.97 +- 0.99) / 7.27 (+1.23)**; SigLIP2 trained -0.31 +- 0.45; raw PE-G cosine adds nothing (lambda 0 chosen in both folds).
-    Caveats: one projection seed; lambda cross-fitted within each set (one parameter).
+    Caveats: one projection seed. commons26 is final validation only (user, 2026-10-24), so its lambda shouldn't come from its own dev:
+    with dev3k's lambdas fixed (2 / 4; `--fixed`, `combo_commons26dev_fixed.log`), trained PE-G +1.64 +- 0.76 / +2.25 +- 0.89 (1 km +1.13 /
+    +0.72), SigLIP2 trained -0.10 / -0.61, raw PE-G -0.92 / -1.02: the transfer holds without commons26 tuning.
 
 - **R19. The trained PE-G similarity as per-area columns adds to the best head: dev3k 49.82 -> 50.87 (+1.05 / +0.67 at 25 / 1 km),
     commons26 dev 27.70 -> 28.18 (+0.48 / +0.13); total over today's head +3.70 / +2.06 and +3.17 / +0.38** (`scripts/pe_trained_cols.py`,
