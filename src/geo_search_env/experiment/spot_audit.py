@@ -33,6 +33,8 @@ OUT = Path("artifacts/spot_audit")
 TRACES = Path("artifacts/viz/traces/dev3k")
 QUERIES = Path("artifacts/density_probe/queries.npz")  # dev3k photo ids and photographer uids (YFCC vocabulary)
 MEGALOC_Q = Path("artifacts/agent/megaloc_queries_dev3k_setft_own.npy")
+PHOTO_SET = Path("artifacts/photo_sets/dev3k_setft_own")
+SETFT_CKPT = Path("artifacts/pinpoint_train/setft_own/checkpoints/ckpt_final.pt")  # the pipeline's retrained reranker
 CLOSE_TIERS = (1, 2, 4, 5)
 KINDS = ("truth", "right", "wrong")
 DUP = 0.9  # MegaLoc cosine at which a reference counts as a copy of the query
@@ -188,6 +190,179 @@ def fetch(workers: int, batch: int) -> None:
     print(f"embedded {np.isfinite(emb[:, 0]).sum():,}/{len(ids):,} ({time.time() - t0:.0f}s)")
 
 
+def siglip(workers: int, batch: int) -> None:
+    """SigLIP2 embeddings (Pinpoint's raw image space) of the new references (not in the index, fetched by `fetch`), for `rerank`;
+    downloaded again since only MegaLoc embeddings were kept -> artifacts/spot_audit/siglip.npz."""
+
+    import torch
+
+    from .embed_cache import _embed, _load_model, _pixels
+
+    s, m = np.load(OUT / "shortlist.npz"), np.load(OUT / "megaloc.npz")
+    new = ~s["in_index"].astype(bool)
+    ids, first = np.unique(s["photo_id"][new], return_index=True)
+    server, secret = s["server"][new][first], s["secret"][new][first]
+    alive = np.isfinite(m["emb"][np.searchsorted(m["ids"], ids), 0])
+    ids, server, secret = ids[alive], server[alive], secret[alive]
+    part = OUT / "siglip_part.npz"
+    emb, done = np.full((len(ids), 1536), np.nan, np.float16), 0
+    if part.exists():
+        p = np.load(part)
+        emb, done = p["emb"], int(p["done"])
+        print(f"resuming at {done:,}/{len(ids):,}")
+    model, processor = _load_model()
+    t0 = time.time()
+    with ThreadPoolExecutor(workers) as pool:
+        for a in range(done, len(ids), batch):
+            chunk = range(a, min(a + batch, len(ids)))
+            blobs = list(pool.map(_get, [(ids[i], server[i], secret[i]) for i in chunk]))
+            pix = [(n, _pixels(processor, b)) for n, b in enumerate(blobs)]
+            pix = [(n, x) for n, x in pix if x is not None]
+            if pix:
+                emb[[chunk[n] for n, _ in pix]] = _embed(model, torch.stack([x for _, x in pix]))
+            if (a - done) // batch % 20 == 0 or chunk[-1] == len(ids) - 1:
+                np.savez(part, emb=emb, done=chunk[-1] + 1)
+                print(f"  {chunk[-1] + 1:,}/{len(ids):,}, {(chunk[-1] + 1 - done) / (time.time() - t0):.0f}/s", flush=True)
+    np.savez(OUT / "siglip.npz", ids=ids, emb=emb)
+    part.unlink(missing_ok=True)
+    print(f"embedded {np.isfinite(emb[:, 0]).sum():,}/{len(ids):,} ({time.time() - t0:.0f}s)")
+
+
+def rerank(radius: float = 1.0, cap: int = 3000) -> None:
+    """The new photos used the way Pinpoint uses photos: as gallery candidates scored by the retrained reranker (setft_own, pools 32 8 8).
+    Per close call one pool over the index photos within `radius` km of the right point and of the wrong pick (the nearest `cap` each; never
+    the query photo or its photographer): A = index only, B = index + the new YFCC references at those points, A' = A with every index
+    photo's GPS embedding replaced by its nearest other index photo's (the new photos borrow their nearest index photo's GPS embedding, as
+    the location tower isn't ported; A' vs A measures what that costs). Where does the reranker's top-1 land, and how much softmax mass
+    falls nearer the right point? -> artifacts/spot_audit/rerank.txt"""
+
+    import os
+
+    os.environ.setdefault("PINPOINT_RERANKER_CKPT", str(SETFT_CKPT))
+    from scipy.spatial import cKDTree
+
+    from ..models.pinpoint_reranker import PinpointReranker, _unit_xyz
+    from ..tools.pinpoint import NVME_INDEX
+    from .strategy_search import MP16_EMBED
+    from .yfcc_names import _mp16_authors
+
+    s = dict(np.load(OUT / "shortlist.npz"))
+    if (OUT / "siglip.npz").exists():
+        sg = dict(np.load(OUT / "siglip.npz"))
+    else:  # plumbing on a fetch in progress (same id order as siglip())
+        m, new = np.load(OUT / "megaloc.npz"), ~s["in_index"].astype(bool)
+        ids = np.unique(s["photo_id"][new])
+        sg = {"ids": ids[np.isfinite(m["emb"][np.searchsorted(m["ids"], ids), 0])], "emb": np.load(OUT / "siglip_part.npz")["emb"]}
+        print("PARTIAL: siglip.npz not written yet")
+    photos = json.loads((PHOTO_SET / "photos.json").read_text(encoding="utf-8"))
+    q = dict(np.load(QUERIES))
+    dev = np.flatnonzero(q["set"] == "dev3k")
+    q_emb, q_pid = q["emb"][dev].astype(np.float32), q["photo_id"][dev]
+    model = PinpointReranker(index_dir=NVME_INDEX if (NVME_INDEX / "manifest.json").exists() else None)
+    model.widen((32, 8, 8))
+    latlon = np.asarray(model.latlon, np.float64)
+    tree = cKDTree(_unit_xyz(latlon))
+    chord = 2 * np.sin(radius / 6371.0 / 2)
+    kind, pts = s["p_kind"], np.flatnonzero(s["p_kind"] != "truth")
+    near = {}
+    for p in pts:
+        xyz = _unit_xyz(np.asarray([[s["p_lat"][p], s["p_lon"][p]]]))[0]
+        d, r = tree.query(xyz, k=cap, distance_upper_bound=chord)
+        near[p] = r[np.isfinite(d)]
+    idx_rows = np.unique(np.concatenate(list(near.values())))
+    image_ids = np.asarray((MP16_EMBED / "image_ids.txt").read_text(encoding="utf-8").splitlines())
+    row_ids = image_ids[model.cache_indices[idx_rows]]
+    authors = _mp16_authors(set(row_ids) | {p["image_id"] for p in photos})
+    row_author = np.asarray([authors.get(i, "") for i in row_ids])
+    row_pid = np.asarray([int(i.rsplit("_", 1)[-1][:-4]) for i in row_ids])
+
+    # new rows: references not in the index with a SigLIP2 embedding, located from the YFCC metadata
+    new_pid = sg["ids"][np.isfinite(sg["emb"][:, 0])]
+    g = np.load(GEO)
+    order = np.argsort(g["photo_id"])
+    at = order[np.searchsorted(g["photo_id"], new_pid, sorter=order)]
+    new_ll = np.stack([g["lat"][at], g["lon"][at]], 1).astype(np.float64)
+    new_raw = sg["emb"][np.searchsorted(sg["ids"], new_pid)].astype(np.float32)
+    new_raw /= np.linalg.norm(new_raw, axis=1, keepdims=True)
+    new_proj = np.concatenate([model.encode_queries(new_raw[a:a + 4096])[1].cpu().numpy() for a in range(0, len(new_raw), 4096)])
+    _, nearest = tree.query(_unit_xyz(new_ll), k=1)
+    scale = np.abs(new_raw).max(1) / 127.0
+    _, second = tree.query(_unit_xyz(latlon[idx_rows]), k=2)
+
+    n_idx = len(idx_rows)
+    table = {"image": np.concatenate([np.asarray(model.image[idx_rows]), new_proj.astype(np.float16)]),
+             "gps": np.concatenate([np.asarray(model.gps[idx_rows]), np.asarray(model.gps[nearest])]),
+             "raw": np.concatenate([np.asarray(model.raw[idx_rows]), np.round(new_raw / scale[:, None]).astype(np.int8)]),
+             "raw_scales": np.concatenate([np.asarray(model.raw_scales[idx_rows]), scale.astype(np.float16)]),
+             "latlon": np.concatenate([latlon[idx_rows], new_ll]).astype(np.float32)}
+    gps_alt = np.concatenate([np.asarray(model.gps[second[:, 1]]), table["gps"][n_idx:]])
+    cache = np.concatenate([model.cache_indices[idx_rows], np.full(len(new_pid), -1)])
+    pos = {r: n for n, r in enumerate(idx_rows)}
+    new_pos = {pid: n_idx + n for n, pid in enumerate(new_pid)}
+
+    def install(gps: np.ndarray) -> None:
+        model.image, model.gps, model.raw, model.raw_scales, model.latlon = table["image"], gps, table["raw"], table["raw_scales"], table["latlon"]
+        model.cache_indices = cache
+        model.load_resident()
+
+    photo_i = s["p_i"][kind == "right"]
+    p_right, p_wrong = np.flatnonzero(kind == "right"), np.flatnonzero(kind == "wrong")
+    pools = {"A": [], "B": []}
+    n_new = []
+    for i, pr, pw in zip(photo_i, p_right, p_wrong):
+        qa, qp = authors.get(photos[i]["image_id"], "?"), q_pid[i]
+        base = [pos[r] for p in (pr, pw) for r in near[p] if row_author[pos[r]] != qa and row_pid[pos[r]] != qp]
+        extra = [new_pos[pid] for p in (pr, pw) for pid in s["photo_id"][(s["point"] == p) & ~s["in_index"].astype(bool)] if pid in new_pos]
+        pools["A"].append(np.unique(np.asarray(base, np.int64)))
+        pools["B"].append(np.unique(np.asarray(base + extra, np.int64)))
+        n_new.append(len(set(extra)))
+    q_rows = q_emb[photo_i]
+    ll_r = np.stack([s["p_lat"][p_right], s["p_lon"][p_right]], 1)
+    ll_w = np.stack([s["p_lat"][p_wrong], s["p_lon"][p_wrong]], 1)
+
+    def run(pool: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        top_right, mass, top_new, has = (np.zeros(len(pool)) for _ in range(4))
+        for a in range(0, len(pool), 64):
+            out = model.rank_subset(q_rows[a:a + 64], pool[a:a + 64])
+            for j in range(len(out.rows)):
+                v = out.rows[j] >= 0
+                if not v.any():
+                    continue
+                ll = out.latlon[j][v]
+                d_r = _haversine(ll_r[a + j, 0], ll_r[a + j, 1], ll[:, 0], ll[:, 1])
+                d_w = _haversine(ll_w[a + j, 0], ll_w[a + j, 1], ll[:, 0], ll[:, 1])
+                sc = out.scores[j][v]
+                w = np.exp(sc - sc.max())
+                w /= w.sum()
+                has[a + j], top_right[a + j] = 1, d_r[0] < d_w[0]
+                mass[a + j] = w[d_r < d_w].sum()
+                top_new[a + j] = out.rows[j][0] >= n_idx
+        return top_right, mass, top_new, has
+
+    install(table["gps"])
+    res = {name: run(pools[name]) for name in ("A", "B")}
+    install(gps_alt)
+    res["A'"] = run(pools["A"])
+    ok = (res["A"][3] > 0) & (res["B"][3] > 0)
+    n_new = np.asarray(n_new)
+    lines = [f"Reranker over the right / wrong neighbourhoods (index photos within {radius:g} km, nearest {cap} each), dev3k close calls: "
+             f"{int(ok.sum())} of {len(photo_i)} photos; new photos per pool median {np.median(n_new):.0f}"]
+    for name in ("A", "A'", "B"):
+        t, m_, nw, _ = res[name]
+        lines.append(f"  {name:<2} top-1 nearer the right point {100 * t[ok].mean():5.1f}%  mean mass right {m_[ok].mean():.3f}"
+                     + (f"  top-1 a new photo {100 * nw[ok].mean():.1f}%" if name == "B" else ""))
+    ta, tb = res["A"][0][ok], res["B"][0][ok]
+    lines.append(f"  A -> B: top-1 moves wrong -> right {int(((ta == 0) & (tb == 1)).sum())}, right -> wrong {int(((ta == 1) & (tb == 0)).sum())}; "
+                 f"mass right +{(res['B'][1][ok] - res['A'][1][ok]).mean():.4f} (photos with >= 20 new: "
+                 f"{(res['B'][1] - res['A'][1])[ok & (n_new >= 20)].mean():+.4f}, n {int((ok & (n_new >= 20)).sum())})")
+    ta2 = res["A'"][0][ok]
+    lines.append(f"  A -> A' (borrowed GPS embeddings): top-1 changes on {int((ta != ta2).sum())} photos, mass right "
+                 f"{(res[chr(65) + chr(39)][1][ok] - res['A'][1][ok]).mean():+.4f}")
+    text = "\n".join(lines)
+    print(text)
+    (OUT / "rerank.txt").write_text(text + "\n", encoding="utf-8")
+
+
 def _paired(a: np.ndarray, b: np.ndarray) -> float:
     """P(a > b) over pairs (ties half); points without references score -1."""
 
@@ -285,7 +460,7 @@ def report() -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("cmd", choices=("shortlist", "fetch", "report"))
+    parser.add_argument("cmd", choices=("shortlist", "fetch", "report", "siglip", "rerank"))
     parser.add_argument("--k", type=int, default=50)
     parser.add_argument("--radius", type=float, default=1.0)
     parser.add_argument("--workers", type=int, default=4)
@@ -295,6 +470,10 @@ def main(argv=None) -> int:
         shortlist(args.k, args.radius)
     elif args.cmd == "fetch":
         fetch(args.workers, args.batch)
+    elif args.cmd == "siglip":
+        siglip(args.workers, args.batch)
+    elif args.cmd == "rerank":
+        rerank()
     else:
         report()
     return 0

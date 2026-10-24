@@ -126,3 +126,9 @@ S3. **Text-proposed places verify far better than pool ones, but not where text 
     Flickr API's use for verification; the live API would add density of the same kind. Tooling: Flickr's API throttles (HTTP 429) after
     ~600 calls in 13 min at ~50 / min, below its nominal 3,600 / h, and its image CDN answers 403 / 429 after bursts and 403 to a fake browser
     user-agent; `tools/flickr.py` paces at <= 1,800 / h with a shared pause, `spot_audit.fetch` identifies the client and pauses on 403 / 429.
+    Used the way Pinpoint uses photos (`spot_audit rerank`; the 55k new photos SigLIP2-embedded and added as gallery candidates, the retrained
+    reranker over one pool of the index photos within 1 km of the right point and of the wrong pick, photographer excluded): top-1 nearer the
+    right point 19.1% -> 20.4% with the new photos (19 photos move to right, 10 to wrong; a new photo is top-1 in 17% of pools), softmax mass
+    on the right side 0.343 -> 0.335. Net +9 of 3,000 dev3k photos (~+0.3 pt) even in this optimistic two-way setting: density adds
+    candidates to both sides about equally. New photos borrow the nearest index photo's GPS embedding (location tower not ported); doing
+    the same to every index photo changes the top-1 on 5 of 721 photos, so the approximation doesn't matter.

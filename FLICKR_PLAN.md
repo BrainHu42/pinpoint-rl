@@ -57,6 +57,9 @@ Evaluation follows CLAUDE.md:
   vs clean losses 8.0%.
 - Reading: retrieval chose the wrong area because photos there look like the query, and its neighbours inherit that; the nearest photos
   rarely show the query's own view, same era or not. More of the same density (new photos, larger k, live Flickr) doesn't change it.
+- The photos used as Pinpoint uses them (`spot_audit rerank`: SigLIP2-embedded, added to the gallery, scored by the retrained reranker over
+  the right and wrong neighbourhoods): top-1 on the right side 19.1% -> 20.4% (19 fixes, 10 breaks), right-side mass 0.343 -> 0.335;
+  ~+0.3 pt of dev3k at best. Density helps both sides alike.
 - Not run: references chosen by visual similarity instead of distance. That re-creates the look-alike problem that main point 2 already
   closes, so it can't escape this result.
 - **Steps 2-4 below are not reached.** The Flickr API's remaining uses are the narrow ones from the screen (text for landmark photos, 1 km
